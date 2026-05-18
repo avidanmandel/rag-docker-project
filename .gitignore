@@ -1,0 +1,49 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# API keys and secrets (never commit)
+*credentials*
+*secret*
+*.pem
+*.key
+secrets.json
+serviceAccount*.json
+
+# Local / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-local data
+chat.db
+index_cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+
+# Docker (optional local overrides)
+.docker/

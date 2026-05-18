@@ -1,0 +1,36 @@
+# Secrets
+.env
+
+# Python build / cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Runtime / generated files (must not be baked into the image)
+app.log
+*.log
+rag_history.db
+chat.db
+index_cache/
+
+# Editor / IDE
+.idea/
+.vscode/
+
+# VCS
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker meta (don't recopy these into the image context)
+Dockerfile
+.dockerignore
