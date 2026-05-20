@@ -18,9 +18,7 @@ when generation is enabled.
 
 Gemini **text generation** is configured through **`GEMINI_MODEL`** in `.env`
 (see **`config.py`**). **Default used in this project:** **`gemini-2.5-flash`**.
-
-> **Secrets:** Never commit `.env`. Use **`.env.example`** as a template only.
-> Do **not** submit `.env`, and never paste live API keys in README or reports.
+.
 
 ---
 
