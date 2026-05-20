@@ -22,6 +22,34 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 INDEX_CACHE_DIR = BASE_DIR / "index_cache"
 DB_PATH = BASE_DIR / "chat.db"
+GENERATED_DIR = DATA_DIR / "generated"
+GENERATED_IMAGES_DIR = GENERATED_DIR / "images"
+SAMPLE_UPLOADS_DIR = BASE_DIR / "sample_uploads"
+
+# Starter knowledge-base files preserved by Clear All / Reset Project.
+STARTER_KB_FILES = frozenset({
+    "Avidan Risk Analysis Report.txt",
+    "docker_aws.pdf",
+    "Flask-lecture1.pdf",
+    "Flask-lecture2.pdf",
+    "for_check.txt",
+})
+
+# Strict RAG refusal messages (no general-knowledge fallback).
+REFUSAL_TEXT_EN = (
+    "I do not have enough information in the provided documents to answer this question."
+)
+REFUSAL_TEXT_HE = (
+    "אין לי מספיק מידע במסמכים הקיימים כדי לענות על השאלה הזאת."
+)
+
+# When the knowledge base is empty or not indexed yet.
+NO_KB_TEXT_EN = (
+    "I do not have a knowledge base available to answer this question."
+)
+NO_KB_TEXT_HE = (
+    "אין לי בסיס נתונים זמין כדי לענות על השאלה הזאת."
+)
 
 
 # --- API credentials ------------------------------------------------------
@@ -43,7 +71,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 # --- Retrieval / chunking -------------------------------------------------
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "700"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
-TOP_K = int(os.getenv("TOP_K", "4"))
+TOP_K = int(os.getenv("TOP_K", "6"))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "8"))
 
 # Minimum cosine similarity for a chunk to be considered "relevant".

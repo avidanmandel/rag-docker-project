@@ -136,11 +136,7 @@ def _reindex_engine_background() -> None:
         traceback.print_exc()
 
 
-STARTER_KB_FILES = frozenset({
-    "Flask-lecture1.pdf",
-    "Flask-lecture2.pdf",
-    "docker_aws.pdf",
-})
+STARTER_KB_FILES = config.STARTER_KB_FILES
 SAMPLE_FIXTURE_PDF = "upload_test_knowledge_base.pdf"
 
 DOC_UPLOAD_EXTENSIONS = {".pdf", ".txt"}
@@ -170,7 +166,7 @@ def _purge_generated_tree() -> None:
 
 
 def _purge_non_starter_kb_files() -> None:
-    """Remove every file/dir under ``data/`` except the three starter PDFs."""
+    """Remove every file/dir under ``data/`` except protected starter KB files."""
     root = config.DATA_DIR
     for entry in list(root.iterdir()):
         if entry.is_dir():
@@ -195,12 +191,17 @@ def _purge_index_cache_files() -> None:
                 pass
 
 
-def _reset_project_disk_and_cache() -> None:
-    """SQLite cleared separately — wipe uploads/generated/cache snapshots."""
-    _sync_sample_fixture_into_archive()
+def _reset_kb_to_starters() -> None:
+    """Remove session uploads from ``data/``; keep starter KB files only."""
     _purge_generated_tree()
     _purge_non_starter_kb_files()
     _purge_index_cache_files()
+
+
+def _reset_project_disk_and_cache() -> None:
+    """SQLite cleared separately — wipe uploads/generated/cache snapshots."""
+    _sync_sample_fixture_into_archive()
+    _reset_kb_to_starters()
 
 
 def _paired_extract_relative_for_image_basename(upload_basename: str) -> str | None:
@@ -265,7 +266,7 @@ def api_debug_document_text():
         return jsonify({"error": "engine not ready"}), 503
 
     name = (request.args.get("name") or "").strip()
-    if not name or not re.fullmatch(r"[\w\-\.]+\.(pdf|txt)", name, flags=re.I):
+    if not name or not re.fullmatch(r"[\w\-\.\s]+\.(pdf|txt)", name, flags=re.I):
         return jsonify({"error": "invalid name"}), 400
 
     target = (config.DATA_DIR / name).resolve()
@@ -275,7 +276,7 @@ def api_debug_document_text():
         return jsonify({"error": "invalid path"}), 400
 
     if not target.is_file():
-        return jsonify({"error": "file not found"}), 404
+        return jsonify({"exists": False, "error": "file not found"}), 404
 
     chunk_count = sum(
         1
@@ -286,7 +287,7 @@ def api_debug_document_text():
     if target.suffix.lower() == ".pdf":
         from pdf_loader import load_pdf
 
-        pages_data = load_pdf(target, source_label=name)
+        pages_data = load_pdf(target)
         page_count = len(pages_data)
         blob = "\n".join(t for _, _, t in pages_data[:8])
     else:
@@ -295,10 +296,14 @@ def api_debug_document_text():
 
     preview = blob[:300]
     return jsonify({
+        "exists": True,
         "name": name,
         "pages_extracted": page_count,
+        "extracted_characters": len(blob),
+        "chunks": chunk_count,
         "chunks_indexed_for_file": chunk_count,
         "text_preview_first_300_chars": preview,
+        "first_text_preview": preview,
     })
 
 
@@ -312,9 +317,11 @@ def api_list_documents():
         root = config.DATA_DIR
         root.mkdir(parents=True, exist_ok=True)
         starter_order = {
-            "Flask-lecture1.pdf": 0,
-            "Flask-lecture2.pdf": 1,
-            "docker_aws.pdf": 2,
+            "Avidan Risk Analysis Report.txt": 0,
+            "docker_aws.pdf": 1,
+            "Flask-lecture1.pdf": 2,
+            "Flask-lecture2.pdf": 3,
+            "for_check.txt": 4,
         }
 
         for p in sorted(root.rglob("*")):
@@ -614,10 +621,34 @@ def api_reset_all():
         "ok": True,
         "message": (
             "SQLite conversations cleared; uploads removed; "
-            "starter PDFs preserved; sample fixture archived under "
+            "starter knowledge-base files preserved; sample fixture archived under "
             f"'sample_uploads/{SAMPLE_FIXTURE_PDF}' when present; "
             "index rebuilding."
         ),
+    }), 200
+
+
+@app.route("/api/session-uploads/reset", methods=["POST"])
+def api_reset_session_uploads():
+    """Drop conversation-scoped uploads; rebuild index from starter ``data/`` files."""
+    global _init_error
+
+    if not GEMINI_API_KEY or not HF_TOKEN:
+        return jsonify({"error": "API keys missing; cannot rebuild the index."}), 503
+
+    try:
+        _reset_kb_to_starters()
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+
+    threading.Thread(
+        target=_reindex_engine_background, daemon=True, name="rag-session-reset-reindex"
+    ).start()
+
+    return jsonify({
+        "ok": True,
+        "message": "Session uploads removed; knowledge base reset to starter files.",
     }), 200
 
 
@@ -715,8 +746,6 @@ def api_send_message(session_id):
         result["answer"],
         context=result["context"],
     )
-    if result.get("generation_mode"):
-        assistant_msg = {**assistant_msg, "generation_mode": result["generation_mode"]}
 
     if session["title"] == "New conversation":
         new_title = question[:60] + ("..." if len(question) > 60 else "")
@@ -726,7 +755,6 @@ def api_send_message(session_id):
         "user_message": user_msg,
         "assistant_message": assistant_msg,
         "refused": result.get("refused", False),
-        "generation_mode": result.get("generation_mode"),
     })
 
 

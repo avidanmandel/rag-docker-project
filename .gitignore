@@ -36,8 +36,12 @@ serviceAccount*.json
 Thumbs.db
 
 # Project-local data
+*.db
 chat.db
 index_cache/
+generated/
+uploads/
+data/uploads/
 
 # Temporary files
 *.tmp

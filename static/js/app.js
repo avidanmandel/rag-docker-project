@@ -55,6 +55,12 @@ const API = {
             if (!r.ok) throw new Error(data.error || "Reset failed");
             return data;
         }),
+    resetSessionUploads: () =>
+        fetch("/api/session-uploads/reset", { method: "POST" }).then(async r => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || "Reset failed");
+            return data;
+        }),
 };
 
 const state = {
@@ -91,7 +97,7 @@ const els = {
     resetProjectBtn: document.getElementById("resetProjectBtn"),
 };
 
-const FALLBACK_PREFIX = "I could not find this in the documents.";
+const FALLBACK_PREFIX = "I do not have enough information in the provided documents";
 
 // ==========================================================
 // Utilities
@@ -285,6 +291,17 @@ async function selectSession(id) {
 }
 
 async function newSession({ select = true } = {}) {
+    try {
+        await API.resetSessionUploads();
+        state.engineReady = false;
+        els.input.disabled = true;
+        els.sendBtn.disabled = true;
+        await refreshKbDocuments();
+        pollEngineStatus();
+    } catch (err) {
+        toast(err.message || "Could not reset session uploads", { error: true });
+    }
+
     const session = await API.createSession();
     state.sessions.unshift(session);
     renderSessions();
@@ -335,7 +352,7 @@ async function handleResetProject() {
     els.resetProjectBtn.disabled = true;
     try {
         await API.resetAll();
-        toast("Reset complete — rebuilding knowledge base from starter PDFs…");
+        toast("Reset complete — rebuilding knowledge base from starter files…");
         state.activeSessionId = null;
         state.messages = [];
         els.conversationTitle.textContent = "New conversation";

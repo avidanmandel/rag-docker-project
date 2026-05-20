@@ -115,6 +115,19 @@ def delete_session(session_id: str) -> None:
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
 
+def clear_all_conversations() -> None:
+    """Delete every session and message (Clear All / Reset Project)."""
+    conn = get_connection()
+    with conn:
+        conn.execute("DELETE FROM messages")
+        conn.execute("DELETE FROM sessions")
+
+
+def vacuum_database_file() -> None:
+    conn = get_connection()
+    conn.execute("VACUUM")
+
+
 # ---------- messages ----------
 
 def add_message(

@@ -41,6 +41,23 @@
                 New conversation
             </button>
 
+            <div class="sidebar__kb">
+                <div class="sidebar__label sidebar__label--row">
+                    <span>Knowledge Base</span>
+                    <button type="button" class="upload-btn" id="uploadBtn" title="Upload PDF or TXT">
+                        Upload
+                    </button>
+                    <input
+                        type="file"
+                        id="uploadInput"
+                        accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
+                        hidden
+                    />
+                </div>
+                <div class="upload-card__status" id="uploadStatus" hidden></div>
+                <div class="document-list" id="documentList"></div>
+            </div>
+
             <div class="sidebar__label">Recent</div>
             <div class="session-list" id="sessionList"></div>
 
@@ -49,7 +66,9 @@
                     <span class="status__dot" data-state="loading"></span>
                     <span class="status__text">Starting engine...</span>
                 </div>
-                <div class="sources" id="indexedSources"></div>
+                <button type="button" class="reset-project" id="resetProjectBtn">
+                    Clear All / Reset Project
+                </button>
             </div>
         </aside>
 
@@ -97,26 +116,27 @@
                             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                         </svg>
                     </div>
-                    <h2>Ask anything about the course</h2>
+                    <h2>Ask anything about your knowledge base</h2>
                     <p>
-                        I answer using only your Flask lectures and the Docker &amp; AWS
-                        notes. Try one of these to get started:
+                        I answer only using the documents in the Knowledge Base, including
+                        Flask lectures, Docker &amp; AWS notes, and the Risk Analysis Report.
+                        Try one of these to get started:
                     </p>
                     <div class="suggestions" id="suggestions">
                         <button class="suggestion" data-q="What is Flask and what is it used for?">
                             What is Flask?
                         </button>
+                        <button class="suggestion" data-q="What is Docker?">
+                            What is Docker?
+                        </button>
+                        <button class="suggestion" data-q="Who is the owner of the Risk Analysis Report?">
+                            Who is the owner of the Risk Analysis Report?
+                        </button>
+                        <button class="suggestion" data-q="What is the capital of France?">
+                            What is the capital of France?
+                        </button>
                         <button class="suggestion" data-q="How do I define a route in Flask?">
                             How do I define a route?
-                        </button>
-                        <button class="suggestion" data-q="What is a Docker container and how is it different from a virtual machine?">
-                            Docker vs virtual machine
-                        </button>
-                        <button class="suggestion" data-q="How do I write a Dockerfile for a Flask application?">
-                            Dockerfile for Flask
-                        </button>
-                        <button class="suggestion" data-q="What AWS services are mentioned for deploying a web app?">
-                            AWS deployment services
                         </button>
                     </div>
                 </div>

@@ -23,6 +23,7 @@ PROJECT_ROOT = HERE.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from rag_engine import RAGEngine  # noqa: E402
+import config  # noqa: E402
 
 
 TEST_QUESTIONS: list[tuple[str, str]] = [
@@ -74,7 +75,8 @@ def main() -> int:
         print(f"\nrefused: {result['refused']}  reason: {result.get('reason')}")
 
         ok = (
-            (expected == "out_of_scope" and result["refused"])
+            (expected == "out_of_scope" and result["refused"]
+             and config.REFUSAL_TEXT_EN in result["answer"])
             or (expected == "in_scope" and not result["refused"])
         )
         verdict = "PASS" if ok else "FAIL"
