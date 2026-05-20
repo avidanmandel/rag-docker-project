@@ -1,3 +1,5 @@
+aouther avidan
+
 # Course Assistant — Flask, Docker & AWS (RAG)
 
 A Retrieval-Augmented Generation (RAG) web application that answers questions
