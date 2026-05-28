@@ -17,6 +17,7 @@ app.log
 *.log
 rag_history.db
 chat.db
+*.db
 index_cache/
 
 # Editor / IDE
