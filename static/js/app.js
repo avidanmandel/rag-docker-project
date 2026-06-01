@@ -100,6 +100,7 @@ const state = {
     isSending: false,
     awsMode: false,
     kbSyncInProgress: false,
+    kbOperationInProgress: false,
     ingestionJobId: null,
 };
 
@@ -203,10 +204,47 @@ function setSyncStatus(message, kind) {
     els.syncStatus.className = `sync-status sync-status--${kind || "info"}`;
 }
 
+function sanitizeUserError(message) {
+    if (!message) return "Something went wrong. Please try again.";
+    const lower = String(message).toLowerCase();
+    if (
+        lower.includes("conflictexception") ||
+        lower.includes("bedrock") ||
+        lower.includes("ingestion job") ||
+        lower.includes("knowledge base sync")
+    ) {
+        return "The knowledge base is still updating. Please try again shortly.";
+    }
+    return message;
+}
+
+function beginKbUpdate(message = "Updating the ScoutMatch knowledge base...") {
+    state.kbOperationInProgress = true;
+    setSyncStatus(message, "progress");
+    updateActionButtons();
+}
+
+function endKbUpdate() {
+    state.kbOperationInProgress = false;
+    updateActionButtons();
+}
+
+function updateActionButtons() {
+    const busy = state.kbSyncInProgress || state.kbOperationInProgress;
+    if (els.uploadBtn) els.uploadBtn.disabled = busy;
+    if (els.clearDocumentsBtn) els.clearDocumentsBtn.disabled = busy;
+    if (els.deleteBtn) els.deleteBtn.disabled = busy || !state.activeSessionId;
+}
+
 function updateComposerState() {
-    const blocked = !state.engineReady || state.isSending || state.kbSyncInProgress;
+    const blocked =
+        !state.engineReady ||
+        state.isSending ||
+        state.kbSyncInProgress ||
+        state.kbOperationInProgress;
     els.input.disabled = blocked;
     els.sendBtn.disabled = blocked;
+    updateActionButtons();
 }
 
 async function refreshKbDocuments() {
@@ -271,6 +309,7 @@ function renderKbDocuments(docs) {
 
 async function deleteDocument(doc) {
     if (!state.activeSessionId || !doc?.id) return;
+    if (state.kbOperationInProgress || state.kbSyncInProgress) return;
     const label = doc.display_name || doc.display_source || doc.name || "this document";
     const shown = label.includes("/") ? label.split("/").pop() : label;
     if (
@@ -280,16 +319,20 @@ async function deleteDocument(doc) {
     ) {
         return;
     }
+    beginKbUpdate("Updating the ScoutMatch knowledge base...");
     try {
         const result = await API.deleteSessionDocument(state.activeSessionId, doc.id);
         toast("Document deleted");
         if (state.awsMode && result.ingestion_job_id) {
+            endKbUpdate();
             pollIngestion(result.ingestion_job_id);
         } else {
+            endKbUpdate();
             await refreshKbDocuments();
         }
     } catch (err) {
-        toast(err.message || "Could not delete document", { error: true });
+        endKbUpdate();
+        toast(sanitizeUserError(err.message) || "Could not delete document", { error: true });
     }
 }
 
@@ -484,6 +527,7 @@ async function renameActiveSession() {
 
 async function deleteActiveSession() {
     if (!state.activeSessionId) return;
+    if (state.kbOperationInProgress || state.kbSyncInProgress) return;
     if (
         !confirm(
             "Delete this conversation and its uploaded documents?\nThis action cannot be undone."
@@ -492,11 +536,12 @@ async function deleteActiveSession() {
         return;
     }
     const id = state.activeSessionId;
-    els.deleteBtn.disabled = true;
+    beginKbUpdate("Updating the ScoutMatch knowledge base...");
     try {
         const result = await API.deleteSession(id, { deleteDocuments: true });
         state.sessions = state.sessions.filter(s => s.id !== id);
         if (state.awsMode && result.ingestion_job_id) {
+            endKbUpdate();
             pollIngestion(result.ingestion_job_id);
         }
         if (state.sessions.length > 0) {
@@ -507,7 +552,6 @@ async function deleteActiveSession() {
             els.conversationTitle.textContent = "New conversation";
             els.conversationMeta.textContent = "";
             els.renameBtn.disabled = true;
-            els.deleteBtn.disabled = true;
             renderSessions();
             renderMessages();
             await refreshKbDocuments();
@@ -515,8 +559,8 @@ async function deleteActiveSession() {
         }
         toast("Conversation deleted");
     } catch (err) {
-        toast(err.message || "Could not delete conversation", { error: true });
-        els.deleteBtn.disabled = false;
+        endKbUpdate();
+        toast(sanitizeUserError(err.message) || "Could not delete conversation", { error: true });
     }
 }
 
@@ -525,6 +569,7 @@ async function clearActiveDocuments() {
         toast("Choose a conversation first", { error: true });
         return;
     }
+    if (state.kbOperationInProgress || state.kbSyncInProgress) return;
     if (
         !confirm(
             "Clear all uploaded documents from this conversation?\nThis action cannot be undone."
@@ -532,19 +577,20 @@ async function clearActiveDocuments() {
     ) {
         return;
     }
-    els.clearDocumentsBtn.disabled = true;
+    beginKbUpdate("Updating the ScoutMatch knowledge base...");
     try {
         const result = await API.clearSessionDocuments(state.activeSessionId);
         toast("Conversation documents cleared");
         if (state.awsMode && result.ingestion_job_id) {
+            endKbUpdate();
             pollIngestion(result.ingestion_job_id);
         } else {
+            endKbUpdate();
             await refreshKbDocuments();
         }
     } catch (err) {
-        toast(err.message || "Could not clear documents", { error: true });
-    } finally {
-        els.clearDocumentsBtn.disabled = false;
+        endKbUpdate();
+        toast(sanitizeUserError(err.message) || "Could not clear documents", { error: true });
     }
 }
 
@@ -796,6 +842,7 @@ async function sendMessage(content) {
 
 async function handleUpload(file) {
     if (!file) return;
+    if (state.kbOperationInProgress || state.kbSyncInProgress) return;
     const okExt = /\.(txt|md|html|pdf|doc|docx|csv|xls|xlsx)$/i.test(file.name);
     if (!okExt) {
         toast("Supported: TXT, MD, HTML, PDF, DOC, DOCX, CSV, XLS, XLSX", { error: true });
@@ -804,7 +851,7 @@ async function handleUpload(file) {
     if (!state.activeSessionId) {
         await newSession({ select: true });
     }
-    els.uploadBtn.disabled = true;
+    beginKbUpdate(`Uploading CV to Amazon S3... (${file.name})`);
     setUploadStatus(`Uploading CV to Amazon S3... (${file.name})`, "info");
     try {
         const result = await API.uploadDocument(state.activeSessionId, file);
@@ -812,21 +859,25 @@ async function handleUpload(file) {
         toast("Document uploaded to S3");
 
         if (state.awsMode && result.ingestion_job_id) {
+            endKbUpdate();
             pollIngestion(result.ingestion_job_id);
         } else if (!state.awsMode) {
+            endKbUpdate();
             state.engineReady = false;
             updateComposerState();
             pollEngineStatus();
         } else {
+            endKbUpdate();
             await refreshKbDocuments();
         }
         setTimeout(() => setUploadStatus("", ""), 8000);
     } catch (err) {
-        setUploadStatus(`Failed: ${err.message}`, "error");
-        toast(err.message || "Upload failed", { error: true });
+        endKbUpdate();
+        const friendly = sanitizeUserError(err.message);
+        setUploadStatus(`Failed: ${friendly}`, "error");
+        toast(friendly || "Upload failed", { error: true });
         if (err.partialIndexed) refreshKbDocuments();
     } finally {
-        els.uploadBtn.disabled = false;
         els.uploadInput.value = "";
     }
 }

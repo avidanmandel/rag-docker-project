@@ -89,7 +89,12 @@ def _ingestion_after_object_delete(delete_result: dict) -> dict:
         return {}
     if int(delete_result.get("deleted") or 0) <= 0:
         return {}
-    return aws_storage.start_ingestion_job()
+    return aws_storage.sync_knowledge_base()
+
+
+def _sync_knowledge_base_after_change() -> dict:
+    """Run Bedrock ingestion sync after session-scoped S3 changes."""
+    return aws_storage.sync_knowledge_base()
 
 
 app = Flask(__name__)
@@ -642,7 +647,7 @@ def api_upload_session_document(session_id):
             upload_result["display_name"],
             upload_result["category"],
         )
-        ingestion = aws_storage.start_ingestion_job()
+        ingestion = _sync_knowledge_base_after_change()
     except UploadValidationError as exc:
         return jsonify({"error": str(exc)}), 400
     except RuntimeError as exc:
@@ -967,7 +972,7 @@ def _api_upload_document_aws():
             content_type=f.content_type,
             subfolder=subfolder,
         )
-        ingestion = aws_storage.start_ingestion_job()
+        ingestion = _sync_knowledge_base_after_change()
     except UploadValidationError as exc:
         return jsonify({"error": str(exc)}), 400
     except RuntimeError as exc:

@@ -135,6 +135,16 @@ FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
 FLASK_DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
 
+# --- Bedrock ingestion contention -----------------------------------------
+INGESTION_TOTAL_TIMEOUT_SECONDS = int(os.getenv("INGESTION_TOTAL_TIMEOUT_SECONDS", "180"))
+INGESTION_POLL_INTERVAL_SECONDS = float(os.getenv("INGESTION_POLL_INTERVAL_SECONDS", "3"))
+INGESTION_RETRY_DELAY_SECONDS = float(os.getenv("INGESTION_RETRY_DELAY_SECONDS", "2"))
+INGESTION_MAX_START_ATTEMPTS = int(os.getenv("INGESTION_MAX_START_ATTEMPTS", "20"))
+INGESTION_TIMEOUT_USER_MESSAGE = (
+    "The knowledge base is still updating. Please try again shortly."
+)
+
+
 # --- Upload allowlist (ScoutMatch documents) ------------------------------
 DOC_UPLOAD_EXTENSIONS = frozenset({
     ".txt", ".md", ".html", ".pdf", ".doc", ".docx", ".csv", ".xls", ".xlsx",

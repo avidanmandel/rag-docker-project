@@ -1211,6 +1211,9 @@ class AWSStorageTests(unittest.TestCase):
         self.svc = AWSStorageService()
         self.svc._s3 = MagicMock()
         self.svc._bedrock_agent = MagicMock()
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
+        }
 
     def test_validate_safe_filename(self):
         safe, ext = self.svc.validate_upload("daniel_cohen_cv.txt", 1024)
@@ -1337,6 +1340,90 @@ class AWSStorageTests(unittest.TestCase):
         }
         status = self.svc.get_ingestion_status("JOB123")
         self.assertEqual(status["status"], "COMPLETE")
+
+    @staticmethod
+    def _ingestion_conflict(job_id="JOB_ACTIVE"):
+        return ClientError(
+            {
+                "Error": {
+                    "Code": "ConflictException",
+                    "Message": (
+                        "There is an ongoing ingestion job for this data source "
+                        f"with ID {job_id}. Retry your request after the ingestion job completes."
+                    ),
+                }
+            },
+            "StartIngestionJob",
+        )
+
+    @staticmethod
+    def _ingestion_success(job_id):
+        return {"ingestionJob": {"ingestionJobId": job_id, "status": "STARTING"}}
+
+    @patch("aws_storage_service.time.sleep")
+    def test_start_ingestion_job_succeeds_immediately(self, _sleep):
+        self.svc._bedrock_agent.start_ingestion_job.return_value = self._ingestion_success("JOB1")
+        job = self.svc.sync_knowledge_base()
+        self.assertEqual(job["ingestion_job_id"], "JOB1")
+        self.assertEqual(job["status"], "COMPLETE")
+
+    @patch("aws_storage_service.time.sleep")
+    def test_start_ingestion_conflict_then_success(self, _sleep):
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_conflict("JOB_ACTIVE"),
+            self._ingestion_success("JOB2"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.side_effect = [
+            {"ingestionJob": {"status": "IN_PROGRESS", "statistics": {}}},
+            {"ingestionJob": {"status": "COMPLETE", "statistics": {}}},
+            {"ingestionJob": {"status": "COMPLETE", "statistics": {}}},
+        ]
+        job = self.svc.sync_knowledge_base()
+        self.assertEqual(job["ingestion_job_id"], "JOB2")
+        self.assertEqual(self.svc._bedrock_agent.start_ingestion_job.call_count, 2)
+
+    @patch("aws_storage_service.time.sleep")
+    def test_start_ingestion_multiple_conflicts_then_success(self, _sleep):
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_conflict("JOB1"),
+            self._ingestion_conflict("JOB2"),
+            self._ingestion_success("JOB3"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.side_effect = [
+            {"ingestionJob": {"status": "COMPLETE", "statistics": {}}},
+            {"ingestionJob": {"status": "COMPLETE", "statistics": {}}},
+            {"ingestionJob": {"status": "COMPLETE", "statistics": {}}},
+        ]
+        job = self.svc.sync_knowledge_base()
+        self.assertEqual(job["ingestion_job_id"], "JOB3")
+        self.assertEqual(self.svc._bedrock_agent.start_ingestion_job.call_count, 3)
+
+    @patch("aws_storage_service.time.sleep")
+    def test_start_ingestion_timeout_returns_friendly_error(self, _sleep):
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = self._ingestion_conflict("JOB_SLOW")
+        with patch.object(
+            self.svc,
+            "get_ingestion_status",
+            return_value={"status": "IN_PROGRESS", "ingestion_job_id": "JOB_SLOW"},
+        ):
+            with patch("aws_storage_service.time.monotonic", side_effect=[0.0, 1.0, 500.0]):
+                with self.assertRaises(RuntimeError) as ctx:
+                    self.svc.sync_knowledge_base()
+        self.assertIn("still updating", str(ctx.exception).lower())
+        self.assertNotIn("ConflictException", str(ctx.exception))
+
+    @patch("aws_storage_service.time.sleep")
+    def test_start_ingestion_no_infinite_retry_loop(self, _sleep):
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = self._ingestion_conflict("JOB_LOOP")
+        with patch.object(config, "INGESTION_MAX_START_ATTEMPTS", 4):
+            with patch.object(
+                self.svc,
+                "_wait_for_ingestion_job",
+                return_value={"status": "COMPLETE", "ingestion_job_id": "JOB_LOOP"},
+            ):
+                with self.assertRaises(RuntimeError):
+                    self.svc.start_ingestion_job(wait_for_complete=False)
+        self.assertEqual(self.svc._bedrock_agent.start_ingestion_job.call_count, 4)
 
     def test_list_only_scoutmatch_prefix(self):
         paginator = MagicMock()
@@ -1518,6 +1605,9 @@ class SessionDocumentApiTests(unittest.TestCase):
         )
         self.svc._bedrock_agent.start_ingestion_job.return_value = {
             "ingestionJob": {"ingestionJobId": "JOB123", "status": "STARTING"}
+        }
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
         }
         self.storage_patch = patch.object(flask_app, "aws_storage", self.svc)
         self.storage_patch.start()
@@ -1757,8 +1847,127 @@ class SessionDocumentApiTests(unittest.TestCase):
         )
         resp = self.client.delete(f"/api/sessions/{session['id']}", json={"delete_documents": True})
         self.assertEqual(resp.status_code, 503)
+
+    @staticmethod
+    def _ingestion_conflict(job_id="JOB_ACTIVE"):
+        return ClientError(
+            {
+                "Error": {
+                    "Code": "ConflictException",
+                    "Message": (
+                        "There is an ongoing ingestion job for this data source "
+                        f"with ID {job_id}. Retry your request after the ingestion job completes."
+                    ),
+                }
+            },
+            "StartIngestionJob",
+        )
+
+    @staticmethod
+    def _ingestion_success(job_id):
+        return {"ingestionJob": {"ingestionJobId": job_id, "status": "STARTING"}}
+
+    @patch("aws_storage_service.time.sleep")
+    def test_rapid_upload_b_after_upload_a_succeeds(self, _sleep):
+        session = self._create_session()
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_success("JOB_A"),
+            self._ingestion_conflict("JOB_A"),
+            self._ingestion_success("JOB_B"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
+        }
+        resp_a = self._upload_file(session["id"], "player_a.txt", b"Player A profile")
+        resp_b = self._upload_file(session["id"], "player_b.txt", b"Player B profile")
+        self.assertEqual(resp_a.status_code, 201, resp_a.get_json())
+        self.assertEqual(resp_b.status_code, 201, resp_b.get_json())
+        self.assertEqual(len(database.list_session_documents(session["id"])), 2)
+        self.assertNotIn("ConflictException", str(resp_b.get_json()))
+
+    @patch("aws_storage_service.time.sleep")
+    def test_upload_then_delete_document_succeeds_on_conflict(self, _sleep):
+        session = self._create_session()
+        doc = database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_conflict("JOB_ACTIVE"),
+            self._ingestion_success("JOB_DEL"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
+        }
+        resp = self.client.delete(f"/api/sessions/{session['id']}/documents/{doc['id']}")
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertNotIn("ConflictException", str(resp.get_json()))
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+
+    @patch("aws_storage_service.time.sleep")
+    def test_upload_then_clear_documents_succeeds_on_conflict(self, _sleep):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_conflict("JOB_ACTIVE"),
+            self._ingestion_success("JOB_CLEAR"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
+        }
+        resp = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertNotIn("ConflictException", str(resp.get_json()))
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+
+    @patch("aws_storage_service.time.sleep")
+    def test_upload_then_delete_conversation_succeeds_on_conflict(self, _sleep):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = [
+            self._ingestion_conflict("JOB_ACTIVE"),
+            self._ingestion_success("JOB_DELETE"),
+        ]
+        self.svc._bedrock_agent.get_ingestion_job.return_value = {
+            "ingestionJob": {"status": "COMPLETE", "statistics": {}}
+        }
+        resp = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertNotIn("ConflictException", str(resp.get_json()))
+        self.assertIsNone(database.get_session(session["id"]))
+
+    @patch("aws_storage_service.time.sleep")
+    def test_ingestion_timeout_returns_friendly_api_error(self, _sleep):
+        session = self._create_session()
+        self.svc._bedrock_agent.start_ingestion_job.side_effect = self._ingestion_conflict("JOB_SLOW")
+        with patch.object(
+            self.svc,
+            "get_ingestion_status",
+            return_value={"status": "IN_PROGRESS", "ingestion_job_id": "JOB_SLOW"},
+        ):
+            with patch("aws_storage_service.time.monotonic", side_effect=[0.0, 1.0, 500.0]):
+                resp = self._upload_file(session["id"], "timeout.txt", b"timeout content")
+        self.assertEqual(resp.status_code, 503)
+        body = resp.get_json()
+        self.assertIn("still updating", body.get("error", "").lower())
+        self.assertNotIn("ConflictException", body.get("error", ""))
         self.svc._s3.delete_objects.assert_not_called()
-        self.assertIsNotNone(database.get_session(session["id"]))
+        self.assertEqual(len(database.list_session_documents(session["id"])), 1)
 
     def test_delete_conversation_leaves_remaining_session_selectable(self):
         s1 = self._create_session()

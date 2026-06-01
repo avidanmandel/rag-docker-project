@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 INGESTION_STATUSES = frozenset({
     "STARTING", "IN_PROGRESS", "COMPLETE", "FAILED", "STOPPING", "STOPPED",
 })
+INGESTION_TERMINAL_STATUSES = frozenset({"COMPLETE", "FAILED", "STOPPED"})
+_ONGOING_INGESTION_JOB_RE = re.compile(
+    r"ongoing ingestion job.*?with ID\s+([A-Z0-9]+)",
+    re.IGNORECASE,
+)
 
 _TIMESTAMP_SUFFIX_RE = re.compile(r"_\d{8}_\d{6}$")
 
@@ -101,6 +107,7 @@ class AWSStorageService:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._ingestion_lock = threading.Lock()
         self._latest_ingestion_job: dict | None = None
         self._s3: Any = None
         self._bedrock_agent: Any = None
@@ -328,8 +335,31 @@ class AWSStorageService:
             "s3_uri": f"s3://{bucket}/{key}",
         }
 
-    def start_ingestion_job(self) -> dict:
-        """Start a Bedrock Knowledge Base ingestion job."""
+    @staticmethod
+    def _is_ingestion_conflict(exc: Exception) -> bool:
+        if isinstance(exc, ClientError):
+            code = exc.response.get("Error", {}).get("Code", "")
+            return code == "ConflictException"
+        return False
+
+    @staticmethod
+    def _parse_ongoing_ingestion_job_id(exc: Exception) -> str | None:
+        message = str(exc)
+        if isinstance(exc, ClientError):
+            message = exc.response.get("Error", {}).get("Message", message)
+        match = _ONGOING_INGESTION_JOB_RE.search(message)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _ingestion_user_error(exc: Exception | None = None) -> RuntimeError:
+        logger.error(
+            "Knowledge base ingestion failed: %s",
+            exc.__class__.__name__ if exc else "timeout",
+        )
+        return RuntimeError(config.INGESTION_TIMEOUT_USER_MESSAGE)
+
+    def _start_ingestion_job_once(self) -> dict:
+        """Issue a single StartIngestionJob call."""
         missing = config.validate_aws_config()
         if missing:
             raise RuntimeError(
@@ -340,18 +370,11 @@ class AWSStorageService:
         kb_id = config.BEDROCK_KB_ID.strip()
         ds_id = config.BEDROCK_DATA_SOURCE_ID.strip()
 
-        try:
-            response = self._bedrock_agent.start_ingestion_job(
-                knowledgeBaseId=kb_id,
-                dataSourceId=ds_id,
-                clientToken=str(uuid.uuid4()),
-            )
-        except (ClientError, BotoCoreError) as exc:
-            logger.error("Ingestion job start failed: %s", exc.__class__.__name__)
-            raise RuntimeError(
-                "Failed to start Knowledge Base sync. Verify BEDROCK_DATA_SOURCE_ID "
-                "points to the ScoutMatch S3 prefix."
-            ) from exc
+        response = self._bedrock_agent.start_ingestion_job(
+            knowledgeBaseId=kb_id,
+            dataSourceId=ds_id,
+            clientToken=str(uuid.uuid4()),
+        )
 
         job = response.get("ingestionJob") or {}
         job_id = job.get("ingestionJobId") or job.get("ingestion_job_id")
@@ -367,6 +390,72 @@ class AWSStorageService:
         with self._lock:
             self._latest_ingestion_job = record
         return record
+
+    def _wait_for_ingestion_job(self, job_id: str, deadline: float) -> dict:
+        """Poll GetIngestionJob until a terminal status or timeout."""
+        while time.monotonic() < deadline:
+            status = self.get_ingestion_status(job_id)
+            if status:
+                current = status.get("status") or "UNKNOWN"
+                if current in INGESTION_TERMINAL_STATUSES:
+                    if current == "FAILED":
+                        logger.warning("Ingestion job %s failed", job_id)
+                    return status
+            time.sleep(config.INGESTION_POLL_INTERVAL_SECONDS)
+        raise self._ingestion_user_error()
+
+    def start_ingestion_job(self, *, wait_for_complete: bool = False) -> dict:
+        """
+        Start a Bedrock Knowledge Base ingestion job.
+
+        On ConflictException, wait for the active job and retry with bounded
+        backoff until a new job starts or the total timeout is reached.
+        """
+        deadline = time.monotonic() + config.INGESTION_TOTAL_TIMEOUT_SECONDS
+        with self._ingestion_lock:
+            record: dict | None = None
+            attempts = 0
+            while attempts < config.INGESTION_MAX_START_ATTEMPTS:
+                attempts += 1
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise self._ingestion_user_error()
+
+                try:
+                    record = self._start_ingestion_job_once()
+                    break
+                except (ClientError, BotoCoreError) as exc:
+                    if self._is_ingestion_conflict(exc):
+                        ongoing_id = self._parse_ongoing_ingestion_job_id(exc)
+                        logger.info(
+                            "Ingestion conflict on attempt %s/%s; waiting for job %s",
+                            attempts,
+                            config.INGESTION_MAX_START_ATTEMPTS,
+                            ongoing_id or "active",
+                        )
+                        if ongoing_id:
+                            self._wait_for_ingestion_job(ongoing_id, deadline)
+                        else:
+                            time.sleep(
+                                min(config.INGESTION_RETRY_DELAY_SECONDS, remaining)
+                            )
+                        continue
+                    raise self._ingestion_user_error(exc) from exc
+
+            if record is None:
+                raise self._ingestion_user_error()
+
+            if wait_for_complete and record.get("ingestion_job_id"):
+                final = self._wait_for_ingestion_job(
+                    record["ingestion_job_id"], deadline
+                )
+                record.update(final)
+
+        return record
+
+    def sync_knowledge_base(self) -> dict:
+        """Start ingestion with contention handling and wait until complete."""
+        return self.start_ingestion_job(wait_for_complete=True)
 
     def get_ingestion_status(self, job_id: str | None = None) -> dict | None:
         """Poll ingestion job status via get_ingestion_job."""
