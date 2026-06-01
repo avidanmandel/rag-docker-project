@@ -16,13 +16,10 @@ const API = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title }),
         }).then(r => r.json()),
-    deleteSession: (id, { deleteDocuments = false, adminToken = "" } = {}) =>
+    deleteSession: (id, { deleteDocuments = false } = {}) =>
         fetch(`/api/sessions/${id}`, {
             method: "DELETE",
-            headers: {
-                "Content-Type": "application/json",
-                ...(adminToken ? { "X-ScoutMatch-Admin-Token": adminToken } : {}),
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ delete_documents: deleteDocuments }),
         }).then(async r => {
             const data = await r.json();
@@ -57,13 +54,20 @@ const API = {
             return data;
         });
     },
-    clearSessionDocuments: (sessionId, adminToken) =>
+    clearSessionDocuments: sessionId =>
         fetch(`/api/sessions/${sessionId}/documents/clear`, {
             method: "POST",
-            headers: adminToken ? { "X-ScoutMatch-Admin-Token": adminToken } : {},
         }).then(async r => {
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || "Clear documents failed");
+            return data;
+        }),
+    deleteSessionDocument: (sessionId, documentId) =>
+        fetch(`/api/sessions/${sessionId}/documents/${documentId}`, {
+            method: "DELETE",
+        }).then(async r => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || "Delete document failed");
             return data;
         }),
     ingestionStatus: jobId =>
@@ -441,28 +445,40 @@ async function renameActiveSession() {
 
 async function deleteActiveSession() {
     if (!state.activeSessionId) return;
-    if (!confirm("Delete this conversation?")) return;
-    const deleteDocuments = confirm(
-        "Delete this conversation's uploaded documents from S3 too? Choose Cancel to delete only the conversation history."
-    );
-    let adminToken = "";
-    if (deleteDocuments) {
-        adminToken = prompt("Admin token required to delete uploaded documents") || "";
-        if (!adminToken) return;
+    if (
+        !confirm(
+            "Delete this conversation and its uploaded documents?\nThis action cannot be undone."
+        )
+    ) {
+        return;
     }
     const id = state.activeSessionId;
-    await API.deleteSession(id, { deleteDocuments, adminToken });
-    state.sessions = state.sessions.filter(s => s.id !== id);
-    state.activeSessionId = null;
-    state.messages = [];
-    els.conversationTitle.textContent = "New conversation";
-    els.conversationMeta.textContent = "";
-    els.renameBtn.disabled = true;
     els.deleteBtn.disabled = true;
-    renderSessions();
-    renderMessages();
-    await refreshKbDocuments();
-    toast("Conversation deleted");
+    try {
+        const result = await API.deleteSession(id, { deleteDocuments: true });
+        state.sessions = state.sessions.filter(s => s.id !== id);
+        if (state.awsMode && result.ingestion_job_id) {
+            pollIngestion(result.ingestion_job_id);
+        }
+        if (state.sessions.length > 0) {
+            await selectSession(state.sessions[0].id);
+        } else {
+            state.activeSessionId = null;
+            state.messages = [];
+            els.conversationTitle.textContent = "New conversation";
+            els.conversationMeta.textContent = "";
+            els.renameBtn.disabled = true;
+            els.deleteBtn.disabled = true;
+            renderSessions();
+            renderMessages();
+            await refreshKbDocuments();
+            await newSession({ select: true });
+        }
+        toast("Conversation deleted");
+    } catch (err) {
+        toast(err.message || "Could not delete conversation", { error: true });
+        els.deleteBtn.disabled = false;
+    }
 }
 
 async function clearActiveDocuments() {
@@ -470,14 +486,16 @@ async function clearActiveDocuments() {
         toast("Choose a conversation first", { error: true });
         return;
     }
-    if (!confirm("Clear documents for this conversation? This will remove only this conversation's uploaded S3 files.")) {
+    if (
+        !confirm(
+            "Clear all uploaded documents from this conversation?\nThis action cannot be undone."
+        )
+    ) {
         return;
     }
-    const adminToken = prompt("Admin token required to clear documents") || "";
-    if (!adminToken) return;
     els.clearDocumentsBtn.disabled = true;
     try {
-        const result = await API.clearSessionDocuments(state.activeSessionId, adminToken);
+        const result = await API.clearSessionDocuments(state.activeSessionId);
         toast("Conversation documents cleared");
         if (state.awsMode && result.ingestion_job_id) {
             pollIngestion(result.ingestion_job_id);

@@ -1477,7 +1477,7 @@ class SessionDocumentApiTests(unittest.TestCase):
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]["display_name"], "a.txt")
 
-    def test_clear_documents_requires_admin_token_and_deletes_sidecars(self):
+    def test_clear_documents_works_without_admin_token_and_deletes_sidecars(self):
         session = self._create_session()
         database.add_session_document(
             session["id"],
@@ -1485,24 +1485,78 @@ class SessionDocumentApiTests(unittest.TestCase):
             "a.txt",
             "TXT",
         )
-        missing = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
-        self.assertEqual(missing.status_code, 403)
-        bad = self.client.post(
-            f"/api/sessions/{session['id']}/documents/clear",
-            headers={"X-ScoutMatch-Admin-Token": "bad"},
-        )
-        self.assertEqual(bad.status_code, 403)
-        ok = self.client.post(
-            f"/api/sessions/{session['id']}/documents/clear",
-            headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
-        )
+        ok = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(database.list_session_documents(session["id"]), [])
         objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
         keys = {obj["Key"] for obj in objects}
         self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt", keys)
         self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt.metadata.json", keys)
-        self.svc._bedrock_agent.start_ingestion_job.assert_called()
+        self.svc._bedrock_agent.start_ingestion_job.assert_called_once()
+
+    def test_clear_documents_without_objects_skips_ingestion_sync(self):
+        session = self._create_session()
+        resp = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
+        self.assertEqual(resp.status_code, 200)
+        self.svc._s3.delete_objects.assert_not_called()
+        self.svc._bedrock_agent.start_ingestion_job.assert_not_called()
+
+    def test_clear_documents_does_not_delete_other_session_or_legacy_objects(self):
+        s1 = self._create_session()
+        s2 = self._create_session()
+        database.add_session_document(
+            s1["id"],
+            f"{SCOUT_PREFIX}sessions/{s1['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        database.add_session_document(
+            s2["id"],
+            f"{SCOUT_PREFIX}sessions/{s2['id']}/b.txt",
+            "b.txt",
+            "TXT",
+        )
+        resp = self.client.post(f"/api/sessions/{s1['id']}/documents/clear")
+        self.assertEqual(resp.status_code, 200)
+        objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        keys = {obj["Key"] for obj in objects}
+        self.assertTrue(all(f"sessions/{s1['id']}/" in key for key in keys))
+        self.assertFalse(any(f"sessions/{s2['id']}/" in key for key in keys))
+        self.assertFalse(any("player_cvs/" in key for key in keys))
+        self.assertEqual(len(database.list_session_documents(s1["id"])), 0)
+        self.assertEqual(len(database.list_session_documents(s2["id"])), 1)
+
+    def test_clear_documents_refuses_non_session_prefix_and_preserves_db(self):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}player_cvs/legacy_global.txt",
+            "legacy_global.txt",
+            "TXT",
+        )
+        resp = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
+        self.assertEqual(resp.status_code, 503)
+        self.svc._s3.delete_objects.assert_not_called()
+        self.assertEqual(len(database.list_session_documents(session["id"])), 1)
+
+    def test_delete_single_document_without_admin_token(self):
+        session = self._create_session()
+        doc = database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        resp = self.client.delete(
+            f"/api/sessions/{session['id']}/documents/{doc['id']}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+        objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        keys = {obj["Key"] for obj in objects}
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt", keys)
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt.metadata.json", keys)
+        self.svc._bedrock_agent.start_ingestion_job.assert_called_once()
 
     def test_delete_conversation_history_only_keeps_s3_documents(self):
         session = self._create_session()
@@ -1515,27 +1569,85 @@ class SessionDocumentApiTests(unittest.TestCase):
         resp = self.client.delete(f"/api/sessions/{session['id']}", json={"delete_documents": False})
         self.assertEqual(resp.status_code, 200)
         self.svc._s3.delete_objects.assert_not_called()
+        self.svc._bedrock_agent.start_ingestion_job.assert_not_called()
+        self.assertIsNone(database.get_session(session["id"]))
 
-    def test_delete_conversation_with_documents_requires_admin_token(self):
+    def test_delete_conversation_with_documents_without_admin_token(self):
         session = self._create_session()
+        database.add_message(session["id"], "user", "hello")
         database.add_session_document(
             session["id"],
             f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
             "a.txt",
             "TXT",
         )
-        denied = self.client.delete(
-            f"/api/sessions/{session['id']}",
-            json={"delete_documents": True},
-        )
-        self.assertEqual(denied.status_code, 403)
         ok = self.client.delete(
             f"/api/sessions/{session['id']}",
             json={"delete_documents": True},
-            headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
         )
         self.assertEqual(ok.status_code, 200)
         self.svc._s3.delete_objects.assert_called_once()
+        self.svc._bedrock_agent.start_ingestion_job.assert_called_once()
+        self.assertIsNone(database.get_session(session["id"]))
+
+    def test_delete_conversation_without_documents_skips_ingestion_sync(self):
+        session = self._create_session()
+        resp = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.svc._s3.delete_objects.assert_not_called()
+        self.svc._bedrock_agent.start_ingestion_job.assert_not_called()
+
+    def test_delete_conversation_does_not_affect_other_session(self):
+        s1 = self._create_session()
+        s2 = self._create_session()
+        database.add_session_document(
+            s1["id"],
+            f"{SCOUT_PREFIX}sessions/{s1['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        database.add_session_document(
+            s2["id"],
+            f"{SCOUT_PREFIX}sessions/{s2['id']}/b.txt",
+            "b.txt",
+            "TXT",
+        )
+        resp = self.client.delete(f"/api/sessions/{s1['id']}", json={"delete_documents": True})
+        self.assertEqual(resp.status_code, 200)
+        objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        keys = {obj["Key"] for obj in objects}
+        self.assertTrue(all(f"sessions/{s1['id']}/" in key for key in keys))
+        self.assertFalse(any(f"sessions/{s2['id']}/" in key for key in keys))
+        self.assertIsNone(database.get_session(s1["id"]))
+        self.assertIsNotNone(database.get_session(s2["id"]))
+        self.assertEqual(len(database.list_session_documents(s2["id"])), 1)
+
+    def test_delete_conversation_refuses_legacy_global_key_and_preserves_session(self):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}player_cvs/legacy_global.txt",
+            "legacy_global.txt",
+            "TXT",
+        )
+        resp = self.client.delete(f"/api/sessions/{session['id']}", json={"delete_documents": True})
+        self.assertEqual(resp.status_code, 503)
+        self.svc._s3.delete_objects.assert_not_called()
+        self.assertIsNotNone(database.get_session(session["id"]))
+
+    def test_delete_conversation_leaves_remaining_session_selectable(self):
+        s1 = self._create_session()
+        s2 = self._create_session()
+        resp = self.client.delete(f"/api/sessions/{s1['id']}", json={"delete_documents": True})
+        self.assertEqual(resp.status_code, 200)
+        remaining = self.client.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["id"], s2["id"])
+        detail = self.client.get(f"/api/sessions/{s2['id']}")
+        self.assertEqual(detail.status_code, 200)
 
     def test_local_mode_session_upload_list_and_clear(self):
         config.RAG_BACKEND = "local"
@@ -1553,10 +1665,7 @@ class SessionDocumentApiTests(unittest.TestCase):
         listed = self.client.get(f"/api/sessions/{session['id']}/documents")
         self.assertEqual(len(listed.get_json()["documents"]), 1)
         with patch.object(self.flask_app, "_reindex_engine_background", return_value=None):
-            cleared = self.client.post(
-                f"/api/sessions/{session['id']}/documents/clear",
-                headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
-            )
+            cleared = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
         self.assertEqual(cleared.status_code, 200)
         self.assertEqual(database.list_session_documents(session["id"]), [])
 
@@ -1579,7 +1688,8 @@ class UISmokeTests(unittest.TestCase):
         js = (PROJECT_ROOT / "static/js/app.js").read_text(encoding="utf-8")
         self.assertIn("/api/sessions/${sessionId}/documents", js)
         self.assertIn("clearSessionDocuments", js)
-        self.assertIn("X-ScoutMatch-Admin-Token", js)
+        self.assertNotIn("X-ScoutMatch-Admin-Token", js)
+        self.assertNotIn("Admin token required", js)
 
     def test_health_and_status(self):
         import app as flask_app

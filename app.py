@@ -73,19 +73,23 @@ def _parse_json_request() -> dict:
 
 
 def _require_admin_token():
+    """Optional guard for internal maintenance routes (not used by normal UI flows)."""
     expected = (config.SCOUTMATCH_ADMIN_TOKEN or "").strip()
     supplied = (request.headers.get("X-ScoutMatch-Admin-Token") or "").strip()
     if not expected:
-        return jsonify({
-            "error": (
-                "Document deletion is not configured. Set SCOUTMATCH_ADMIN_TOKEN "
-                "on the server. This demo token is not suitable for production "
-                "without HTTPS."
-            ),
-        }), 403
+        return jsonify({"error": "Admin maintenance token is not configured on the server."}), 403
     if not supplied or not secrets.compare_digest(supplied, expected):
-        return jsonify({"error": "Admin token is required for document deletion."}), 403
+        return jsonify({"error": "Admin maintenance token is required."}), 403
     return None
+
+
+def _ingestion_after_object_delete(delete_result: dict) -> dict:
+    """Start Bedrock ingestion only when S3 objects were actually removed."""
+    if not _is_aws_kb_mode():
+        return {}
+    if int(delete_result.get("deleted") or 0) <= 0:
+        return {}
+    return aws_storage.start_ingestion_job()
 
 
 app = Flask(__name__)
@@ -663,13 +667,10 @@ def api_upload_session_document(session_id):
 
 @app.route("/api/sessions/<session_id>/documents/<int:document_id>", methods=["DELETE"])
 def api_delete_session_document(session_id, document_id):
-    """Delete one conversation document from S3; requires admin token."""
+    """Delete one conversation document from S3 for the active session."""
     _, error = _session_or_404(session_id)
     if error:
         return error
-    token_error = _require_admin_token()
-    if token_error:
-        return token_error
 
     doc = database.get_session_document(session_id, document_id)
     if not doc:
@@ -680,8 +681,8 @@ def api_delete_session_document(session_id, document_id):
         else:
             delete_result = {"deleted": _delete_local_session_docs(session_id, [doc])}
         database.delete_session_document(session_id, document_id)
-        ingestion = aws_storage.start_ingestion_job() if _is_aws_kb_mode() else {}
-        if not _is_aws_kb_mode():
+        ingestion = _ingestion_after_object_delete(delete_result)
+        if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
             ).start()
@@ -698,23 +699,22 @@ def api_delete_session_document(session_id, document_id):
 
 @app.route("/api/sessions/<session_id>/documents/clear", methods=["POST"])
 def api_clear_session_documents(session_id):
-    """Delete all documents for one conversation; requires admin token."""
+    """Delete all documents for one conversation; session-scoped only."""
     _, error = _session_or_404(session_id)
     if error:
         return error
-    token_error = _require_admin_token()
-    if token_error:
-        return token_error
 
     docs = database.list_session_documents(session_id)
+    delete_result = {"deleted": 0}
     try:
-        if _is_aws_kb_mode():
-            delete_result = aws_storage.delete_recorded_session_objects(docs)
-        else:
-            delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
-        database.clear_session_documents(session_id)
-        ingestion = aws_storage.start_ingestion_job() if _is_aws_kb_mode() else {}
-        if not _is_aws_kb_mode():
+        if docs:
+            if _is_aws_kb_mode():
+                delete_result = aws_storage.delete_recorded_session_objects(docs)
+            else:
+                delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
+            database.clear_session_documents(session_id)
+        ingestion = _ingestion_after_object_delete(delete_result)
+        if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-clear-reindex"
             ).start()
@@ -1106,27 +1106,34 @@ def api_delete_session(session_id):
         return jsonify({"error": "Session not found"}), 404
     payload = _parse_json_request()
     delete_documents = bool(payload.get("delete_documents"))
+    delete_result = {"deleted": 0}
     if delete_documents:
-        token_error = _require_admin_token()
-        if token_error:
-            return token_error
         docs = database.list_session_documents(session_id)
         try:
-            if _is_aws_kb_mode():
-                aws_storage.delete_recorded_session_objects(docs)
-            else:
-                _delete_local_session_docs(session_id, docs)
-            if _is_aws_kb_mode() and docs:
-                aws_storage.start_ingestion_job()
-            if not _is_aws_kb_mode() and docs:
+            if docs:
+                if _is_aws_kb_mode():
+                    delete_result = aws_storage.delete_recorded_session_objects(docs)
+                else:
+                    delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
+                database.clear_session_documents(session_id)
+            ingestion = _ingestion_after_object_delete(delete_result)
+            if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
                 threading.Thread(
                     target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
                 ).start()
         except RuntimeError as exc:
             traceback.print_exc()
             return jsonify({"error": str(exc)}), 503
+    else:
+        ingestion = {}
     database.delete_session(session_id)
-    return jsonify({"ok": True, "documents_deleted": delete_documents})
+    return jsonify({
+        "ok": True,
+        "documents_deleted": delete_documents,
+        "deleted_objects": delete_result.get("deleted", 0),
+        "ingestion_job_id": ingestion.get("ingestion_job_id"),
+        "ingestion_status": ingestion.get("status"),
+    })
 
 
 # ---------- chat ----------
