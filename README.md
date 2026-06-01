@@ -1,219 +1,240 @@
-# Avidan RAG Docker Project
+# ScoutMatch AI
 
-**Author:** Avidan Mandelman
+**AI-Powered Football Recruitment Assistant**
 
-A strict Retrieval-Augmented Generation (RAG) web assistant that answers questions **only from indexed documents** in the knowledge base. The app combines a **Flask** chat UI, **Hugging Face** embeddings, a **FAISS** vector index, and **Google Gemini** for grounded generation.
-
----
-
-## Project description
-
-This project implements a document-grounded course assistant. Users ask questions in English or Hebrew; the system retrieves relevant PDF/TXT chunks, sends **only that context** to Gemini, and returns an answer with source citations. If no relevant document evidence is found, the assistant refuses with a clear no-information message — it does **not** fall back to Gemini general knowledge.
+ScoutMatch AI helps football club managers, coaches, and scouts find the right players for their squad. Upload player CVs and scouting reports, then ask natural-language questions in Hebrew or English. The assistant retrieves evidence from **Amazon Bedrock Knowledge Base**, compares candidates, and explains recommendations — grounded strictly in uploaded documents.
 
 ---
 
-## Topic / purpose
+## Architecture (production)
 
-Build a production-style RAG pipeline inside Docker that:
+```
+Browser (phone / laptop)
+    → EC2 public IP (port 80)
+    → Docker container
+    → Flask (0.0.0.0:5000)
+    → boto3
+    → Amazon S3 (scoutmatch/knowledge-base/)
+    → Bedrock Knowledge Base ingestion
+    → Bedrock Knowledge Base retrieve()
+    → validate ScoutMatch S3 sources
+    → build grounded context
+    → Bedrock generation model (Converse API)
+    → Grounded answer with validated source cards
+```
 
-- Indexes starter course and project documents from `data/`
-- Allows temporary PDF/TXT uploads during a conversation
-- Enforces strict document-only answers with visible sources
-- Resets session uploads on **New conversation** while keeping protected starter files
+ScoutMatch uses an **explicit retrieve-then-generate** pipeline (not `retrieve_and_generate` citations) because Bedrock can return citation shells without usable `retrievedReferences`. Source cards always come from validated Knowledge Base retrieval results under the configured ScoutMatch S3 prefix.
+
+**Architecture:**
+```
+Bedrock KB retrieve → ScoutMatch prefix validation → complete diverse context selection
+→ deterministic verified requirement matrix → Bedrock Converse explanation
+→ contradiction validation → ScoutMatch-only source cards
+```
+
+The AI explains retrieved evidence in natural language. **Backend code** verifies mandatory numeric and relocation constraints in a deterministic matrix. The model must not redo arithmetic or override PASS / FAIL / UNKNOWN statuses from the verified matrix.
+
+**Quality guards:**
+- **Out-of-domain refusal** — unrelated questions (e.g. politics, geography) are refused before retrieval; no random football sources attached.
+- **Follow-up handling** — short follow-up questions (e.g. salary, relocation) are allowed when recent chat history contains football-player context.
+- **Diverse but complete source selection** — comparison/recommendation queries deduplicate by filename, prefer coverage across multiple player CVs, scouting reports, and team requirements, and may include up to `AWS_KB_MAX_CHUNKS_PER_SOURCE` useful chunks per file when they add distinct facts.
+- **Single name retry** — if a grounded recommendation fails validation only because no full player name appears, Bedrock generation retries once with a stricter instruction; strict refusal remains if the retry still omits a name.
+- **No general-knowledge fallback** — answers come only from retrieved ScoutMatch context.
+
+| Component | Role |
+|-----------|------|
+| `app.py` | Flask routes: chat, upload, ingestion status |
+| `aws_kb_engine.py` | Bedrock KB retrieve, ScoutMatch source filter, explicit generation, strict RAG |
+| `aws_storage_service.py` | S3 upload, document listing, KB sync |
+| `database.py` | SQLite chat history + Bedrock session IDs |
+| `rag_engine.py` | Local FAISS mode (development fallback) |
+| `templates/`, `static/` | ScoutMatch UI |
 
 ---
 
-## Knowledge base documents
+## Modes
 
-Protected starter files (always kept in `data/`):
+| Mode | `RAG_BACKEND` | Use case |
+|------|---------------|----------|
+| **Production** | `aws_kb` | EC2 + S3 + Bedrock Knowledge Base |
+| **Development** | `local` | FAISS + Gemini + Hugging Face (optional) |
 
-| File | Description |
-|------|-------------|
-| `Avidan Risk Analysis Report.txt` | Risk analysis report (NIS2 / energy-grid) |
-| `docker_aws.pdf` | Docker fundamentals and AWS deployment notes |
-| `Flask-lecture1.pdf` | Flask basics: app object, routes, templates |
-| `Flask-lecture2.pdf` | Flask continued: forms, request handling |
-| `for_check.txt` | Small TXT test file (Hebrew content for bilingual retrieval tests) |
+Production mode does **not** use local FAISS or course documents as the main path.
 
-Users can also **upload PDF or TXT files** during a conversation via the Knowledge Base panel. Uploaded files are indexed immediately and become available for questions in the current session.
+---
 
-**Temporary uploads:** files added during a conversation are removed when the user starts a **New conversation** or runs **Clear All / Reset Project**. The five starter files above are always preserved.
+## Environment variables
+
+Copy `.env.example` to `.env` locally (**never commit `.env`**):
+
+```powershell
+copy .env.example .env
+```
+
+| Variable | Required (AWS) | Description |
+|----------|----------------|-------------|
+| `RAG_BACKEND` | Yes | `aws_kb` for production |
+| `AWS_REGION` | Yes | e.g. `us-east-1` |
+| `BEDROCK_KB_ID` | Yes | Knowledge Base ID |
+| `BEDROCK_DATA_SOURCE_ID` | Yes | Data source ID (must point to ScoutMatch S3 prefix) |
+| `BEDROCK_MODEL_ARN` | Yes | Bedrock foundation model ARN |
+| `AWS_S3_BUCKET` | Yes | S3 bucket name |
+| `AWS_S3_PREFIX` | Yes | Default: `scoutmatch/knowledge-base/` |
+| `AWS_KB_TOP_K` | No | Validated ScoutMatch chunks used for generation (default 5) |
+| `AWS_KB_RETRIEVE_CANDIDATES` | No | Raw KB retrieve count before ScoutMatch filtering (default 30) |
+| `AWS_KB_CONTEXT_SOURCE_LIMIT` | No | Max unique source files in comparison context (default 10) |
+| `AWS_KB_MAX_CHUNKS_PER_SOURCE` | No | Max useful chunks per source file in comparison context (default 2) |
+| `AWS_KB_CONTEXT_EXCERPT_MAX` | No | Max characters per chunk in grounded context (default 1200) |
+| `AWS_KB_MIN_SCORE` | No | Minimum relevance score (optional) |
+| `MAX_UPLOAD_MB` | No | Upload limit (default 25) |
+| `FLASK_HOST` | No | Default `0.0.0.0` |
+| `FLASK_PORT` | No | Default `5000` |
+
+For local development only: `GEMINI_API_KEY`, `HF_TOKEN`.
+
+---
+
+## S3 prefix requirement
+
+All ScoutMatch documents must live under:
+
+```
+s3://<bucket>/scoutmatch/knowledge-base/
+```
+
+Example layout:
+
+```
+scoutmatch/knowledge-base/player_cvs/goalkeeper_daniel_cohen.txt
+scoutmatch/knowledge-base/scouting_reports/goalkeeper_daniel_cohen_report.txt
+scoutmatch/knowledge-base/team_requirements/team_requirements.txt
+```
+
+**Important:** Configure your Bedrock data source to index this prefix. If your KB currently indexes unrelated course documents, create a new data source restricted to `scoutmatch/knowledge-base/` in the AWS Console. Do not delete existing AWS data automatically.
+
+---
+
+## Upload and sync flow
+
+1. User clicks **Upload CV** in the sidebar
+2. Flask validates file type and size
+3. File uploads to S3 under the ScoutMatch prefix
+4. Flask starts a Bedrock Knowledge Base ingestion job
+5. UI polls `/api/ingestion/status` until `COMPLETE`
+6. User asks questions about the newly indexed player
+
+**Sidebar display deduplication:** Re-uploading a CV with the same logical name creates timestamped S3 keys (for example `goalkeeper_daniel_cohen_20260531_183000.txt`). All raw objects remain in S3 and in the Knowledge Base. `GET /api/documents` returns a deduplicated display list for the sidebar plus `raw_object_count` for diagnostics. Scouting reports (`*_report.txt`) are never collapsed into player CVs.
+
+Supported types: `.txt`, `.md`, `.html`, `.pdf`, `.doc`, `.docx`, `.csv`, `.xls`, `.xlsx`
 
 ---
 
 ## Strict RAG behaviour
 
-- The assistant answers **only** from retrieved, indexed document chunks.
-- Gemini receives **retrieved context only** — no general-knowledge fallback.
-- If no chunk passes the relevance threshold, or the context does not support an answer, the assistant returns:
-  - **EN:** *"I do not have enough information in the provided documents to answer this question."*
-  - **HE:** *"אין לי מספיק מידע במסמכים הקיימים כדי לענות על השאלה הזאת."*
-- Source file names and pages are cited in answers when possible.
+ScoutMatch answers **only** from uploaded player and team documents.
+
+- Unrelated questions (e.g. "Who is Donald Trump?") receive a strict refusal
+- Recommendations cite document evidence
+- When multiple candidates satisfy all mandatory requirements, the answer acknowledges each exact-match candidate before stating a preference or uncertainty
+- **Exact-match acknowledgment validation** rejects answers that omit an exact-match candidate or describe a verified PASS field as missing, unknown, insufficient, or failed
+- **Fact parsing** prefers structured CV fields (`Build-up Ability:`, `Calmness Under Pressure:`); a narrow narrative fallback maps clearly positive football phrases to `Strong` only when structured values are missing; ambiguous text remains **UNKNOWN**
+- **Bounded retries:** one matrix-contradiction retry, one exact-match acknowledgment retry, and one name retry maximum per answer; if exact-match validation still fails, a **deterministic matrix-backed fallback** is returned (never general-knowledge)
+- **Main source** in the UI follows the recommended or directly referenced player's CV (or scouting report if no CV), not merely the highest retrieval score; all validated sources remain under **Retrieved evidence**
+- No general-knowledge fallback in AWS mode
+
+Refusal messages:
+- **EN:** *I do not have enough information in the uploaded player and team documents…*
+- **HE:** *אין לי מספיק מידע במסמכי השחקנים ובמסמכי הקבוצה…*
 
 ---
 
-## Architecture
+## Sample demo data
 
-```
-                    +------------------+
-PDF/TXT in data/ -> |  pdf_loader.py   |  page-level text (PyMuPDF + optional OCR)
-                    +------------------+
-                            |
-                            v
-                    +------------------+
-                    |    chunker.py    |  ~700 char windows with overlap
-                    +------------------+
-                            |
-                            v
-                +--------------------------+
-                |  Hugging Face Inference  |  cloud embeddings
-                +--------------------------+
-                            |
-                            v
-                +--------------------------+
-                |   FAISS (IndexFlatIP)    |  cosine similarity search
-                |   cache: index_cache/    |
-                +--------------------------+
-                            |
-        user question --->  | retrieve top-K, relevance filter
-                            v
-                +--------------------------+
-                | Google Gemini            |  grounded generation only
-                | (GEMINI_MODEL via .env)  |
-                +--------------------------+
-                            |
-                            v
-                +--------------------------+
-                | Flask + SQLite + static  |  chat UI, upload, reset
-                +--------------------------+
-```
-
-### Components
-
-| Module | Role |
-|--------|------|
-| `app.py` | Flask routes: chat, sessions, upload, reset |
-| `pdf_loader.py` | Load PDF/TXT from `data/` |
-| `chunker.py` | Split documents into searchable chunks |
-| `rag_engine.py` | Embeddings, FAISS retrieval, strict Gemini answering |
-| `database.py` | SQLite conversation history |
-| `templates/`, `static/` | Web UI (no general-knowledge mode) |
-
----
-
-## Setup — environment variables
-
-Copy the example file and fill in your keys locally (**never commit `.env`**):
+Synthetic demo files are in `sample_scout_data/` (not auto-uploaded to AWS):
 
 ```powershell
-copy .env.example .env
-notepad .env
+# Upload manually during demo prep:
+# sample_scout_data/team_requirements.txt
+# sample_scout_data/player_cvs/*.txt
+# sample_scout_data/scouting_reports/*.txt
 ```
 
-Required variables:
+Live demo upload: `sample_scout_data/demo_upload_later/goalkeeper_marco_silva.txt` (includes neutral `COMPACT FACT PROFILE SUMMARY` like other goalkeeper CVs; no predetermined recommendation language)
 
-| Variable | Purpose |
-|----------|---------|
-| `GEMINI_API_KEY` | Google Gemini API key for grounded text generation |
-| `HF_TOKEN` | Hugging Face token for embedding API calls |
-| `GEMINI_MODEL` | Gemini model name (default in `.env.example`: `gemini-2.5-flash`) |
+See `SCOUTMATCH_DEMO_QUESTIONS.md` and `SCOUTMATCH_MANUAL_TESTS.md`.
 
 ---
 
-## Run locally (Python)
+## Run locally
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.example .env
+# Edit .env — set RAG_BACKEND=aws_kb and AWS values
 python app.py
 ```
 
-Open <http://127.0.0.1:5000>.
+Open http://127.0.0.1:5000
+
+Verify:
+- http://127.0.0.1:5000/api/health
+- http://127.0.0.1:5000/api/status
 
 ---
 
-## Run with Docker
-
-From the project root:
+## Docker
 
 ```powershell
-copy .env.example .env
-# Edit .env with your keys
-
-docker build -t avidan-rag-docker-project .
-docker run --rm --env-file .env -p 5000:5000 --name avidan-rag-test avidan-rag-docker-project
+docker build -t scoutmatch-ai .
+docker run --rm --env-file .env -p 5000:5000 --name scoutmatch scoutmatch-ai
 ```
 
-Open <http://localhost:5000>.
+For EC2 global access, map host port 80 → container 5000:
+
+```bash
+docker run -d --name scoutmatch --restart unless-stopped \
+  -p 80:5000 --env-file .env scoutmatch-ai
+```
+
+See `EC2_DEPLOYMENT_GUIDE.md` for full deployment steps.
 
 ---
 
-## Testing / validation
-
-Example queries and expected behaviour:
-
-| # | Question | Expected result |
-|---|----------|-----------------|
-| 1 | `what is the capital city of france?` | **Paris / פריז** from `for_check.txt` (bilingual retrieval) |
-| 2 | `what is the capital of iceland?` | No-information answer (Iceland not in documents) |
-| 3 | `Who is the owner of the Risk Analysis Report?` | **CRO** from `Avidan Risk Analysis Report.txt` |
-| 4 | `What is Docker?` | Grounded answer from `docker_aws.pdf` with source citation |
-| 5 | Upload resume PDF, ask where Avidan studied | Answer from uploaded resume with source citation |
-| 6 | **New conversation / reset** | Uploaded files removed; starter files remain; index rebuilt |
-
-Automated checks (requires `.env` keys):
+## Testing
 
 ```powershell
-python tests/test_rag.py
-python tests/run_final_verification.py
+python tests/test_scoutmatch.py
+python test_aws_kb.py   # live AWS only, requires credentials
 ```
 
-See also `MANUAL_TESTS.md` and `TEST_QUESTIONS.md`.
+---
+
+## API routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | ScoutMatch UI |
+| GET | `/api/health` | Flask health |
+| GET | `/api/status` | Engine + AWS status |
+| GET | `/api/documents` | List S3 documents for sidebar (deduplicated display + `raw_object_count` in AWS mode) |
+| POST | `/api/documents/upload` | Upload to S3 + start ingestion |
+| GET | `/api/ingestion/status` | Ingestion job status |
+| POST | `/api/sessions` | New chat (does not reset S3) |
+| POST | `/api/sessions/<id>/messages` | Ask ScoutMatch AI |
 
 ---
 
-## Screenshots
+## Security
 
-Submission screenshots are in [`screenshoot/`](screenshoot/):
-
-| File | Description |
-|------|-------------|
-| [01_home_knowledge_base_ready.png](screenshoot/01_home_knowledge_base_ready.png) | Home screen with knowledge base ready |
-| [02_for_check_hebrew_source_answer.png](screenshoot/02_for_check_hebrew_source_answer.png) | Hebrew question answered from `for_check.txt` |
-| [03_bilingual_france_for_check_source.png](screenshoot/03_bilingual_france_for_check_source.png) | English France question retrieved from Hebrew TXT |
-| [04_docker_pdf_source_answer.png](screenshoot/04_docker_pdf_source_answer.png) | Docker question with PDF source citation |
-| [05_strict_rag_no_general_knowledge.png](screenshoot/05_strict_rag_no_general_knowledge.png) | Out-of-scope question refused (no general knowledge) |
-| [06_uploaded_resume_source_answer.png](screenshoot/06_uploaded_resume_source_answer.png) | Uploaded resume answered with source |
-| [07_txt_file_summary_for_check.png](screenshoot/07_txt_file_summary_for_check.png) | TXT file summary from `for_check.txt` |
-| [08_delete_conversation_confirmation.png](screenshoot/08_delete_conversation_confirmation.png) | Delete conversation confirmation dialog |
-| [09_home_after_reset_clean_state.png](screenshoot/09_home_after_reset_clean_state.png) | Clean home state after reset |
+- Never commit `.env`, AWS keys, or API tokens
+- Use EC2 IAM role in production (no keys in Docker image)
+- Reset Project is disabled in AWS mode
+- No public S3 delete endpoints
 
 ---
 
-## Limitations / reflection
+## Local development fallback
 
-**What worked well**
-
-- Modular pipeline (`pdf_loader` → `chunker` → FAISS → Gemini) is easy to test and extend.
-- Strict RAG prevents hallucinated answers outside the knowledge base.
-- Session-scoped uploads let users add private documents without permanently changing the starter KB.
-- Bilingual retrieval aliases help English questions find Hebrew document evidence.
-
-**Limitations**
-
-- Works best with **text-based PDF and TXT** files.
-- **Complex table-based Hebrew PDFs** (e.g. grade sheets) may be extracted less accurately because layout/table structure is hard to preserve.
-- Embedding and generation depend on external APIs (Hugging Face + Gemini).
-
-**Future improvements**
-
-- Better OCR and table extraction for scanned or tabular PDFs.
-- PDF-aware chunking (headings, slide boundaries) for cleaner citations.
-- Optional local embeddings for offline demos.
-
----
-
-## License / course context
-
-Educational Flask + Docker + RAG project. Supply your own **Gemini** and **Hugging Face** credentials via `.env`.
+Set `RAG_BACKEND=local` with `GEMINI_API_KEY` and `HF_TOKEN` to use the original FAISS pipeline over `data/`. Course starter files remain for local testing only.

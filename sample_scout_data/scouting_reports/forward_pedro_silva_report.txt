@@ -1,0 +1,16 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Pedro Silva (Winger)
+Scout: Paolo Ricci | Date: 6 May 2025 | Match: CD Nacional vs Portimonense
+
+SUMMARY: Classic winger profile with elite pace. Beat full-back 1v1 four times;
+delivered two quality crosses from byline. Stretched defence vertically.
+Pressing willingness on full-back back-passes noted. Value signing at 48k EUR.
+
+KEY OBSERVATIONS:
+- Sprint past defender created crossing opportunity (38')
+- 4 successful dribbles; 2 completed crosses
+- Pressed right-back on backward pass (19')
+- Counter-attacking threat when space available behind
+
+RATING: 8.0/10 — Pace and crossing profile observed on the wing at reported salary level.

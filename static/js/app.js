@@ -1,4 +1,4 @@
-/* Course Assistant frontend */
+/* ScoutMatch AI frontend */
 
 const API = {
     status: () => fetch("/api/status").then(r => r.json()),
@@ -45,6 +45,10 @@ const API = {
             return data;
         });
     },
+    ingestionStatus: jobId =>
+        fetch(`/api/ingestion/status${jobId ? `?job_id=${encodeURIComponent(jobId)}` : ""}`).then(
+            r => r.json()
+        ),
     resetAll: () =>
         fetch("/api/reset-all", {
             method: "POST",
@@ -69,6 +73,9 @@ const state = {
     messages: [],
     engineReady: false,
     isSending: false,
+    awsMode: false,
+    kbSyncInProgress: false,
+    ingestionJobId: null,
 };
 
 const els = {
@@ -93,15 +100,17 @@ const els = {
     uploadBtn: document.getElementById("uploadBtn"),
     uploadInput: document.getElementById("uploadInput"),
     uploadStatus: document.getElementById("uploadStatus"),
+    syncStatus: document.getElementById("syncStatus"),
     documentList: document.getElementById("documentList"),
     resetProjectBtn: document.getElementById("resetProjectBtn"),
+    awsBadge: document.getElementById("awsBadge"),
 };
 
-const FALLBACK_PREFIX = "I do not have enough information in the provided documents";
+const REFUSAL_MARKERS = [
+    "do not have enough information in the uploaded player",
+    "אין לי מספיק מידע במסמכי השחקנים",
+];
 
-// ==========================================================
-// Utilities
-// ==========================================================
 function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text ?? "";
@@ -141,9 +150,38 @@ function toast(message, { error = false } = {}) {
     toastTimer = setTimeout(() => toastEl.classList.remove("is-visible"), 3500);
 }
 
-// ==========================================================
-// Engine status polling
-// ==========================================================
+function setUploadStatus(message, kind) {
+    if (!els.uploadStatus) return;
+    if (!message) {
+        els.uploadStatus.hidden = true;
+        els.uploadStatus.textContent = "";
+        els.uploadStatus.className = "upload-card__status";
+        return;
+    }
+    els.uploadStatus.hidden = false;
+    els.uploadStatus.textContent = message;
+    els.uploadStatus.className = `upload-card__status upload-card__status--${kind || "info"}`;
+}
+
+function setSyncStatus(message, kind) {
+    if (!els.syncStatus) return;
+    if (!message) {
+        els.syncStatus.hidden = true;
+        els.syncStatus.textContent = "";
+        els.syncStatus.className = "sync-status";
+        return;
+    }
+    els.syncStatus.hidden = false;
+    els.syncStatus.textContent = message;
+    els.syncStatus.className = `sync-status sync-status--${kind || "info"}`;
+}
+
+function updateComposerState() {
+    const blocked = !state.engineReady || state.isSending || state.kbSyncInProgress;
+    els.input.disabled = blocked;
+    els.sendBtn.disabled = blocked;
+}
+
 async function refreshKbDocuments() {
     try {
         const d = await API.listDocuments();
@@ -153,53 +191,15 @@ async function refreshKbDocuments() {
     }
 }
 
-async function pollEngineStatus() {
-    try {
-        const s = await API.status();
-        if (s.error) {
-            state.engineReady = false;
-            els.statusDot.dataset.state = "error";
-            els.statusText.textContent = s.error.message;
-            els.input.disabled = true;
-            els.sendBtn.disabled = true;
-            setTimeout(pollEngineStatus, 5000);
-            return;
-        }
-        if (s.ready) {
-            state.engineReady = true;
-            els.statusDot.dataset.state = "ready";
-            els.statusText.textContent = `Ready - ${s.chunks} chunks`;
-            await refreshKbDocuments();
-            els.input.disabled = false;
-            els.sendBtn.disabled = false;
-            els.input.placeholder = "Ask anything about your documents...";
-            return;
-        }
-        state.engineReady = false;
-        els.input.disabled = true;
-        els.sendBtn.disabled = true;
-        els.statusDot.dataset.state = "loading";
-        let label = humanizeStatus(s.status);
-        if (s.status === "embedding_documents" && s.progress?.total) {
-            label = `Embedding ${s.progress.current}/${s.progress.total}...`;
-        }
-        els.statusText.textContent = label;
-        await refreshKbDocuments();
-        setTimeout(pollEngineStatus, 1500);
-    } catch (e) {
-        els.statusDot.dataset.state = "error";
-        els.statusText.textContent = "Server unreachable";
-        setTimeout(pollEngineStatus, 3000);
-    }
-}
-
 function renderKbDocuments(docs) {
     if (!els.documentList) return;
     els.documentList.innerHTML = "";
     if (!docs.length) {
         const empty = document.createElement("div");
         empty.className = "document-list__empty";
-        empty.textContent = "No documents indexed yet.";
+        empty.textContent = state.awsMode
+            ? "Upload player CVs or scouting reports to start recruiting."
+            : "No documents indexed yet.";
         els.documentList.appendChild(empty);
         return;
     }
@@ -207,45 +207,132 @@ function renderKbDocuments(docs) {
         const row = document.createElement("div");
         row.className = "document-list__item";
         const cat = (doc.category || "TXT").toUpperCase();
-        let badgeLabel = cat;
         let slug = "txt";
-        if (cat === "PDF") slug = "pdf";
-        else if (cat === "IMAGE") slug = "image";
-        else if (cat === "OCR_TXT") {
-            slug = "ocr";
-            badgeLabel = "OCR";
-        }
-        const hint = doc.hint ? String(doc.hint) : "";
-        const hintEsc = escapeHtml(hint);
-        const rawShown = doc.display_source || doc.name || "";
-        const shown =
-            rawShown.includes("/") ? rawShown.split("/").pop() : rawShown;
-        const titleFull = escapeHtml(doc.name || rawShown);
+        if (cat.includes("PDF")) slug = "pdf";
+        else if (cat.includes("PLAYER")) slug = "cv";
+        else if (cat.includes("SCOUT")) slug = "scout";
+        else if (cat.includes("TEAM")) slug = "team";
+        else if (cat === "DOCX") slug = "pdf";
+        else if (cat === "CSV") slug = "txt";
+        const rawShown = doc.display_name || doc.display_source || doc.name || "";
+        const shown = rawShown.includes("/") ? rawShown.split("/").pop() : rawShown;
         row.innerHTML = `
-            <span class="document-list__badge document-list__badge--${slug}" ${hint ? `title="${hintEsc}"` : ""}>${escapeHtml(badgeLabel)}</span>
-            <span class="document-list__name" title="${titleFull}">${escapeHtml(shown)}</span>
+            <span class="document-list__badge document-list__badge--${slug}">${escapeHtml(cat.split(" ")[0])}</span>
+            <span class="document-list__name" title="${escapeHtml(rawShown)}">${escapeHtml(shown)}</span>
         `;
         els.documentList.appendChild(row);
     });
 }
 
-function humanizeStatus(key) {
-    const map = {
-        not_initialised: "Starting engine...",
-        loading_documents: "Loading documents...",
-        chunking_documents: "Chunking text...",
-        embedding_documents: "Computing embeddings...",
-        building_index: "Building FAISS index...",
-        saving_cache: "Saving cache...",
-        loading_cache: "Loading cached index...",
-        ready: "Ready",
-    };
-    return map[key] || "Starting engine...";
+async function pollIngestion(jobId) {
+    state.kbSyncInProgress = true;
+    state.ingestionJobId = jobId;
+    updateComposerState();
+    setSyncStatus("Updating the ScoutMatch knowledge base...", "progress");
+
+    const terminal = new Set(["COMPLETE", "FAILED", "STOPPED"]);
+    let attempts = 0;
+    const maxAttempts = 120;
+
+    while (attempts < maxAttempts) {
+        attempts += 1;
+        try {
+            const status = await API.ingestionStatus(jobId);
+            const st = status.status || "IN_PROGRESS";
+            if (st === "COMPLETE") {
+                setSyncStatus("Knowledge base updated. You can now ask questions about the new player.", "progress");
+                toast("Knowledge base sync complete.");
+                state.kbSyncInProgress = false;
+                updateComposerState();
+                await refreshKbDocuments();
+                setTimeout(() => setSyncStatus("", ""), 8000);
+                return;
+            }
+            if (st === "FAILED" || st === "STOPPED") {
+                setSyncStatus(
+                    "The file was uploaded, but the knowledge base sync failed. Please review the AWS configuration.",
+                    "error"
+                );
+                state.kbSyncInProgress = false;
+                updateComposerState();
+                return;
+            }
+            setSyncStatus(`Updating the ScoutMatch knowledge base... (${st})`, "progress");
+        } catch {
+            /* retry */
+        }
+        await new Promise(r => setTimeout(r, 3000));
+    }
+    state.kbSyncInProgress = false;
+    updateComposerState();
 }
 
-// ==========================================================
-// Sessions
-// ==========================================================
+async function pollEngineStatus() {
+    try {
+        const s = await API.status();
+        state.awsMode = s.aws_mode === true || s.rag_backend === "aws_kb";
+
+        if (els.awsBadge) {
+            els.awsBadge.hidden = !state.awsMode;
+        }
+        if (els.resetProjectBtn) {
+            els.resetProjectBtn.hidden = state.awsMode;
+        }
+
+        if (s.error) {
+            state.engineReady = false;
+            els.statusDot.dataset.state = "error";
+            els.statusText.textContent = s.error.message;
+            updateComposerState();
+            setTimeout(pollEngineStatus, 5000);
+            return;
+        }
+
+        if (s.config_missing?.length) {
+            state.engineReady = false;
+            els.statusDot.dataset.state = "error";
+            els.statusText.textContent = `Missing AWS config: ${s.config_missing.join(", ")}`;
+            updateComposerState();
+            setTimeout(pollEngineStatus, 5000);
+            return;
+        }
+
+        if (s.ready) {
+            state.engineReady = true;
+            els.statusDot.dataset.state = "ready";
+            if (state.awsMode) {
+                els.statusText.textContent = "AWS Bedrock KB ready";
+            } else {
+                els.statusText.textContent = `Ready — ${s.chunks} chunks indexed`;
+            }
+            await refreshKbDocuments();
+            updateComposerState();
+            els.input.placeholder = "Ask about players, positions, salary, or squad fit...";
+            return;
+        }
+
+        state.engineReady = false;
+        updateComposerState();
+        els.statusDot.dataset.state = "loading";
+        els.statusText.textContent = humanizeStatus(s.status);
+        await refreshKbDocuments();
+        setTimeout(pollEngineStatus, 1500);
+    } catch {
+        els.statusDot.dataset.state = "error";
+        els.statusText.textContent = "Server unreachable";
+        setTimeout(pollEngineStatus, 3000);
+    }
+}
+
+function humanizeStatus(key) {
+    const map = {
+        not_initialised: "Starting ScoutMatch...",
+        initialising: "Connecting to AWS Knowledge Base...",
+        ready: "Ready",
+    };
+    return map[key] || "Starting ScoutMatch...";
+}
+
 async function loadSessions() {
     const data = await API.listSessions();
     state.sessions = data.sessions || [];
@@ -291,15 +378,16 @@ async function selectSession(id) {
 }
 
 async function newSession({ select = true } = {}) {
-    try {
-        await API.resetSessionUploads();
-        state.engineReady = false;
-        els.input.disabled = true;
-        els.sendBtn.disabled = true;
-        await refreshKbDocuments();
-        pollEngineStatus();
-    } catch (err) {
-        toast(err.message || "Could not reset session uploads", { error: true });
+    if (!state.awsMode) {
+        try {
+            await API.resetSessionUploads();
+            state.engineReady = false;
+            updateComposerState();
+            await refreshKbDocuments();
+            pollEngineStatus();
+        } catch (err) {
+            toast(err.message || "Could not reset session uploads", { error: true });
+        }
     }
 
     const session = await API.createSession();
@@ -326,7 +414,7 @@ async function renameActiveSession() {
 
 async function deleteActiveSession() {
     if (!state.activeSessionId) return;
-    if (!confirm("Delete this conversation? This cannot be undone.")) return;
+    if (!confirm("Delete this conversation? Uploaded documents will remain available.")) return;
     const id = state.activeSessionId;
     await API.deleteSession(id);
     state.sessions = state.sessions.filter(s => s.id !== id);
@@ -352,7 +440,7 @@ async function handleResetProject() {
     els.resetProjectBtn.disabled = true;
     try {
         await API.resetAll();
-        toast("Reset complete — rebuilding knowledge base from starter files…");
+        toast("Reset complete — rebuilding knowledge base…");
         state.activeSessionId = null;
         state.messages = [];
         els.conversationTitle.textContent = "New conversation";
@@ -363,8 +451,7 @@ async function handleResetProject() {
         renderMessages();
         await refreshKbDocuments();
         state.engineReady = false;
-        els.input.disabled = true;
-        els.sendBtn.disabled = true;
+        updateComposerState();
         pollEngineStatus();
     } catch (err) {
         toast(err.message || "Reset failed", { error: true });
@@ -373,9 +460,6 @@ async function handleResetProject() {
     }
 }
 
-// ==========================================================
-// Messages
-// ==========================================================
 function renderMessages() {
     els.messages.innerHTML = "";
     if (state.messages.length === 0) {
@@ -391,32 +475,28 @@ function renderMessages() {
     });
 }
 
+function isRefusalMessage(content) {
+    const lower = (content || "").toLowerCase();
+    return REFUSAL_MARKERS.some(m => lower.includes(m.toLowerCase()) || content.includes(m));
+}
+
 function renderMessage(msg) {
     const wrap = document.createElement("div");
     wrap.className = `message message--${msg.role}`;
-    if (
-        msg.role === "assistant" &&
-        (msg.content || "").startsWith(FALLBACK_PREFIX)
-    ) {
-        wrap.classList.add("message--fallback");
-    }
-    if (
-        msg.role === "assistant" &&
-        msg.generation_mode === "retrieval_fallback"
-    ) {
-        wrap.classList.add("message--retrieval-fallback");
+    if (msg.role === "assistant" && (msg.refused || isRefusalMessage(msg.content))) {
+        wrap.classList.add("message--refused");
     }
 
     const avatar = document.createElement("div");
     avatar.className = "message__avatar";
-    avatar.textContent = msg.role === "user" ? "Y" : "C";
+    avatar.textContent = msg.role === "user" ? "M" : "S";
 
     const body = document.createElement("div");
     body.className = "message__body";
 
     const role = document.createElement("div");
     role.className = "message__role";
-    role.textContent = msg.role === "user" ? "You" : "Assistant";
+    role.textContent = msg.role === "user" ? "Manager" : "ScoutMatch AI";
 
     const content = document.createElement("div");
     content.className = "message__content";
@@ -426,7 +506,7 @@ function renderMessage(msg) {
     body.appendChild(content);
 
     if (msg.role === "assistant" && Array.isArray(msg.context) && msg.context.length > 0) {
-        body.appendChild(renderContext(msg.context));
+        body.appendChild(renderContext(msg.context, msg.main_source));
     }
 
     wrap.appendChild(avatar);
@@ -434,12 +514,11 @@ function renderMessage(msg) {
     return wrap;
 }
 
-function renderContext(chunks) {
+function renderContext(chunks, mainSource) {
     const wrap = document.createElement("div");
     wrap.className = "context-wrap";
 
-    // Pick the highest-scoring chunk as the "main source"
-    const main = chunks.reduce(
+    const main = mainSource || chunks.reduce(
         (best, c) =>
             (best === null || (c.score ?? -Infinity) > (best.score ?? -Infinity))
                 ? c : best,
@@ -449,20 +528,22 @@ function renderContext(chunks) {
     if (main) {
         const banner = document.createElement("div");
         banner.className = "context__main";
-        const page = main.page ? ` p.${main.page}` : "";
+        const src = main.source || main.s3_uri || "unknown";
+        const short = src.includes("/") ? src.split("/").pop() : src;
         banner.innerHTML = `
             <span class="context__main-label">Main source</span>
-            <span class="context__main-file">${escapeHtml((main.source || "unknown") + page)}</span>
+            <span class="context__main-file">${escapeHtml(short)}</span>
         `;
         wrap.appendChild(banner);
     }
 
     const details = document.createElement("details");
     details.className = "context";
+    details.open = chunks.length <= 3;
 
     const summary = document.createElement("summary");
     summary.className = "context__summary";
-    summary.textContent = `All sources (${chunks.length})`;
+    summary.textContent = `Retrieved evidence (${chunks.length})`;
     details.appendChild(summary);
 
     const body = document.createElement("div");
@@ -470,16 +551,16 @@ function renderContext(chunks) {
     for (const c of chunks) {
         const item = document.createElement("div");
         item.className = "context__chunk";
-        if (main && c === main) item.classList.add("context__chunk--main");
+        const src = c.source || c.s3_uri || "unknown";
+        const short = src.includes("/") ? src.split("/").pop() : src;
         const meta = document.createElement("div");
         meta.className = "context__chunk-meta";
-        const page = c.page ? ` p.${c.page}` : "";
         meta.innerHTML = `
-            <span>${escapeHtml((c.source || "unknown") + page)}</span>
-            <span>score ${typeof c.score === "number" ? c.score.toFixed(3) : "-"}</span>
+            <span>${escapeHtml(short)}</span>
+            <span>${typeof c.score === "number" ? `score ${c.score.toFixed(3)}` : ""}</span>
         `;
         const text = document.createElement("div");
-        text.textContent = c.text;
+        text.textContent = c.text || "";
         item.appendChild(meta);
         item.appendChild(text);
         body.appendChild(item);
@@ -513,9 +594,9 @@ function appendTypingIndicator() {
     wrap.className = "message message--assistant";
     wrap.id = "typingIndicator";
     wrap.innerHTML = `
-        <div class="message__avatar">C</div>
+        <div class="message__avatar">S</div>
         <div class="message__body">
-            <div class="message__role">Assistant</div>
+            <div class="message__role">ScoutMatch AI</div>
             <div class="message__content">
                 <div class="typing"><span></span><span></span><span></span></div>
             </div>
@@ -530,13 +611,14 @@ function removeTypingIndicator() {
     if (t) t.remove();
 }
 
-// ==========================================================
-// Sending
-// ==========================================================
 async function sendMessage(content) {
     if (state.isSending) return;
     if (!state.engineReady) {
-        toast("Engine is still loading", { error: true });
+        toast("ScoutMatch is still loading", { error: true });
+        return;
+    }
+    if (state.kbSyncInProgress) {
+        toast("Please wait for knowledge base sync to finish", { error: true });
         return;
     }
 
@@ -548,8 +630,7 @@ async function sendMessage(content) {
     }
 
     state.isSending = true;
-    els.sendBtn.disabled = true;
-    els.input.disabled = true;
+    updateComposerState();
 
     const tempUser = {
         id: `tmp-${Date.now()}`,
@@ -582,15 +663,45 @@ async function sendMessage(content) {
         toast(err.message || "Failed to send message", { error: true });
     } finally {
         state.isSending = false;
-        els.sendBtn.disabled = !state.engineReady;
-        els.input.disabled = !state.engineReady;
+        updateComposerState();
         els.input.focus();
     }
 }
 
-// ==========================================================
-// Wiring
-// ==========================================================
+async function handleUpload(file) {
+    if (!file) return;
+    const okExt = /\.(txt|md|html|pdf|doc|docx|csv|xls|xlsx)$/i.test(file.name);
+    if (!okExt) {
+        toast("Supported: TXT, MD, HTML, PDF, DOC, DOCX, CSV, XLS, XLSX", { error: true });
+        return;
+    }
+    els.uploadBtn.disabled = true;
+    setUploadStatus(`Uploading CV to Amazon S3... (${file.name})`, "info");
+    try {
+        const result = await API.uploadDocument(file);
+        setUploadStatus(result.message || "Upload complete.", "success");
+        toast("Document uploaded to S3");
+
+        if (state.awsMode && result.ingestion_job_id) {
+            pollIngestion(result.ingestion_job_id);
+        } else if (!state.awsMode) {
+            state.engineReady = false;
+            updateComposerState();
+            pollEngineStatus();
+        } else {
+            await refreshKbDocuments();
+        }
+        setTimeout(() => setUploadStatus("", ""), 8000);
+    } catch (err) {
+        setUploadStatus(`Failed: ${err.message}`, "error");
+        toast(err.message || "Upload failed", { error: true });
+        if (err.partialIndexed) refreshKbDocuments();
+    } finally {
+        els.uploadBtn.disabled = false;
+        els.uploadInput.value = "";
+    }
+}
+
 els.form.addEventListener("submit", e => {
     e.preventDefault();
     sendMessage(els.input.value);
@@ -624,59 +735,6 @@ els.suggestions?.addEventListener("click", e => {
     sendMessage(q);
 });
 
-// ==========================================================
-// Upload
-// ==========================================================
-function setUploadStatus(message, kind /* "info" | "success" | "error" | "" */) {
-    if (!els.uploadStatus) return;
-    if (!message) {
-        els.uploadStatus.hidden = true;
-        els.uploadStatus.textContent = "";
-        els.uploadStatus.className = "upload-card__status";
-        return;
-    }
-    els.uploadStatus.hidden = false;
-    els.uploadStatus.textContent = message;
-    els.uploadStatus.className = `upload-card__status upload-card__status--${kind || "info"}`;
-}
-
-async function handleUpload(file) {
-    if (!file) return;
-    const okExt = /\.(pdf|txt|png|jpe?g|webp)$/i.test(file.name);
-    if (!okExt) {
-        toast("Supported: PDF, TXT, PNG, JPG, JPEG, WEBP", { error: true });
-        return;
-    }
-    els.uploadBtn.disabled = true;
-    const busyHint =
-        /\.(png|jpe?g|webp)$/i.test(file.name)
-            ? " (Vision / OCR extraction — may take a moment)"
-            : "";
-    setUploadStatus(`Uploading ${file.name}${busyHint}...`, "info");
-    try {
-        const result = await API.uploadDocument(file);
-        const kb = Math.max(1, Math.round((result.size || 0) / 1024));
-        const successMsg =
-            result.message ||
-            `Uploaded ${result.filename} (${kb} KB). Re-indexing...`;
-        setUploadStatus(successMsg, "success");
-        toast(successMsg);
-        // Backend marked engine as not-ready and is rebuilding in the background.
-        state.engineReady = false;
-        els.input.disabled = true;
-        els.sendBtn.disabled = true;
-        pollEngineStatus();
-        setTimeout(() => setUploadStatus("", ""), 8000);
-    } catch (err) {
-        setUploadStatus(`Failed: ${err.message}`, "error");
-        toast(err.message || "Upload failed", { error: true });
-        if (err.partialIndexed) refreshKbDocuments();
-    } finally {
-        els.uploadBtn.disabled = false;
-        els.uploadInput.value = "";
-    }
-}
-
 els.uploadBtn?.addEventListener("click", () => els.uploadInput?.click());
 els.uploadInput?.addEventListener("change", e => {
     const file = e.target.files?.[0];
@@ -685,9 +743,6 @@ els.uploadInput?.addEventListener("change", e => {
 
 els.resetProjectBtn?.addEventListener("click", () => handleResetProject());
 
-// ==========================================================
-// Boot
-// ==========================================================
 (async function boot() {
     pollEngineStatus();
     await loadSessions();

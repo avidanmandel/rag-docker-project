@@ -1,0 +1,17 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Daniel Cohen (GK)
+Scout: Marcus Engel | Date: 12 May 2025 | Match: Maccabi Haifa vs Hapoel Be'er Sheva
+
+SUMMARY: Build-up goalkeeper profile observed in match conditions. Cohen displayed
+exceptional composure receiving back-passes under coordinated press. Multiple
+instances of one-touch distribution to break first line. Calm body language
+throughout. Salary (75k EUR) and relocation willingness align with brief.
+
+KEY OBSERVATIONS:
+- 94% short pass completion when pressed in own half
+- Sweeper positioning when Haifa played high line (avg 38m from goal)
+- Started three attacks directly from back-pass sequences
+- Communication with CBs clear and proactive
+
+RATING: 8.5/10 — Passing, composure, salary, and relocation align with observed brief requirements.

@@ -1,0 +1,60 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — GOALKEEPER
+================================================================================
+
+COMPACT FACT PROFILE SUMMARY
+Full Name: Daniel Cohen | Position: Goalkeeper (GK) | Professional Experience: 6 years
+Annual Salary Expectation: 75,000 EUR | Relocation Willingness: YES — willing to relocate to northern England
+Build-up Ability: Strong — excellent with feet, calm distribution under press
+Calmness Under Pressure: Strong | Preferred Foot: Right
+
+Full Name: Daniel Cohen
+Position: Goalkeeper (GK)
+Age: 27
+Years of Professional Experience: 6
+Preferred Foot: Right
+
+Current Club: Maccabi Haifa (Israeli Premier League)
+Previous Clubs: Hapoel Be'er Sheva, Bnei Yehuda Tel Aviv
+
+Annual Salary Expectation: 75,000 EUR
+Availability: Available from July 2025 (out of contract)
+Relocation Willingness: YES — willing to relocate to northern England
+
+Languages: Hebrew (native), English (fluent), Spanish (conversational)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Daniel Cohen is a modern sweeper-keeper who excels in build-up phases from the
+back. Over six professional seasons he has developed into a calm, composed
+presence under pressure — consistently making the right decision when receiving
+back-passes from centre-backs and full-backs under high press.
+
+Key Strengths:
+- Excellent with feet: comfortable playing one-touch and two-touch passes
+- Back-pass reception and distribution under coordinated press
+- Starts attacks with short passes to break the first line of pressure
+- Sweeper-keeper positioning when team plays high defensive line
+- Composed body language; rarely rushes distribution
+- Strong communication; organises defensive line effectively
+
+Technical Attributes:
+- Passing accuracy from feet: 89% (short range), 76% (medium range)
+- Cross claiming and aerial command in six-yard box
+- Reflex saves and 1v1 situations above league average
+
+Tactical Fit:
+Ideal for possession-based systems requiring goalkeeper involvement in build-up.
+Thrives when asked to play as an extra outfield player and recycle possession
+through the back four. Comfortable stepping out of area to sweep behind high line.
+
+Career Highlights:
+- 18 clean sheets in 2023/24 season
+- Named in Israeli Premier League Team of the Season (2022/23)
+- Key role in club's transition to back-three build-up system
+
+References available upon request.

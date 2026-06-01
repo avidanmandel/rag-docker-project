@@ -2,9 +2,19 @@
 .venv/
 venv/
 env/
+
+# Environment and AWS local config (never commit)
 .env
 .env.*
 !.env.example
+!.env.ec2.example
+.aws/
+credentials
+config
+
+# Keys / certs
+*.pem
+*.key
 
 # Python
 __pycache__/

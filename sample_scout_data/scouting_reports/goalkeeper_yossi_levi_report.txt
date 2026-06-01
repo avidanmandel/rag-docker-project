@@ -1,0 +1,17 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Yossi Levi (GK)
+Scout: Marcus Engel | Date: 8 May 2025 | Match: Ironi Kiryat Shmona vs Maccabi Tel Aviv
+
+SUMMARY: Traditional goalkeeper profile. Excellent shot-stopping and aerial
+command but limited comfort with feet under press. Went long on 78% of
+back-passes when pressed. Not suited to build-up-from-back system. Salary
+within budget but relocation unwilling.
+
+KEY OBSERVATIONS:
+- Strong reflex saves; 6 key interventions
+- Hesitant on short distribution when pressed by two forwards
+- Prefers long balls over playing through midfield
+- Leadership and experience noted but tactical misfit for brief
+
+RATING: 5.0/10 — Limited foot distribution under press; relocation unwilling per CV.

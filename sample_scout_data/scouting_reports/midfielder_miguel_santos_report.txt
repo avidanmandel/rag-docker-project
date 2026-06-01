@@ -1,0 +1,16 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Miguel Santos (CM)
+Scout: James Whitfield | Date: 7 May 2025 | Match: Gil Vicente vs Boavista
+
+SUMMARY: Box-to-box midfielder combining defensive contribution with vision.
+Won 6 ball recoveries; played progressive pass after 4 of them. Physical engine
+and tactical discipline evident. Versatile — can play six or eight. Good value.
+
+KEY OBSERVATIONS:
+- Tackle and immediate forward pass started counter (23')
+- Covered 11.2km — above league average for CM
+- Pressed in packs with midfield partner effectively
+- Switched play with diagonal to winger (67')
+
+RATING: 7.5/10 — Solid option for CM depth and balance.

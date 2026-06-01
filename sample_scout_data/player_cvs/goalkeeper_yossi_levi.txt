@@ -1,0 +1,65 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — GOALKEEPER
+================================================================================
+
+COMPACT FACT PROFILE SUMMARY
+Full Name: Yossi Levi | Position: Goalkeeper (GK) | Professional Experience: 9 years
+Annual Salary Expectation: 65,000 EUR | Relocation Willingness: NO — prefers to remain in Israel
+Build-up Ability: Limited — prefers long distribution, less comfortable with feet under press
+Calmness Under Pressure: Strong | Preferred Foot: Right
+
+Full Name: Yossi Levi
+Position: Goalkeeper (GK)
+Age: 31
+Years of Professional Experience: 9
+Preferred Foot: Right
+
+Current Club: Ironi Kiryat Shmona (Israeli Premier League)
+Previous Clubs: Hapoel Tel Aviv, Ashdod SC, Hapoel Haifa
+
+Annual Salary Expectation: 65,000 EUR
+Availability: Available January 2026 (contract expires December 2025)
+Relocation Willingness: NO — prefers to remain in Israel
+
+Languages: Hebrew (native), English (basic)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Yossi Levi is a traditional shot-stopping goalkeeper with extensive experience
+in the Israeli top flight. His game is built around positioning, reflex saves,
+and commanding the penalty area on crosses and set pieces rather than
+distribution with feet.
+
+Key Strengths:
+- Shot-stopping and reflex saves — primary asset
+- Strong aerial presence; dominates six-yard box on corners
+- Experience and leadership in dressing room
+- Reliable in 1v1 situations
+- Consistent performance in high-stakes matches
+
+Areas for Development:
+- Less comfortable with feet under high press
+- Tends to go long rather than play short to centre-backs
+- Distribution accuracy from back-passes below modern sweeper-keeper standard
+- Hesitant when receiving under pressure from pressing forwards
+
+Technical Attributes:
+- Save percentage: above league average
+- Long distribution: effective but predictable
+- Short passing from feet: limited range and confidence
+
+Tactical Fit:
+Best suited to direct, counter-attacking systems or clubs that do not require
+goalkeeper involvement in build-up from the back. Traditional low-block or
+mid-block defensive structures align with his profile.
+
+Career Highlights:
+- 220+ professional appearances
+- Israeli Cup winner (2019)
+- Veteran presence with strong locker-room influence
+
+References available upon request.

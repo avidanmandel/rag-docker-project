@@ -1,0 +1,53 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — MIDFIELDER
+================================================================================
+
+Full Name: Roy Cohen
+Position: Central Midfielder (CM) / Defensive Midfielder (CDM)
+Age: 26
+Years of Professional Experience: 6
+Preferred Foot: Right
+
+Current Club: Maccabi Tel Aviv (Israeli Premier League)
+Previous Clubs: Hapoel Be'er Sheva, Bnei Yehuda Tel Aviv
+
+Annual Salary Expectation: 68,000 EUR
+Availability: Available from July 2025
+Relocation Willingness: YES — motivated for European move
+
+Languages: Hebrew (native), English (fluent), Portuguese (basic)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Roy Cohen is a disciplined central midfielder who controls tempo, recycles
+possession, and resists pressing with intelligent body positioning and quick
+one-touch passing. He anchors midfield structure in both possession and
+transition phases.
+
+Key Strengths:
+- Tempo control: slows and accelerates game as tactical situation demands
+- Pressing resistance: rarely loses ball under coordinated press
+- Positional discipline: maintains shape in defensive transition
+- Range of passing: short recycling and long diagonal switches
+- Work rate: covers ground defensively without compromising positioning
+
+Technical Attributes:
+- Pass completion under pressure: 88%
+- Interceptions and ball recoveries: 7.2 per 90
+- Progressive passes: 6.4 per 90
+
+Tactical Fit:
+Ideal single pivot or one of two in double pivot for possession teams. Provides
+stability and allows more creative midfielders freedom. Excellent in gegenpressing
+structures due to anticipation and pressing triggers recognition.
+
+Career Highlights:
+- Maccabi Tel Aviv player of the year nominee (2024)
+- Key role in league title push (2023/24)
+- Israel senior team (8 caps)
+
+References available upon request.

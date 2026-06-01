@@ -1,0 +1,66 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — GOALKEEPER
+================================================================================
+
+COMPACT FACT PROFILE SUMMARY
+Full Name: Omer Azulay | Position: Goalkeeper (GK) | Professional Experience: 8 years
+Annual Salary Expectation: 90,000 EUR | Relocation Willingness: MAYBE — open to Europe but salary must reflect move
+Build-up Ability: Inconsistent — passing under coordinated press varies
+Calmness Under Pressure: Variable — can panic into long balls when pressed | Preferred Foot: Right
+
+Full Name: Omer Azulay
+Position: Goalkeeper (GK)
+Age: 29
+Years of Professional Experience: 8
+Preferred Foot: Right
+
+Current Club: Beitar Jerusalem (Israeli Premier League)
+Previous Clubs: Maccabi Tel Aviv, Hapoel Jerusalem, FC Ashdod
+
+Annual Salary Expectation: 90,000 EUR
+Availability: Available immediately (transfer listed)
+Relocation Willingness: MAYBE — open to Europe but salary must reflect move
+
+Languages: Hebrew (native), English (fluent), Russian (basic)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Omer Azulay brings eight years of top-flight experience and a reputation as
+one of the more athletic goalkeepers in the Israeli league. He has played in
+multiple systems and offers strong shot-stopping, but his passing under pressure
+can be inconsistent — a concern for possession-heavy build-up structures.
+
+Key Strengths:
+- Eight years professional experience at highest domestic level
+- Athletic profile: quick off line, good reflexes
+- Strong in 1v1 and rushing situations
+- Experience in European qualifying matches
+- Leadership qualities; captained youth national teams
+
+Areas of Concern:
+- Inconsistent passing under coordinated high press
+- Decision-making on back-passes varies — sometimes panics into long balls
+- Distribution accuracy drops significantly when pressed by two forwards
+- Salary expectations above typical budget for build-up specialist role
+
+Technical Attributes:
+- Shot-stopping: elite tier domestically
+- Short passing under no pressure: adequate
+- Short passing under press: inconsistent (reported 62–71% accuracy range)
+- Long distribution: powerful but low completion on targeted passes
+
+Tactical Fit:
+Can function in mixed systems but not ideal as primary build-up goalkeeper.
+Clubs requiring reliable sweeper-keeper distribution may find better value
+elsewhere despite his experience and athleticism.
+
+Career Highlights:
+- 280+ professional appearances
+- Multiple Israeli Premier League top-four finishes
+- UEFA Europa Conference League appearances (2022)
+
+References available upon request.

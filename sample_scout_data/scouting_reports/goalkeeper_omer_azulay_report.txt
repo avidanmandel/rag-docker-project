@@ -1,0 +1,17 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Omer Azulay (GK)
+Scout: Marcus Engel | Date: 10 May 2025 | Match: Beitar Jerusalem vs Maccabi Haifa
+
+SUMMARY: Experienced keeper with athletic profile but inconsistent passing
+under pressure. Panicked into long ball twice when pressed in build-up phase.
+Salary demand (90k EUR) exceeds cap. Experience valuable but reliability in
+distribution is concern for possession system.
+
+KEY OBSERVATIONS:
+- 8 years top-flight experience evident in positioning
+- Passing accuracy dropped to 64% when pressed in second half
+- Strong 1v1 save denied clear chance (78')
+- Inconsistency under press contradicts build-up requirements
+
+RATING: 6.0/10 — Salary and passing concerns under coordinated press.

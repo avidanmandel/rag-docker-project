@@ -1,0 +1,16 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Tal Ben-David (CM)
+Scout: James Whitfield | Date: 15 May 2025 | Match: Hapoel Be'er Sheva vs Maccabi Haifa
+
+SUMMARY: Creative midfielder with exceptional forward passing. Three key passes
+and one assist from through balls. Vision in final third outstanding. Requires
+defensive cover from deeper partner. Young profile with development upside.
+
+KEY OBSERVATIONS:
+- Assist from defence-splitting pass (58')
+- 2.8 key passes per 90 equivalent in observed match
+- Lost ball twice under heavy press — needs partner protection
+- Set-piece delivery quality from wide free kicks
+
+RATING: 8.0/10 — Creative CM profile; forward passing and vision with defensive cover needs.

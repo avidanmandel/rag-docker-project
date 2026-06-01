@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FLASK_HOST=0.0.0.0 \
-    FLASK_PORT=5000
+    FLASK_PORT=5000 \
+    FLASK_DEBUG=false
 
 COPY requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends \

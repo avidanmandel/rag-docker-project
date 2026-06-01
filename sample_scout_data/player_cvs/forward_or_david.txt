@@ -1,0 +1,52 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — FORWARD
+================================================================================
+
+Full Name: Or David
+Position: Striker (ST) / False Nine (CF)
+Age: 26
+Years of Professional Experience: 6
+Preferred Foot: Right
+
+Current Club: Beitar Jerusalem (Israeli Premier League)
+Previous Clubs: Hapoel Haifa, Bnei Yehuda Tel Aviv, Hapoel Afula
+
+Annual Salary Expectation: 58,000 EUR
+Availability: Available from January 2026
+Relocation Willingness: MAYBE — prefers Mediterranean leagues but open to offers
+
+Languages: Hebrew (native), English (basic), French (conversational)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Or David is a link-up striker who excels with his back to goal, holding up play
+and bringing teammates into the game. He combines physical presence with subtle
+touch and intelligent lay-offs for onrushing midfielders and wingers.
+
+Key Strengths:
+- Link-up play: holds ball under pressure, lays off to runners
+- Back to goal: shields defenders, receives with body orientation forward
+- Physical presence: wins contact, draws fouls in dangerous areas
+- Aerial threat: strong header; target for crosses and long balls
+- Selfless play: high assist rate for striker position
+
+Technical Attributes:
+- Hold-up success rate: 74%
+- Key passes from striker position: 1.6 per 90
+- Aerial duels won: 62%
+
+Tactical Fit:
+Suited to systems using striker as pivot — 4-4-2 with second striker, or lone
+striker with inverted wingers. Less suited to pure counter-pressing forward who
+only runs in behind. Complements pacey wide players who attack space off lay-offs.
+
+Career Highlights:
+- 9 assists from striker position (2023/24)
+- Beitar Jerusalem top assister among forwards (2024)
+- 14 goals in 2022/23 campaign
+
+References available upon request.

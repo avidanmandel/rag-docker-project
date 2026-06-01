@@ -1,0 +1,16 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+SCOUTING REPORT — Roy Cohen (CM)
+Scout: James Whitfield | Date: 13 May 2025 | Match: Maccabi Tel Aviv vs Hapoel Be'er Sheva
+
+SUMMARY: Tempo controller who resisted press throughout. Recycled possession
+intelligently; slowed and accelerated game as needed. Defensive positioning
+excellent. Pressing resistance standout attribute. Motivated for European move.
+
+KEY OBSERVATIONS:
+- Zero turnovers under coordinated press in own half
+- 88% pass completion; 6 progressive passes
+- Cut passing lane before transition danger (71')
+- Anchored midfield in 4-3-3; allowed CAM freedom
+
+RATING: 8.5/10 — Press resistance and tempo control observed in central midfield.

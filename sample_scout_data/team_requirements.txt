@@ -1,0 +1,102 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+NORTHERN UNITED FC — SQUAD REQUIREMENTS & RECRUITMENT BRIEF (2025/26)
+================================================================================
+
+Club Philosophy: Possession-based build-up from the back, high defensive line,
+coordinated gegenpressing in the final third, and vertical progression through
+the midfield third.
+
+Transfer Budget: 2,400,000 EUR (total across all incoming signings)
+Wage Budget (annual gross): 1,850,000 EUR
+Preferred Contract Length: 3 years with option for 1
+
+--------------------------------------------------------------------------------
+PRIORITY SIGNINGS BY ROLE
+--------------------------------------------------------------------------------
+
+1. GOALKEEPER (Priority: URGENT)
+   Profile: Modern sweeper-keeper comfortable receiving under pressure from
+   centre-backs. Must excel at back-passes, short distribution to break lines,
+   and starting attacks from deep. Calm decision-making in build-up phases.
+   Experience: Minimum 4 years at professional level.
+   Salary Cap: 85,000 EUR per year
+   Relocation: Required — player must relocate to northern England (Manchester area).
+   Languages: English preferred; Hebrew or European languages acceptable.
+
+2. CENTRE-BACK (Priority: HIGH)
+   Profile: Ball-playing defender for high defensive line. Reads the game well,
+   steps into midfield to create overloads, composed on the ball under press.
+   Aerial ability secondary to passing range and positioning.
+   Experience: Minimum 3 years professional.
+   Salary Cap: 70,000 EUR per year
+   Relocation: Preferred but negotiable for exceptional candidates.
+
+3. CENTRAL MIDFIELDER (Priority: HIGH)
+   Profile: Tempo controller who resists pressing, recycles possession, and
+   switches play. Must contribute defensively and maintain structure in
+   transition. Creativity and forward passing valued.
+   Experience: Minimum 4 years professional.
+   Salary Cap: 75,000 EUR per year
+   Relocation: Open — club will support international moves.
+
+4. WINGER (Priority: MEDIUM)
+   Profile: Pace to stretch defences, 1v1 ability on the flank, intelligent
+   movement to support pressing triggers. Can play left or right.
+   Experience: Minimum 2 years professional.
+   Salary Cap: 65,000 EUR per year
+   Relocation: Flexible.
+
+5. STRIKER (Priority: MEDIUM)
+   Profile: Pressing from the front, intelligent movement in and around the box,
+   link-up play and finishing. Target man or mobile forward both considered.
+   Experience: Minimum 3 years professional.
+   Salary Cap: 80,000 EUR per year
+   Relocation: Flexible.
+
+--------------------------------------------------------------------------------
+TACTICAL NON-NEGOTIABLES
+--------------------------------------------------------------------------------
+
+Build-Up From Back:
+- Goalkeeper must act as eleventh outfield player in possession phases.
+- Centre-backs split wide; full-backs invert or push high depending on phase.
+- Midfielders must offer passing angles between the lines.
+
+Pressing System:
+- High press triggered on backward passes or poor first touches in wide areas.
+- Forwards initiate press; midfielders cut passing lanes.
+- Goalkeeper sweeper role essential when playing high line.
+
+Defensive Line:
+- Average height: 42–48 metres from own goal in possession.
+- Offside trap coordination required from all back four plus goalkeeper.
+
+--------------------------------------------------------------------------------
+RELOCATION & LOGISTICS
+--------------------------------------------------------------------------------
+
+Relocation Package: Up to 15,000 EUR for eligible signings relocating north.
+Housing Support: 6 months temporary accommodation provided.
+Family Policy: Spouse/partner work visa assistance available.
+
+--------------------------------------------------------------------------------
+SALARY LIMITS SUMMARY (ANNUAL GROSS EUR)
+--------------------------------------------------------------------------------
+
+Role              | Maximum Salary | Target Range
+------------------|----------------|---------------
+Goalkeeper        | 85,000         | 65,000–80,000
+Centre-Back       | 70,000         | 55,000–68,000
+Central Midfielder| 75,000         | 60,000–72,000
+Winger            | 65,000         | 50,000–62,000
+Striker           | 80,000         | 62,000–78,000
+
+--------------------------------------------------------------------------------
+CONTACT
+--------------------------------------------------------------------------------
+
+Head of Recruitment: James Whitfield
+Email: recruitment@northernunitedfc.demo
+Deadline for initial shortlist: 15 June 2025

@@ -1,0 +1,52 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — MIDFIELDER
+================================================================================
+
+Full Name: Miguel Santos
+Position: Central Midfielder (CM) / Defensive Midfielder (CDM)
+Age: 27
+Years of Professional Experience: 7
+Preferred Foot: Right
+
+Current Club: SC Braga B / Gil Vicente (Primeira Liga, Portugal)
+Previous Clubs: Boavista, Varzim SC, Académico de Viseu
+
+Annual Salary Expectation: 60,000 EUR
+Availability: Available from July 2025
+Relocation Willingness: YES — open to England, Scotland, or Benelux
+
+Languages: Portuguese (native), English (fluent), Spanish (fluent)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Miguel Santos is a box-to-box central midfielder who combines defensive
+contribution with progressive vision. He reads the game defensively, wins
+duels, and transitions quickly to play forward when possession is won.
+
+Key Strengths:
+- Defensive contribution: tackles, interceptions, and pressing intensity
+- Vision: progressive passes and switches after winning ball
+- Physical engine: covers large distances per 90 minutes
+- Tactical intelligence: understands when to sit vs when to step
+- Experience in multiple Portuguese league tiers
+
+Technical Attributes:
+- Ball recoveries: 8.1 per 90
+- Progressive passes: 5.2 per 90
+- Duels won: 58%
+
+Tactical Fit:
+Versatile midfielder for 4-3-3 or 4-2-3-1. Can play as six, eight, or part of
+double pivot. Balances defensive solidity with ability to contribute in attack.
+Well suited to high-pressing systems requiring midfielders to press in packs.
+
+Career Highlights:
+- 180+ professional appearances in Portugal
+- Integral to Gil Vicente mid-table stability (2022–25)
+- Primeira Liga experience across three clubs
+
+References available upon request.

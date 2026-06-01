@@ -1,0 +1,52 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — FORWARD
+================================================================================
+
+Full Name: Tomer Levi
+Position: Striker (ST) / Second Striker (SS)
+Age: 24
+Years of Professional Experience: 5
+Preferred Foot: Right
+
+Current Club: Maccabi Haifa (Israeli Premier League)
+Previous Clubs: Hapoel Tel Aviv, Maccabi Petah Tikva
+
+Annual Salary Expectation: 70,000 EUR
+Availability: Available from July 2025
+Relocation Willingness: YES — open to northern England
+
+Languages: Hebrew (native), English (conversational)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Tomer Levi is a modern pressing forward who combines intelligent movement off
+the ball with clinical finishing in the box. He initiates the press from the
+front and makes well-timed runs into channels and behind the defensive line.
+
+Key Strengths:
+- Pressing: initiates gegenpress triggers; closes down centre-backs aggressively
+- Movement: runs in behind, drops to link, and attacks half-spaces
+- Finishing: composed in 1v1 with goalkeeper; both feet capable
+- Work rate: tracks back and supports midfield press
+- Aerial ability: adequate for target situations despite not being primary profile
+
+Technical Attributes:
+- Goals per 90: 0.48 (2024/25)
+- Pressures in attacking third: 12.4 per 90
+- Shots on target percentage: 42%
+
+Tactical Fit:
+Ideal for high-pressing systems requiring striker to be first defensive line.
+Thrives with creative midfielders supplying through balls. Can play alone or
+in partnership with deeper forward or wide forwards.
+
+Career Highlights:
+- 16 league goals in 2023/24
+- Top scorer nominee Israeli Premier League (2024)
+- Israel U21 (18 caps, 9 goals)
+
+References available upon request.

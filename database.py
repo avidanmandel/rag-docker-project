@@ -35,6 +35,11 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r[1] == column for r in rows)
+
+
 def init_db() -> None:
     conn = get_connection()
     with conn:
@@ -48,6 +53,10 @@ def init_db() -> None:
             )
             """
         )
+        if not _column_exists(conn, "sessions", "bedrock_session_id"):
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN bedrock_session_id TEXT"
+            )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -75,17 +84,23 @@ def create_session(title: str = "New conversation") -> dict:
     conn = get_connection()
     with conn:
         conn.execute(
-            "INSERT INTO sessions (id, title, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO sessions (id, title, created_at, updated_at, bedrock_session_id) "
+            "VALUES (?, ?, ?, ?, NULL)",
             (session_id, title, now, now),
         )
-    return {"id": session_id, "title": title, "created_at": now, "updated_at": now}
+    return {
+        "id": session_id,
+        "title": title,
+        "created_at": now,
+        "updated_at": now,
+        "bedrock_session_id": None,
+    }
 
 
 def list_sessions() -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, title, created_at, updated_at "
+        "SELECT id, title, created_at, updated_at, bedrock_session_id "
         "FROM sessions ORDER BY updated_at DESC"
     ).fetchall()
     return [dict(row) for row in rows]
@@ -94,10 +109,20 @@ def list_sessions() -> list[dict]:
 def get_session(session_id: str) -> dict | None:
     conn = get_connection()
     row = conn.execute(
-        "SELECT id, title, created_at, updated_at FROM sessions WHERE id = ?",
+        "SELECT id, title, created_at, updated_at, bedrock_session_id "
+        "FROM sessions WHERE id = ?",
         (session_id,),
     ).fetchone()
     return dict(row) if row else None
+
+
+def update_bedrock_session_id(session_id: str, bedrock_session_id: str | None) -> None:
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "UPDATE sessions SET bedrock_session_id = ?, updated_at = ? WHERE id = ?",
+            (bedrock_session_id, _utcnow_iso(), session_id),
+        )
 
 
 def update_session_title(session_id: str, title: str) -> None:
@@ -135,12 +160,24 @@ def add_message(
     role: str,
     content: str,
     context: list | None = None,
+    *,
+    refused: bool | None = None,
+    reason: str | None = None,
+    generation_mode: str | None = None,
+    main_source: dict | None = None,
 ) -> dict:
     if role not in ("user", "assistant"):
         raise ValueError(f"Invalid role: {role}")
 
     now = _utcnow_iso()
-    context_json = json.dumps(context) if context is not None else None
+    meta = {
+        "context": context,
+        "refused": refused,
+        "reason": reason,
+        "generation_mode": generation_mode,
+        "main_source": main_source,
+    }
+    context_json = json.dumps(meta) if any(v is not None for v in meta.values()) else None
 
     conn = get_connection()
     with conn:
@@ -160,6 +197,10 @@ def add_message(
         "role": role,
         "content": content,
         "context": context,
+        "refused": refused,
+        "reason": reason,
+        "generation_mode": generation_mode,
+        "main_source": main_source,
         "created_at": now,
     }
 
@@ -176,7 +217,23 @@ def get_messages(session_id: str) -> list[dict]:
     for row in rows:
         item = dict(row)
         ctx_raw = item.pop("context_json", None)
-        item["context"] = json.loads(ctx_raw) if ctx_raw else None
+        if ctx_raw:
+            try:
+                parsed = json.loads(ctx_raw)
+            except json.JSONDecodeError:
+                parsed = ctx_raw
+            if isinstance(parsed, dict) and "context" in parsed:
+                item["context"] = parsed.get("context")
+                item["refused"] = parsed.get("refused")
+                item["reason"] = parsed.get("reason")
+                item["generation_mode"] = parsed.get("generation_mode")
+                item["main_source"] = parsed.get("main_source")
+            elif isinstance(parsed, list):
+                item["context"] = parsed
+            else:
+                item["context"] = None
+        else:
+            item["context"] = None
         messages.append(item)
     return messages
 

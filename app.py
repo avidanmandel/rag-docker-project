@@ -1,16 +1,13 @@
 """
-Flask web app exposing the RAG course assistant.
+ScoutMatch AI — Flask web app for football player recruitment RAG.
 
-Two halves:
-- HTML page at ``/`` rendering the chat UI
-- JSON API under ``/api/...`` for status, sessions, and messages
-
-The RAG engine is initialised in a background thread so the UI can render
-immediately and poll ``/api/status`` for progress.
+Production mode uses Amazon Bedrock Knowledge Base + S3.
+Local FAISS mode remains available for development (RAG_BACKEND=local).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -20,29 +17,62 @@ import uuid
 
 from pathlib import Path
 
-from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-# Load environment variables from the local .env file before anything else
-# touches os.environ. The .env file is never baked into the Docker image
-# (see .dockerignore) and is supplied at runtime via `--env-file .env`.
-load_dotenv()
+# config loads .env with override=True before reading any settings.
+import config  # noqa: E402
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-import config  # noqa: E402  (must be imported after load_dotenv)
+GEMINI_API_KEY = config.GEMINI_API_KEY
+HF_TOKEN = config.HF_TOKEN
 import database  # noqa: E402
 from rag_engine import RAGEngine  # noqa: E402
+from aws_kb_engine import AWS_KB_MODE_MSG, AWSKnowledgeBaseEngine  # noqa: E402
+from aws_storage_service import (  # noqa: E402
+    UploadValidationError,
+    aws_storage,
+    deduplicate_documents_for_display,
+)
 from image_extract import (  # noqa: E402
     GeminiVisionError,
     is_quota_exhausted,
 )
 
 
+def _is_aws_kb_mode() -> bool:
+    return config.RAG_BACKEND == "aws_kb"
+
+
+def _create_engine():
+    if config.RAG_BACKEND == "aws_kb":
+        return AWSKnowledgeBaseEngine()
+    return RAGEngine(gemini_api_key=GEMINI_API_KEY, hf_token=HF_TOKEN)
+
+
+def _parse_json_request() -> dict:
+    payload = request.get_json(silent=True)
+    if payload is not None:
+        return payload
+
+    raw_body = request.get_data(cache=True)
+    if not raw_body:
+        return {}
+
+    for encoding in ("utf-8", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            decoded = raw_body.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        try:
+            return json.loads(decoded)
+        except (ValueError, json.JSONDecodeError):
+            continue
+
+    return {}
+
+
 app = Flask(__name__)
-engine = RAGEngine(gemini_api_key=GEMINI_API_KEY, hf_token=HF_TOKEN)
+engine = _create_engine()
 _init_error: dict | None = None
 
 
@@ -98,6 +128,14 @@ def _friendly_error(exc: Exception) -> dict:
 def _initialise_engine_background() -> None:
     global _init_error
 
+    if _is_aws_kb_mode():
+        try:
+            engine.initialise()
+        except Exception as exc:
+            _init_error = _friendly_error(exc)
+            traceback.print_exc()
+        return
+
     if not GEMINI_API_KEY or not HF_TOKEN:
         _init_error = {
             "message": (
@@ -139,16 +177,18 @@ def _reindex_engine_background() -> None:
 STARTER_KB_FILES = config.STARTER_KB_FILES
 SAMPLE_FIXTURE_PDF = "upload_test_knowledge_base.pdf"
 
-DOC_UPLOAD_EXTENSIONS = {".pdf", ".txt"}
-IMAGE_UPLOAD_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+DOC_UPLOAD_EXTENSIONS = set(config.DOC_UPLOAD_EXTENSIONS)
+IMAGE_UPLOAD_EXTENSIONS = set(config.IMAGE_UPLOAD_EXTENSIONS)
 IMAGE_MIME_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
 }
-UPLOAD_ALLOWED_EXTENSIONS = DOC_UPLOAD_EXTENSIONS | IMAGE_UPLOAD_EXTENSIONS
-UPLOAD_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+UPLOAD_ALLOWED_EXTENSIONS = set(DOC_UPLOAD_EXTENSIONS)
+if config.ENABLE_IMAGE_UPLOADS:
+    UPLOAD_ALLOWED_EXTENSIONS |= IMAGE_UPLOAD_EXTENSIONS
+UPLOAD_MAX_BYTES = config.MAX_UPLOAD_BYTES
 
 
 def _sync_sample_fixture_into_archive() -> None:
@@ -232,14 +272,44 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    return jsonify({
-        "ready": engine.ready,
+    if _is_aws_kb_mode():
+        sources: list[str] = []
+    else:
+        sources = sorted({c.source for c in engine.chunks}) if engine.chunks else []
+    aws_missing = config.validate_aws_config() if _is_aws_kb_mode() else []
+    payload: dict = {
+        "ready": engine.ready and not aws_missing,
         "status": engine.status,
+        "rag_backend": config.RAG_BACKEND,
+        "engine_class": type(engine).__name__,
         "chunks": len(engine.chunks),
-        "sources": sorted({c.source for c in engine.chunks}) if engine.chunks else [],
+        "sources": sources,
         "progress": engine.progress,
         "error": _init_error,
-    })
+        "app_name": "ScoutMatch AI",
+        "strict_rag": True,
+        "aws_mode": _is_aws_kb_mode(),
+    }
+    if _is_aws_kb_mode():
+        bucket = (config.AWS_S3_BUCKET or "").strip()
+        prefix = config.normalised_s3_prefix()
+        payload["knowledge_source"] = "bedrock_knowledge_base_s3"
+        payload["aws_region"] = config.AWS_REGION
+        payload["knowledge_base_configured"] = not aws_missing
+        payload["aws_s3_prefix"] = prefix
+        payload["strict_rag_mode"] = "grounded_documents_only"
+        if aws_missing:
+            payload["config_missing"] = aws_missing
+        if bucket:
+            payload["aws_s3_bucket"] = bucket
+            payload["expected_s3_uri_prefix"] = f"s3://{bucket}/{prefix}"
+        ingestion = aws_storage.latest_ingestion_snapshot()
+        if ingestion:
+            payload["latest_ingestion"] = {
+                "ingestion_job_id": ingestion.get("ingestion_job_id"),
+                "status": ingestion.get("status"),
+            }
+    return jsonify(payload)
 
 
 @app.route("/api/health")
@@ -311,7 +381,22 @@ def api_debug_document_text():
 
 @app.route("/api/documents", methods=["GET"])
 def api_list_documents():
-    """Return user-visible KB rows (hide internal ``generated/*.extracted.txt`` listing)."""
+    """Return indexed documents (S3 in AWS mode, local data/ otherwise)."""
+    if _is_aws_kb_mode():
+        try:
+            raw_docs = aws_storage.list_documents()
+            docs, raw_object_count = deduplicate_documents_for_display(raw_docs)
+            ingestion = aws_storage.latest_ingestion_snapshot()
+            if ingestion:
+                for doc in docs:
+                    doc["ingestion_status"] = ingestion.get("status")
+            return jsonify({
+                "documents": docs,
+                "raw_object_count": raw_object_count,
+            })
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc), "documents": []}), 503
+
     files: list[dict] = []
     try:
         root = config.DATA_DIR
@@ -384,9 +469,24 @@ def api_list_documents():
     return jsonify({"documents": files})
 
 
+@app.route("/api/ingestion/status")
+def api_ingestion_status():
+    """Return latest Bedrock Knowledge Base ingestion job status."""
+    if not _is_aws_kb_mode():
+        return jsonify({"error": "Ingestion status is only available in AWS mode."}), 400
+    job_id = (request.args.get("job_id") or "").strip() or None
+    status = aws_storage.get_ingestion_status(job_id)
+    if not status:
+        return jsonify({"status": "NONE", "message": "No ingestion job has been started."})
+    return jsonify(status)
+
+
 @app.route("/api/documents/upload", methods=["POST"])
 def api_upload_document():
-    """Upload PDF/TXT to ``data/`` or images → Gemini Vision → ``generated/*.extracted.txt``."""
+    """Upload ScoutMatch documents to S3 (AWS) or local data/ (development)."""
+    if _is_aws_kb_mode():
+        return _api_upload_document_aws()
+
     if "file" not in request.files:
         return jsonify({"error": "No file part in the request."}), 400
 
@@ -593,12 +693,67 @@ def api_upload_document():
     }), 201
 
 
+def _api_upload_document_aws():
+    """Upload to S3 under ScoutMatch prefix and start KB ingestion."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file part in the request."}), 400
+
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "No file selected."}), 400
+
+    raw = f.read()
+    filename = f.filename
+    ext = os.path.splitext(filename)[1].lower()
+
+    try:
+        if ext == ".json":
+            raw, filename = aws_storage.normalise_json_to_txt(raw, filename)
+
+        safe, ext = aws_storage.validate_upload(filename, len(raw))
+        subfolder = (request.form.get("category") or "").strip() or None
+        upload_result = aws_storage.upload_bytes(
+            raw,
+            safe,
+            content_type=f.content_type,
+            subfolder=subfolder,
+        )
+        ingestion = aws_storage.start_ingestion_job()
+    except UploadValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 503
+
+    return jsonify({
+        "ok": True,
+        "filename": upload_result["filename"],
+        "key": upload_result["key"],
+        "s3_uri": upload_result["s3_uri"],
+        "size": upload_result["size"],
+        "ingestion_job_id": ingestion.get("ingestion_job_id"),
+        "ingestion_status": ingestion.get("status"),
+        "message": (
+            "Uploading CV to Amazon S3 completed. "
+            "Updating the ScoutMatch knowledge base..."
+        ),
+    }), 201
+
+
 @app.route("/api/reset-all", methods=["POST"])
 def api_reset_all():
     """Destructive wipe: clears SQLite chats + uploads except starter PDFs."""
     global _init_error
 
-    payload = request.get_json(silent=True) or {}
+    if _is_aws_kb_mode():
+        return jsonify({
+            "error": (
+                "Reset Project is disabled in AWS production mode. "
+                "Player documents remain in S3; delete objects manually in AWS Console if needed."
+            ),
+        }), 403
+
+    payload = _parse_json_request()
     if not payload.get("confirm"):
         return jsonify({"error": 'Send JSON {"confirm": true} to proceed.'}), 400
 
@@ -633,6 +788,14 @@ def api_reset_session_uploads():
     """Drop conversation-scoped uploads; rebuild index from starter ``data/`` files."""
     global _init_error
 
+    if _is_aws_kb_mode():
+        return jsonify({
+            "error": (
+                "Session upload reset is disabled in AWS mode. "
+                "S3 documents are shared across all conversations."
+            ),
+        }), 403
+
     if not GEMINI_API_KEY or not HF_TOKEN:
         return jsonify({"error": "API keys missing; cannot rebuild the index."}), 503
 
@@ -661,7 +824,7 @@ def api_list_sessions():
 
 @app.route("/api/sessions", methods=["POST"])
 def api_create_session():
-    payload = request.get_json(silent=True) or {}
+    payload = _parse_json_request()
     title = (payload.get("title") or "New conversation").strip() or "New conversation"
     session = database.create_session(title=title)
     return jsonify(session), 201
@@ -680,7 +843,7 @@ def api_get_session(session_id):
 def api_update_session(session_id):
     if not database.get_session(session_id):
         return jsonify({"error": "Session not found"}), 404
-    payload = request.get_json(silent=True) or {}
+    payload = _parse_json_request()
     title = (payload.get("title") or "").strip()
     if not title:
         return jsonify({"error": "title is required"}), 400
@@ -717,7 +880,7 @@ def api_send_message(session_id):
     if not session:
         return jsonify({"error": "Session not found"}), 404
 
-    payload = request.get_json(silent=True) or {}
+    payload = _parse_json_request()
     question = (payload.get("content") or "").strip()
     if not question:
         return jsonify({"error": "content is required"}), 400
@@ -725,8 +888,13 @@ def api_send_message(session_id):
     history = database.get_history_for_llm(session_id, limit=20)
     user_msg = database.add_message(session_id, "user", question)
 
+    answer_kwargs: dict = {"question": question, "history": history}
+    if _is_aws_kb_mode():
+        answer_kwargs["app_session_id"] = session_id
+        answer_kwargs["bedrock_session_id"] = session.get("bedrock_session_id")
+
     try:
-        result = engine.answer(question=question, history=history)
+        result = engine.answer(**answer_kwargs)
     except Exception:
         traceback.print_exc()
         return jsonify({
@@ -745,7 +913,16 @@ def api_send_message(session_id):
         "assistant",
         result["answer"],
         context=result["context"],
+        refused=result.get("refused", False),
+        reason=result.get("reason"),
+        generation_mode=result.get("generation_mode"),
+        main_source=result.get("main_source"),
     )
+
+    if _is_aws_kb_mode() and result.get("bedrock_session_id"):
+        database.update_bedrock_session_id(
+            session_id, result["bedrock_session_id"]
+        )
 
     if session["title"] == "New conversation":
         new_title = question[:60] + ("..." if len(question) > 60 else "")
@@ -755,6 +932,10 @@ def api_send_message(session_id):
         "user_message": user_msg,
         "assistant_message": assistant_msg,
         "refused": result.get("refused", False),
+        "reason": result.get("reason"),
+        "sources": result.get("context") or [],
+        "main_source": result.get("main_source"),
+        "generation_mode": result.get("generation_mode"),
     })
 
 
@@ -766,4 +947,8 @@ _start_background_init()
 
 
 if __name__ == "__main__":
-    app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=config.FLASK_DEBUG)
+    app.run(
+        host=config.FLASK_HOST,
+        port=config.FLASK_PORT,
+        debug=config.FLASK_DEBUG,
+    )

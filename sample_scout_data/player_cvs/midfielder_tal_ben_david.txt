@@ -1,0 +1,52 @@
+This is synthetic demo data created for the ScoutMatch AI course project.
+
+================================================================================
+PLAYER CV — MIDFIELDER
+================================================================================
+
+Full Name: Tal Ben-David
+Position: Central Midfielder (CM) / Attacking Midfielder (CAM)
+Age: 23
+Years of Professional Experience: 4
+Preferred Foot: Left
+
+Current Club: Hapoel Be'er Sheva (Israeli Premier League)
+Previous Clubs: Maccabi Haifa U19, Ironi Kiryat Shmona (loan)
+
+Annual Salary Expectation: 52,000 EUR
+Availability: Available immediately
+Relocation Willingness: YES — eager for development abroad
+
+Languages: Hebrew (native), English (fluent)
+
+--------------------------------------------------------------------------------
+PROFESSIONAL PROFILE
+--------------------------------------------------------------------------------
+
+Tal Ben-David is a creative central midfielder with exceptional vision and
+forward passing ability. He thrives in the final third, finding runners with
+through balls and unlocking compact defences with incisive vertical passes.
+
+Key Strengths:
+- Creativity: high xA (expected assists) relative to minutes played
+- Forward passing: line-breaking passes into attacking third
+- Vision and scanning: identifies runs before they develop
+- Set-piece delivery: corners and free kicks from wide areas
+- Left foot: natural angle for switches and diagonal passes
+
+Technical Attributes:
+- Key passes per 90: 2.8
+- Through balls completed: 1.4 per 90
+- Pass completion in final third: 79%
+
+Tactical Fit:
+Best as advanced eight or number ten in 4-2-3-1 or as interior in 4-3-3.
+Requires defensive cover from deeper midfield partner. Excels when team dominates
+possession and creates overloads in half-spaces.
+
+Career Highlights:
+- 11 assists in 2024/25 season (ongoing)
+- Israel U21 international (12 caps, 3 goals)
+- Breakthrough season at Hapoel Be'er Sheva (2023/24)
+
+References available upon request.

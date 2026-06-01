@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Course Assistant - Flask, Docker & AWS</title>
+    <title>ScoutMatch AI — Football Recruitment Assistant</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,10 +17,16 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar__header">
                 <div class="brand">
-                    <div class="brand__mark">C</div>
+                    <div class="brand__mark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                            <path d="M2 12h20"></path>
+                        </svg>
+                    </div>
                     <div class="brand__text">
-                        <div class="brand__title">Course Assistant</div>
-                        <div class="brand__subtitle">Flask &middot; Docker &middot; AWS</div>
+                        <div class="brand__title">ScoutMatch AI</div>
+                        <div class="brand__subtitle">Football Recruitment</div>
                     </div>
                 </div>
                 <button class="icon-btn" id="newChatBtn" title="New conversation">
@@ -41,20 +47,26 @@
                 New conversation
             </button>
 
+            <div class="sidebar__badges" id="modeBadges">
+                <span class="badge badge--aws" id="awsBadge" hidden>AWS Bedrock KB connected</span>
+                <span class="badge badge--strict">Grounded answers only</span>
+            </div>
+
             <div class="sidebar__kb">
                 <div class="sidebar__label sidebar__label--row">
-                    <span>Knowledge Base</span>
-                    <button type="button" class="upload-btn" id="uploadBtn" title="Upload PDF or TXT">
-                        Upload
+                    <span>Player Documents</span>
+                    <button type="button" class="upload-btn" id="uploadBtn" title="Upload CV or scouting report">
+                        Upload CV
                     </button>
                     <input
                         type="file"
                         id="uploadInput"
-                        accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
+                        accept=".txt,.md,.html,.pdf,.doc,.docx,.csv,.xls,.xlsx"
                         hidden
                     />
                 </div>
                 <div class="upload-card__status" id="uploadStatus" hidden></div>
+                <div class="sync-status" id="syncStatus" hidden></div>
                 <div class="document-list" id="documentList"></div>
             </div>
 
@@ -64,7 +76,7 @@
             <div class="sidebar__footer">
                 <div class="status" id="engineStatus">
                     <span class="status__dot" data-state="loading"></span>
-                    <span class="status__text">Starting engine...</span>
+                    <span class="status__text">Starting ScoutMatch...</span>
                 </div>
                 <button type="button" class="reset-project" id="resetProjectBtn">
                     Clear All / Reset Project
@@ -108,36 +120,66 @@
             </header>
 
             <section class="messages" id="messages">
-                <div class="empty-state" id="emptyState">
-                    <div class="empty-state__icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                        </svg>
+                <div class="home-hero">
+                    <div class="stadium-lights" aria-hidden="true">
+                        <span></span>
+                        <span></span>
                     </div>
-                    <h2>Ask anything about your knowledge base</h2>
-                    <p>
-                        I answer only using the documents in the Knowledge Base, including
-                        Flask lectures, Docker &amp; AWS notes, and the Risk Analysis Report.
-                        Try one of these to get started:
-                    </p>
-                    <div class="suggestions" id="suggestions">
-                        <button class="suggestion" data-q="What is Flask and what is it used for?">
-                            What is Flask?
-                        </button>
-                        <button class="suggestion" data-q="What is Docker?">
-                            What is Docker?
-                        </button>
-                        <button class="suggestion" data-q="Who is the owner of the Risk Analysis Report?">
-                            Who is the owner of the Risk Analysis Report?
-                        </button>
-                        <button class="suggestion" data-q="What is the capital of France?">
-                            What is the capital of France?
-                        </button>
-                        <button class="suggestion" data-q="How do I define a route in Flask?">
-                            How do I define a route?
-                        </button>
+                    <div class="crowd-ribbon" aria-hidden="true"></div>
+                    <div class="hero-left">
+                        <div class="empty-state" id="emptyState">
+                            <div class="hero-kicker">
+                                <span class="hero-kicker__dot"></span>
+                                Elite scouting workspace
+                            </div>
+                            <div class="hero-copy">
+                                <h2 class="hero-copy__headline">Scout smarter. Sign better.</h2>
+                                <p class="hero-copy__sub">ScoutMatch AI turns player CVs and scouting reports into grounded football recruitment decisions.</p>
+                            </div>
+                            <div class="scouting-status-strip" aria-hidden="true">
+                                <div class="scouting-status-tile">
+                                    <span class="scouting-status-tile__icon scouting-status-tile__icon--docs"></span>
+                                    <span>Grounded club documents</span>
+                                </div>
+                                <div class="scouting-status-tile">
+                                    <span class="scouting-status-tile__icon scouting-status-tile__icon--kb"></span>
+                                    <span>AWS Bedrock KB connected</span>
+                                </div>
+                                <div class="scouting-status-tile">
+                                    <span class="scouting-status-tile__icon scouting-status-tile__icon--ready"></span>
+                                    <span>Recruitment analysis ready</span>
+                                </div>
+                            </div>
+                            <p class="empty-state__notice">ScoutMatch AI answers only from uploaded club documents.</p>
+                            <div class="suggestions" id="suggestions">
+                                <button class="suggestion" data-q="Find a goalkeeper for build-up play">
+                                    Find a goalkeeper for build-up play
+                                </button>
+                                <button class="suggestion" data-q="Compare the most suitable defenders">
+                                    Compare the most suitable defenders
+                                </button>
+                                <button class="suggestion" data-q="Which midfielder performs well under pressure?">
+                                    Which midfielder performs well under pressure?
+                                </button>
+                                <button class="suggestion" data-q="Show candidates willing to relocate">
+                                    Show candidates willing to relocate
+                                </button>
+                            </div>
+                            <div class="workspace-panel" aria-hidden="true">
+                                <div class="workspace-panel__title">Scouting workspace</div>
+                                <div class="workspace-panel__items">
+                                    <span>Candidate comparison</span>
+                                    <span>Squad fit analysis</span>
+                                    <span>Grounded recruitment decisions</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hero-right" aria-hidden="true">
+                        <div class="dashboard-stage">
+                            <img class="dashboard-stage__panel-img" src="{{ url_for('static', filename='images/home-dashboard-art.png') }}" alt="" />
+                        </div>
                     </div>
                 </div>
             </section>
@@ -147,7 +189,7 @@
                     <textarea
                         id="chatInput"
                         class="composer__input"
-                        placeholder="Ask a question about Flask, Docker, or AWS..."
+                        placeholder="Ask about players, positions, salary, or squad fit..."
                         rows="1"
                         disabled
                     ></textarea>
