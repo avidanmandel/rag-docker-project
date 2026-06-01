@@ -498,12 +498,28 @@ kbd {
     content: "";
     position: absolute;
     inset: 0;
-    background:
-        linear-gradient(180deg, rgba(7, 12, 24, 0.92) 0%, rgba(7, 12, 24, 0.88) 100%),
-        url("/static/images/home-dashboard-art.png") center center / cover no-repeat;
-    opacity: 0.22;
     pointer-events: none;
     z-index: 0;
+    opacity: 0.18;
+    background:
+        url("/static/images/home-dashboard-art.png")
+        right -24px center / min(52%, 760px) no-repeat;
+}
+
+.messages--has-chat::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        linear-gradient(
+            to right,
+            rgba(7, 12, 24, 0.96) 0%,
+            rgba(7, 12, 24, 0.86) 40%,
+            rgba(7, 12, 24, 0.58) 68%,
+            rgba(7, 12, 24, 0.34) 100%
+        );
 }
 
 .messages--has-chat .messages__inner {
@@ -513,8 +529,18 @@ kbd {
 
 @media (max-width: 900px) {
     .messages--has-chat::before {
-        opacity: 0.14;
-        background-size: cover;
+        opacity: 0.15;
+        background-size: min(72%, 520px);
+        background-position: right center;
+    }
+
+    .messages--has-chat::after {
+        background: linear-gradient(
+            to right,
+            rgba(7, 12, 24, 0.94) 0%,
+            rgba(7, 12, 24, 0.78) 55%,
+            rgba(7, 12, 24, 0.48) 100%
+        );
     }
 }
 
@@ -3534,10 +3560,10 @@ kbd {
 }
 
 .messages.messages--has-chat::before {
-    opacity: 0.36;
+    opacity: 0.20;
     background:
-        linear-gradient(180deg, rgba(7, 12, 24, 0.88) 0%, rgba(7, 12, 24, 0.82) 100%),
-        url("/static/images/home-dashboard-art.png") center right / min(58%, 760px) no-repeat;
+        url("/static/images/home-dashboard-art.png")
+        right -24px center / min(52%, 760px) no-repeat;
 }
 
 .messages.messages--has-chat::after {
@@ -3547,8 +3573,14 @@ kbd {
     pointer-events: none;
     z-index: 0;
     background:
-        radial-gradient(ellipse at 88% 42%, rgba(34, 197, 94, 0.12), transparent 42%),
-        radial-gradient(ellipse at 12% 18%, rgba(59, 130, 246, 0.08), transparent 36%);
+        linear-gradient(
+            to right,
+            rgba(7, 12, 24, 0.96) 0%,
+            rgba(7, 12, 24, 0.86) 40%,
+            rgba(7, 12, 24, 0.58) 68%,
+            rgba(7, 12, 24, 0.34) 100%
+        ),
+        radial-gradient(ellipse at 88% 42%, rgba(34, 197, 94, 0.10), transparent 44%);
 }
 
 @media (max-width: 1100px) {
@@ -3569,8 +3601,17 @@ kbd {
 
 @media (max-width: 720px) {
     .messages.messages--has-chat::before {
-        opacity: 0.28;
-        background-size: cover;
-        background-position: center;
+        opacity: 0.16;
+        background-size: min(78%, 480px);
+        background-position: right center;
+    }
+
+    .messages.messages--has-chat::after {
+        background: linear-gradient(
+            to right,
+            rgba(7, 12, 24, 0.94) 0%,
+            rgba(7, 12, 24, 0.76) 58%,
+            rgba(7, 12, 24, 0.46) 100%
+        );
     }
 }

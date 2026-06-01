@@ -50,6 +50,10 @@ from aws_kb_engine import (  # noqa: E402
     _is_question_in_scoutmatch_domain,
     _extract_named_player_from_profile_question,
     _expand_named_player_retrieval_query,
+    _build_retrieval_queries,
+    _contains_hebrew,
+    _english_player_name,
+    _normalize_hebrew_profile_question_to_english,
     _language_instruction_for_question,
     _select_complete_diverse_context_chunks,
     _select_diverse_context_chunks,
@@ -1739,6 +1743,18 @@ class UISmokeTests(unittest.TestCase):
         self.assertIn("dashboard-stage__panel-img", html)
         self.assertIn("messages--landing", css)
         self.assertIn("home-dashboard-art.png", css)
+        self.assertIn("messages--has-chat::before", css)
+        self.assertIn("messages--has-chat::after", css)
+        self.assertIn("messages__inner", css)
+        self.assertRegex(
+            css,
+            r"messages--has-chat::before[\s\S]*home-dashboard-art\.png",
+        )
+        self.assertRegex(
+            css,
+            r"messages--has-chat::after[\s\S]*linear-gradient\(\s*to right",
+        )
+        self.assertRegex(css, r"messages--has-chat \.messages__inner[\s\S]*z-index:\s*1")
 
     def test_health_and_status(self):
         import app as flask_app
@@ -2664,6 +2680,153 @@ class NamedPlayerProfileTests(unittest.TestCase):
             f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/other-session/or_david.txt"
         )
         self.assertFalse(_is_allowed_session_source(other_uri, TEST_SESSION_ID))
+
+
+class HebrewPlayerProfileTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = AWSKnowledgeBaseEngine()
+        _prepare_engine_with_mocks(self.engine)
+
+    def _or_david_uri(self) -> str:
+        return (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+            "forward_or_david.txt"
+        )
+
+    def _luca_uri(self) -> str:
+        return (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+            "midfielder_luca_romano.txt"
+        )
+
+    def test_hebrew_who_is_or_david_extracts_name(self):
+        self.assertEqual(
+            _extract_named_player_from_profile_question("מי זה אור דוד?"),
+            "אור דוד",
+        )
+
+    def test_hebrew_who_he_is_or_david_extracts_name(self):
+        self.assertEqual(
+            _extract_named_player_from_profile_question("מי הוא אור דוד?"),
+            "אור דוד",
+        )
+
+    def test_hebrew_tell_me_about_or_david_extracts_name(self):
+        self.assertEqual(
+            _extract_named_player_from_profile_question("ספר לי על אור דוד"),
+            "אור דוד",
+        )
+
+    def test_hebrew_position_question_extracts_name(self):
+        self.assertEqual(
+            _extract_named_player_from_profile_question("מה התפקיד של אור דוד?"),
+            "אור דוד",
+        )
+
+    def test_hebrew_luca_romano_extracts_name(self):
+        self.assertEqual(
+            _extract_named_player_from_profile_question("מי זה לוקה רומאנו?"),
+            "לוקה רומאנו",
+        )
+
+    def test_hebrew_normalization_to_english(self):
+        self.assertEqual(
+            _normalize_hebrew_profile_question_to_english("מי זה אור דוד?"),
+            "Who is Or David?",
+        )
+        self.assertEqual(
+            _normalize_hebrew_profile_question_to_english("מה התפקיד של אור דוד?"),
+            "What is Or David's position?",
+        )
+
+    def test_hebrew_retrieval_queries_include_english_expansion(self):
+        queries = _build_retrieval_queries("מי זה אור דוד?", "אור דוד")
+        joined = " | ".join(queries).lower()
+        self.assertIn("who is or david", joined)
+        self.assertIn("player profile", joined)
+        self.assertIn("or_david", joined)
+
+    def test_hebrew_or_david_returns_grounded_profile(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.95,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "אור דוד הוא חלוץ בן 26 שמשחק בבית\"ר ירושלים עם 6 שנות ניסיון מקצועי."
+        )
+        result = self.engine.answer("מי זה אור דוד?")
+        self.assertFalse(result["refused"])
+        self.assertIn("אור דוד", result["answer"])
+        self.assertTrue(result["context"])
+        prompt = self.engine._bedrock_client.converse.call_args.kwargs["system"][0]["text"]
+        self.assertIn("Hebrew", prompt)
+
+    def test_hebrew_position_question_returns_grounded_profile(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.94,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "לפי המסמכים, התפקיד של אור דוד הוא חלוץ (ST)."
+        )
+        result = self.engine.answer("מה התפקיד של אור דוד?")
+        self.assertFalse(result["refused"])
+        self.assertIn("אור דוד", result["answer"])
+
+    def test_hebrew_luca_romano_returns_grounded_profile(self):
+        luca_profile = (
+            "Full Name: Luca Romano\n"
+            "Position: Attacking Midfielder (AM)\n"
+            "Age: 24\n"
+            "Current Club: Maccabi Haifa\n"
+        )
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            luca_profile,
+            uri=self._luca_uri(),
+            score=0.93,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "לוקה רומאנו הוא קשר התקפי בן 24 שמשחק במכבי חיפה."
+        )
+        result = self.engine.answer("מי זה לוקה רומאנו?")
+        self.assertFalse(result["refused"])
+        self.assertIn("לוקה רומאנו", result["answer"])
+
+    def test_english_equivalent_still_works(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.95,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "Or David is a 26-year-old striker who plays for Beitar Jerusalem."
+        )
+        result = self.engine.answer("Who is Or David?")
+        self.assertFalse(result["refused"])
+        self.assertIn("Or David", result["answer"])
+        prompt = self.engine._bedrock_client.converse.call_args.kwargs["system"][0]["text"]
+        self.assertIn("English", prompt)
+
+    def test_unknown_hebrew_player_refuses(self):
+        self.engine._runtime_client.retrieve.return_value = {"retrievalResults": []}
+        result = self.engine.answer("מי זה אלכס מוריס?")
+        self.assertTrue(result["refused"])
+        self.assertIn("אין", result["answer"])
+
+    def test_hebrew_out_of_domain_refuses(self):
+        result = self.engine.answer("מהי בירת צרפת?")
+        self.assertTrue(result["refused"])
+        self.assertEqual(result["reason"], "out_of_domain")
+
+    def test_hebrew_answer_language_instruction(self):
+        instruction = _language_instruction_for_question("מי זה אור דוד?")
+        self.assertIn("Hebrew", instruction)
+
+    def test_english_player_name_mapping(self):
+        self.assertEqual(_english_player_name("אור דוד"), "Or David")
+        self.assertEqual(_english_player_name("לוקה רומאנו"), "Luca Romano")
 
 
 if __name__ == "__main__":

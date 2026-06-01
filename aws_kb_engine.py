@@ -100,6 +100,39 @@ _NAME_RETRY_INSTRUCTION = (
 
 _PLAYER_NAME_VARIANTS = PLAYER_NAME_VARIANTS
 
+_HEBREW_PLAYER_NAME_OVERRIDES: dict[str, str] = {
+    "אור דוד": "Or David",
+    "לוקה רומאנו": "Luca Romano",
+    "עמית לוי": "Amit Levy",
+}
+
+
+def _build_hebrew_to_english_player_names() -> dict[str, str]:
+    mapping = dict(_HEBREW_PLAYER_NAME_OVERRIDES)
+    for english, variants in _PLAYER_NAME_VARIANTS.items():
+        english_title = " ".join(part.capitalize() for part in english.split())
+        for variant in variants:
+            mapping[variant] = english_title
+    return mapping
+
+
+_HEBREW_TO_ENGLISH_PLAYER_NAMES = _build_hebrew_to_english_player_names()
+
+_PROFILE_NAME_BLOCKLIST = frozenset({
+    "player",
+    "candidate",
+    "unknown player",
+    "שחקן",
+    "מועמד",
+    "שחקן שלא קיים",
+    "שחקן לא קיים",
+})
+
+_PLAYER_NAME_CAPTURE = (
+    r"[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*"
+    r"(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3}"
+)
+
 _OUT_OF_DOMAIN_ENTITIES = (
     "donald trump",
     "דונלד טראמפ",
@@ -187,6 +220,10 @@ _FOOTBALL_HISTORY_MARKERS = (
     "משחק רגל",
     "football",
 )
+
+
+def _contains_hebrew(text: str) -> bool:
+    return bool(_HEBREW_RE.search(text or ""))
 
 
 def _refusal_text(question: str) -> str:
@@ -418,16 +455,134 @@ _NAMED_PLAYER_PROFILE_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"^\s*(?:give\s+me\s+)?(?:a\s+)?summary\s+of\s+(?P<name>[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3})\s*[?.!]?\s*$",
+        r"^\s*(?:give\s+me\s+)?(?:a\s+)?summary\s+of\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s*[?.!]?\s*$",
         re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*what\s+is\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")(?:'s|s)?\s+position\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*which\s+team\s+does\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s+play\s+for\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*מי\s+(?:זה|הוא)\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s*[?.!]?\s*$",
+    ),
+    re.compile(
+        r"^\s*ספר\s+לי\s+על\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s*[?.!]?\s*$",
+    ),
+    re.compile(
+        r"^\s*מה\s+אנחנו\s+יודעים\s+על\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s*[?.!]?\s*$",
+    ),
+    re.compile(
+        r"^\s*מה\s+התפקיד\s+של\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s*[?.!]?\s*$",
+    ),
+    re.compile(
+        r"^\s*באיזו\s+קבוצה\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s+משחק\s*[?.!]?\s*$",
     ),
 )
 
 
 def _clean_profile_name(raw: str) -> str:
     name = (raw or "").strip().strip("?.!").strip()
-    name = re.sub(r"^(the|player|candidate)\s+", "", name, flags=re.IGNORECASE)
+    name = re.sub(
+        r"^(the|player|candidate|שחקן|מועמד)\s+",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
     return name.strip()
+
+
+def _is_valid_profile_player_name(name: str) -> bool:
+    cleaned = _clean_profile_name(name)
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    if lowered in _PROFILE_NAME_BLOCKLIST:
+        return False
+    if cleaned in _PROFILE_NAME_BLOCKLIST:
+        return False
+    return 1 <= len(cleaned.split()) <= 4
+
+
+def _english_player_name(name: str) -> str:
+    cleaned = _clean_profile_name(name)
+    if not cleaned:
+        return cleaned
+    if cleaned in _HEBREW_TO_ENGLISH_PLAYER_NAMES:
+        return _HEBREW_TO_ENGLISH_PLAYER_NAMES[cleaned]
+    if _contains_hebrew(cleaned):
+        return cleaned
+    return " ".join(part.capitalize() for part in cleaned.split())
+
+
+def _normalize_hebrew_profile_question_to_english(question: str) -> str | None:
+    player = _extract_named_player_from_profile_question(question)
+    if not player:
+        return None
+    english_name = _english_player_name(player)
+    q = (question or "").strip()
+    if re.match(r"^\s*מי\s+(?:זה|הוא)\s+", q):
+        return f"Who is {english_name}?"
+    if re.match(r"^\s*ספר\s+לי\s+על\s+", q):
+        return f"Tell me about {english_name}."
+    if re.match(r"^\s*מה\s+אנחנו\s+יודעים\s+על\s+", q):
+        return f"What do we know about {english_name}?"
+    if re.match(r"^\s*מה\s+התפקיד\s+של\s+", q):
+        return f"What is {english_name}'s position?"
+    if re.match(r"^\s*באיזו\s+קבוצה\s+", q):
+        return f"Which team does {english_name} play for?"
+    return f"Who is {english_name}?"
+
+
+def _build_retrieval_queries(question: str, profile_player: str | None) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+
+    def add(query: str | None) -> None:
+        cleaned = (query or "").strip()
+        if not cleaned:
+            return
+        key = cleaned.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        queries.append(cleaned)
+
+    english_player = _english_player_name(profile_player) if profile_player else None
+    if profile_player and english_player:
+        add(_expand_named_player_retrieval_query(english_player))
+
+    add(question)
+
+    if _contains_hebrew(question):
+        english_equivalent = _normalize_hebrew_profile_question_to_english(question)
+        if english_equivalent:
+            add(english_equivalent)
+            english_from_equiv = _extract_named_player_from_profile_question(
+                english_equivalent
+            )
+            if english_from_equiv:
+                add(_expand_named_player_retrieval_query(english_from_equiv))
+
+    return queries
+
+
+def _dedupe_retrieved_chunks(chunks: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for chunk in chunks:
+        key = (
+            chunk.get("s3_uri") or chunk.get("source") or "",
+            _normalize_chunk_text(chunk.get("text", ""))[:240],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(chunk)
+    return merged
 
 
 def _extract_named_player_from_profile_question(question: str) -> str | None:
@@ -439,7 +594,7 @@ def _extract_named_player_from_profile_question(question: str) -> str | None:
         if not match:
             continue
         name = _clean_profile_name(match.group("name"))
-        if name and 1 <= len(name.split()) <= 4:
+        if name and _is_valid_profile_player_name(name):
             return name
     return None
 
@@ -1068,6 +1223,24 @@ def select_main_source(
     return max(pool, key=lambda item: float(item.get("score") or -1.0))
 
 
+def _answer_mentions_profile_player(answer: str, profile_player: str) -> bool:
+    if not profile_player:
+        return True
+    candidates = {profile_player, _english_player_name(profile_player)}
+    answer_lower = (answer or "").lower()
+    for name in candidates:
+        tokens = _name_tokens(name)
+        if tokens and all(token in answer_lower for token in tokens):
+            return True
+        if name and name in (answer or ""):
+            return True
+    english_key = _english_player_name(profile_player).lower()
+    for variant in _PLAYER_NAME_VARIANTS.get(english_key, ()):
+        if variant in (answer or ""):
+            return True
+    return False
+
+
 def validate_final_answer(
     question: str,
     answer: str,
@@ -1079,9 +1252,7 @@ def validate_final_answer(
         return False, "numeric_contradiction"
     profile_player = _extract_named_player_from_profile_question(question)
     if profile_player:
-        tokens = _name_tokens(profile_player)
-        answer_lower = answer.lower()
-        if tokens and all(token in answer_lower for token in tokens):
+        if _answer_mentions_profile_player(answer, profile_player):
             return True, None
         return False, "profile_name_missing"
     if _is_recommendation_question(question):
@@ -1219,6 +1390,22 @@ class AWSKnowledgeBaseEngine:
             })
         return results
 
+    def _retrieve_merged(
+        self,
+        queries: list[str],
+        *,
+        session_id: str,
+    ) -> list[dict]:
+        merged: list[dict] = []
+        for query in queries:
+            batch = self.retrieve(
+                query,
+                candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
+                session_id=session_id,
+            )
+            merged.extend(batch)
+        return _dedupe_retrieved_chunks(merged)
+
     def _generate_from_retrieved_context(
         self,
         question: str,
@@ -1328,18 +1515,20 @@ class AWSKnowledgeBaseEngine:
             return _strict_refusal_response(refusal, reason="out_of_domain")
 
         profile_player = _extract_named_player_from_profile_question(question)
-        retrieval_query = (
-            _expand_named_player_retrieval_query(profile_player)
-            if profile_player
-            else question
-        )
+        retrieval_queries = _build_retrieval_queries(question, profile_player)
 
         try:
-            retrieved = self.retrieve(
-                retrieval_query,
-                candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
-                session_id=app_session_id,
-            )
+            if len(retrieval_queries) <= 1:
+                retrieved = self.retrieve(
+                    retrieval_queries[0] if retrieval_queries else question,
+                    candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
+                    session_id=app_session_id,
+                )
+            else:
+                retrieved = self._retrieve_merged(
+                    retrieval_queries,
+                    session_id=app_session_id,
+                )
         except Exception as exc:
             logger.error("Bedrock retrieve failed: %s", exc.__class__.__name__)
             return {
@@ -1367,7 +1556,8 @@ class AWSKnowledgeBaseEngine:
             )
 
         if profile_player:
-            validated = _prefer_named_player_chunks(validated, profile_player)
+            prefer_name = _english_player_name(profile_player)
+            validated = _prefer_named_player_chunks(validated, prefer_name)
 
         context_block = build_grounded_context_block(validated)
         if not context_block.strip():
