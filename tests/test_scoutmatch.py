@@ -46,7 +46,10 @@ from aws_kb_engine import (  # noqa: E402
     _is_allowed_session_source,
     _is_allowed_scoutmatch_source,
     _is_comparison_or_recommendation_question,
+    _is_named_player_profile_question,
     _is_question_in_scoutmatch_domain,
+    _extract_named_player_from_profile_question,
+    _expand_named_player_retrieval_query,
     _language_instruction_for_question,
     _select_complete_diverse_context_chunks,
     _select_diverse_context_chunks,
@@ -120,6 +123,28 @@ MARCO_NARRATIVE_ONLY = (
     "Annual Salary Expectation: 78,000 EUR\n"
     "Relocation Willingness: YES\n"
     "Marco Silva is a build-up goalkeeper specialist with composure under high press."
+)
+
+OR_DAVID_PROFILE = (
+    "Full Name: Or David\n"
+    "Position: Striker (ST) / False Nine (CF)\n"
+    "Age: 26\n"
+    "Years of Professional Experience: 6\n"
+    "Current Club: Beitar Jerusalem\n"
+    "Annual Salary Expectation: 58,000 EUR\n"
+    "Relocation Willingness: MAYBE\n"
+    "Preferred Foot: Right"
+)
+
+AMIT_LEVY_PROFILE = (
+    "Full Name: Amit Levy\n"
+    "Position: Centre-Back (CB)\n"
+    "Age: 25\n"
+    "Years of Professional Experience: 5\n"
+    "Current Club: Hapoel Be'er Sheva\n"
+    "Annual Salary Expectation: 58,000 EUR\n"
+    "Relocation Willingness: YES\n"
+    "Preferred Foot: Left"
 )
 
 
@@ -1326,6 +1351,18 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(database.list_session_documents(s1["id"]), [])
         self.assertEqual(len(database.list_session_documents(s2["id"])), 1)
 
+    def test_find_session_documents_by_display_name(self):
+        session = database.create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/ScoutMatch-Admin-Token.txt",
+            "ScoutMatch-Admin-Token.txt",
+            "TXT",
+        )
+        matches = database.find_session_documents_by_display_name("ScoutMatch-Admin-Token.txt")
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["session_id"], session["id"])
+
     def test_database_path_parent_created_for_persistent_mount(self):
         conn = getattr(database._local, "conn", None)
         if conn is not None:
@@ -1686,10 +1723,17 @@ class UISmokeTests(unittest.TestCase):
 
     def test_frontend_uses_session_scoped_document_endpoints(self):
         js = (PROJECT_ROOT / "static/js/app.js").read_text(encoding="utf-8")
+        html = (PROJECT_ROOT / "templates/index.html").read_text(encoding="utf-8")
+        css = (PROJECT_ROOT / "static/css/style.css").read_text(encoding="utf-8")
         self.assertIn("/api/sessions/${sessionId}/documents", js)
         self.assertIn("clearSessionDocuments", js)
+        self.assertIn("deleteSessionDocument", js)
+        self.assertIn("document-list__delete", js)
+        self.assertIn("messages--has-chat", js)
         self.assertNotIn("X-ScoutMatch-Admin-Token", js)
         self.assertNotIn("Admin token required", js)
+        self.assertIn("home-dashboard-art.png", html)
+        self.assertIn("home-dashboard-art.png", css)
 
     def test_health_and_status(self):
         import app as flask_app
@@ -2509,6 +2553,112 @@ class LineEndingParserTests(unittest.TestCase):
         for row in matrix["candidates"]:
             self.assertNotIn("Position:", row["player_name"])
             self.assertNotIn("Professional Experience:", row["player_name"])
+
+
+class NamedPlayerProfileTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = AWSKnowledgeBaseEngine()
+        _prepare_engine_with_mocks(self.engine)
+
+    def _or_david_uri(self) -> str:
+        return (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+            "forward_or_david.txt"
+        )
+
+    def _amit_uri(self) -> str:
+        return (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+            "defender_amit_levy.txt"
+        )
+
+    def test_general_profile_question_is_in_domain(self):
+        self.assertTrue(_is_question_in_scoutmatch_domain("Who is Or David?"))
+        self.assertTrue(_is_named_player_profile_question("Tell me about Or David."))
+        self.assertEqual(
+            _extract_named_player_from_profile_question("Who is Amit Levy?"),
+            "Amit Levy",
+        )
+
+    def test_profile_query_expansion_includes_football_terms(self):
+        expanded = _expand_named_player_retrieval_query("Or David")
+        self.assertIn("player profile", expanded.lower())
+        self.assertIn("or_david", expanded.lower())
+        self.assertIn("position", expanded.lower())
+
+    def test_general_or_david_question_returns_grounded_profile(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.95,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "Based on the uploaded documents, Or David is a striker aged 26 who "
+            "plays for Beitar Jerusalem with 6 years of professional experience."
+        )
+        result = self.engine.answer("Who is Or David?")
+        self.assertFalse(result["refused"])
+        self.assertIn("Or David", result["answer"])
+        self.assertTrue(result["context"])
+
+    def test_tell_me_about_or_david_returns_profile(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.93,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "Based on the uploaded documents, Or David is a striker with 6 years "
+            "of professional experience and a salary expectation of 58,000 EUR."
+        )
+        result = self.engine.answer("Tell me about Or David.")
+        self.assertFalse(result["refused"])
+        self.assertIn("Or David", result["answer"])
+
+    def test_specific_position_question_still_works(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            OR_DAVID_PROFILE,
+            uri=self._or_david_uri(),
+            score=0.94,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "Based on the uploaded documents, Or David's position is Striker (ST)."
+        )
+        result = self.engine.answer("What is Or David's position?")
+        self.assertFalse(result["refused"])
+        self.assertIn("Striker", result["answer"])
+
+    def test_amit_levy_general_profile_question(self):
+        self.engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            AMIT_LEVY_PROFILE,
+            uri=self._amit_uri(),
+            score=0.92,
+        )
+        self.engine._bedrock_client.converse.return_value = _converse_response(
+            "Based on the uploaded documents, Amit Levy is a centre-back aged 25 "
+            "with 5 years of professional experience."
+        )
+        result = self.engine.answer("Who is Amit Levy?")
+        self.assertFalse(result["refused"])
+        self.assertIn("Amit Levy", result["answer"])
+
+    def test_unknown_player_question_refuses(self):
+        self.engine._runtime_client.retrieve.return_value = {"retrievalResults": []}
+        result = self.engine.answer("Who is Unknown Player?")
+        self.assertTrue(result["refused"])
+
+    def test_out_of_domain_still_refuses(self):
+        engine = AWSKnowledgeBaseEngine()
+        _prepare_engine_with_mocks(engine)
+        result = engine.answer("Who is Donald Trump?")
+        self.assertTrue(result["refused"])
+        self.assertEqual(result["reason"], "out_of_domain")
+
+    def test_session_isolation_blocks_other_session_uri(self):
+        other_uri = (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/other-session/or_david.txt"
+        )
+        self.assertFalse(_is_allowed_session_source(other_uri, TEST_SESSION_ID))
 
 
 if __name__ == "__main__":

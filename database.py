@@ -220,6 +220,20 @@ def list_session_documents(session_id: str) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def find_session_documents_by_display_name(display_name: str) -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at
+        FROM session_documents
+        WHERE display_name = ?
+        ORDER BY uploaded_at DESC, id DESC
+        """,
+        (display_name,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def get_session_document(session_id: str, document_id: int) -> dict | None:
     conn = get_connection()
     row = conn.execute(

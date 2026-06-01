@@ -382,6 +382,8 @@ def _is_comparison_or_recommendation_question(question: str) -> bool:
 
 
 def _is_recommendation_question(question: str) -> bool:
+    if _is_named_player_profile_question(question):
+        return False
     return _is_comparison_or_recommendation_question(question)
 
 
@@ -400,6 +402,97 @@ def _is_follow_up_question(question: str) -> bool:
         return False
     lowered = q.lower()
     return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in _FOLLOW_UP_PATTERNS)
+
+
+_NAMED_PLAYER_PROFILE_PATTERNS = (
+    re.compile(
+        r"^\s*who\s+is\s+(?P<name>[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3})\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*tell\s+me\s+about\s+(?P<name>[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3})\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*what\s+do\s+we\s+know\s+about\s+(?P<name>[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3})\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:give\s+me\s+)?(?:a\s+)?summary\s+of\s+(?P<name>[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*(?:\s+[A-Za-z\u0590-\u05FF][\w\u0590-\u05FF\-']*){0,3})\s*[?.!]?\s*$",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _clean_profile_name(raw: str) -> str:
+    name = (raw or "").strip().strip("?.!").strip()
+    name = re.sub(r"^(the|player|candidate)\s+", "", name, flags=re.IGNORECASE)
+    return name.strip()
+
+
+def _extract_named_player_from_profile_question(question: str) -> str | None:
+    q = (question or "").strip()
+    if not q or _is_comparison_or_recommendation_question(question):
+        return None
+    for pattern in _NAMED_PLAYER_PROFILE_PATTERNS:
+        match = pattern.match(q)
+        if not match:
+            continue
+        name = _clean_profile_name(match.group("name"))
+        if name and 1 <= len(name.split()) <= 4:
+            return name
+    return None
+
+
+def _is_named_player_profile_question(question: str) -> bool:
+    return _extract_named_player_from_profile_question(question) is not None
+
+
+def _normalize_person_name(name: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9\s]", " ", (name or "").lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _name_tokens(name: str) -> list[str]:
+    return [token for token in _normalize_person_name(name).split() if len(token) > 1]
+
+
+def _expand_named_player_retrieval_query(player_name: str) -> str:
+    tokens = _name_tokens(player_name)
+    filename_hint = "_".join(tokens)
+    return (
+        f"{player_name} player profile CV scouting report {filename_hint} "
+        f"full name position age current club previous clubs professional experience "
+        f"preferred foot salary expectation relocation willingness strengths"
+    )
+
+
+def _prefer_named_player_chunks(chunks: list[dict], player_name: str) -> list[dict]:
+    tokens = _name_tokens(player_name)
+    if not tokens:
+        return chunks
+    matching: list[dict] = []
+    other: list[dict] = []
+    for chunk in chunks:
+        haystack = " ".join([
+            _chunk_source_filename(chunk),
+            chunk.get("text") or "",
+            chunk.get("source") or "",
+        ]).lower().replace("_", " ")
+        if all(token in haystack for token in tokens):
+            matching.append(chunk)
+        else:
+            other.append(chunk)
+    return matching + other if matching else chunks
+
+
+_NAMED_PLAYER_PROFILE_INSTRUCTION = (
+    "This is a general player-profile question. Provide a concise grounded summary "
+    "using only the retrieved ScoutMatch context. Include only facts explicitly "
+    "present in the context, such as full name, position, age, current club, "
+    "previous clubs, professional experience, preferred foot, salary expectation, "
+    "relocation willingness, and scouting strengths. Do not invent missing details."
+)
 
 
 def _is_question_in_scoutmatch_domain(question: str, history: list | None = None) -> bool:
@@ -431,6 +524,9 @@ def _is_question_in_scoutmatch_domain(question: str, history: list | None = None
         q,
         re.IGNORECASE,
     ):
+        return True
+
+    if _is_named_player_profile_question(question):
         return True
 
     return False
@@ -981,6 +1077,13 @@ def validate_final_answer(
         return False, "internal_markers"
     if _has_obvious_numeric_contradiction(answer):
         return False, "numeric_contradiction"
+    profile_player = _extract_named_player_from_profile_question(question)
+    if profile_player:
+        tokens = _name_tokens(profile_player)
+        answer_lower = answer.lower()
+        if tokens and all(token in answer_lower for token in tokens):
+            return True, None
+        return False, "profile_name_missing"
     if _is_recommendation_question(question):
         known_names = _extract_player_names_from_sources(sources)
         if known_names and not _answer_names_cited_player(answer, known_names):
@@ -1224,9 +1327,16 @@ class AWSKnowledgeBaseEngine:
         if not _is_question_in_scoutmatch_domain(question, history):
             return _strict_refusal_response(refusal, reason="out_of_domain")
 
+        profile_player = _extract_named_player_from_profile_question(question)
+        retrieval_query = (
+            _expand_named_player_retrieval_query(profile_player)
+            if profile_player
+            else question
+        )
+
         try:
             retrieved = self.retrieve(
-                question,
+                retrieval_query,
                 candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
                 session_id=app_session_id,
             )
@@ -1256,6 +1366,9 @@ class AWSKnowledgeBaseEngine:
                 reason="no_scoutmatch_sources",
             )
 
+        if profile_player:
+            validated = _prefer_named_player_chunks(validated, profile_player)
+
         context_block = build_grounded_context_block(validated)
         if not context_block.strip():
             return _strict_refusal_response(refusal, reason="empty_context")
@@ -1271,11 +1384,15 @@ class AWSKnowledgeBaseEngine:
             )
             matrix_block = format_verified_matrix_for_prompt(verified_matrix)
 
+        profile_instruction = (
+            _NAMED_PLAYER_PROFILE_INSTRUCTION if profile_player else None
+        )
         try:
             answer_text = self._generate_from_retrieved_context(
                 question,
                 context_block,
                 history,
+                extra_instruction=profile_instruction,
                 matrix_block=matrix_block or None,
             )
         except Exception as exc:

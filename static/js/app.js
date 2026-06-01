@@ -249,9 +249,47 @@ function renderKbDocuments(docs) {
         row.innerHTML = `
             <span class="document-list__badge document-list__badge--${slug}">${escapeHtml(cat.split(" ")[0])}</span>
             <span class="document-list__name" title="${escapeHtml(rawShown)}">${escapeHtml(shown)}</span>
+            <button type="button" class="document-list__delete" title="Delete document" aria-label="Delete ${escapeHtml(shown)}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                </svg>
+            </button>
         `;
+        row.querySelector(".document-list__delete")?.addEventListener("click", e => {
+            e.stopPropagation();
+            deleteDocument(doc);
+        });
         els.documentList.appendChild(row);
     });
+}
+
+async function deleteDocument(doc) {
+    if (!state.activeSessionId || !doc?.id) return;
+    const label = doc.display_name || doc.display_source || doc.name || "this document";
+    const shown = label.includes("/") ? label.split("/").pop() : label;
+    if (
+        !confirm(
+            `Delete "${shown}" from this conversation?\nThis action cannot be undone.`
+        )
+    ) {
+        return;
+    }
+    try {
+        const result = await API.deleteSessionDocument(state.activeSessionId, doc.id);
+        toast("Document deleted");
+        if (state.awsMode && result.ingestion_job_id) {
+            pollIngestion(result.ingestion_job_id);
+        } else {
+            await refreshKbDocuments();
+        }
+    } catch (err) {
+        toast(err.message || "Could not delete document", { error: true });
+    }
 }
 
 async function pollIngestion(jobId) {
@@ -541,8 +579,10 @@ async function handleResetProject() {
 }
 
 function renderMessages() {
+    const hasMessages = state.messages.length > 0;
+    els.messages.classList.toggle("messages--has-chat", hasMessages);
     els.messages.innerHTML = "";
-    if (state.messages.length === 0) {
+    if (!hasMessages) {
         els.messages.appendChild(els.emptyState);
         return;
     }
@@ -830,4 +870,5 @@ els.resetProjectBtn?.addEventListener("click", () => handleResetProject());
 (async function boot() {
     pollEngineStatus();
     await loadSessions();
+    renderMessages();
 })();
