@@ -3477,3 +3477,100 @@ kbd {
         height: 44px;
     }
 }
+
+/* ==========================================================
+   Landing + active chat visual fix (session-docs-v3)
+   ========================================================== */
+.messages.messages--landing {
+    padding: 16px 20px 22px;
+}
+
+.messages.messages--landing .home-hero {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.92fr) minmax(360px, 1.08fr);
+    gap: clamp(20px, 3vw, 40px);
+    align-items: center;
+    width: min(100%, 1400px);
+    min-height: min(680px, calc(100vh - 176px));
+    margin: 0 auto;
+}
+
+.messages.messages--landing .hero-left,
+.messages.messages--landing .hero-right {
+    display: block;
+    min-width: 0;
+}
+
+.messages.messages--landing .hero-right {
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    align-self: stretch;
+}
+
+.messages.messages--landing .dashboard-stage {
+    display: block;
+    width: 100%;
+    min-height: clamp(420px, 52vh, 620px);
+    padding: 6px;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid rgba(235, 206, 136, 0.62);
+    background: linear-gradient(180deg, rgba(235, 206, 136, 0.08), rgba(6, 17, 31, 0.16));
+    box-shadow:
+        0 28px 60px rgba(0, 0, 0, 0.34),
+        0 0 34px rgba(34, 197, 94, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.messages.messages--landing .dashboard-stage__panel-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: clamp(400px, 50vh, 600px);
+    object-fit: cover;
+    object-position: center top;
+    border-radius: 14px;
+}
+
+.messages.messages--has-chat::before {
+    opacity: 0.36;
+    background:
+        linear-gradient(180deg, rgba(7, 12, 24, 0.88) 0%, rgba(7, 12, 24, 0.82) 100%),
+        url("/static/images/home-dashboard-art.png") center right / min(58%, 760px) no-repeat;
+}
+
+.messages.messages--has-chat::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(ellipse at 88% 42%, rgba(34, 197, 94, 0.12), transparent 42%),
+        radial-gradient(ellipse at 12% 18%, rgba(59, 130, 246, 0.08), transparent 36%);
+}
+
+@media (max-width: 1100px) {
+    .messages.messages--landing .home-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .messages.messages--landing .hero-right {
+        order: 2;
+    }
+
+    .messages.messages--landing .dashboard-stage__panel-img {
+        min-height: 280px;
+        max-height: 420px;
+        object-fit: cover;
+    }
+}
+
+@media (max-width: 720px) {
+    .messages.messages--has-chat::before {
+        opacity: 0.28;
+        background-size: cover;
+        background-position: center;
+    }
+}

@@ -113,6 +113,7 @@ const els = {
     renameBtn: document.getElementById("renameBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
     messages: document.getElementById("messages"),
+    homeHero: document.querySelector(".home-hero"),
     emptyState: document.getElementById("emptyState"),
     conversationTitle: document.getElementById("conversationTitle"),
     conversationMeta: document.getElementById("conversationMeta"),
@@ -581,9 +582,14 @@ async function handleResetProject() {
 function renderMessages() {
     const hasMessages = state.messages.length > 0;
     els.messages.classList.toggle("messages--has-chat", hasMessages);
+    els.messages.classList.toggle("messages--landing", !hasMessages);
     els.messages.innerHTML = "";
     if (!hasMessages) {
-        els.messages.appendChild(els.emptyState);
+        if (els.homeHero) {
+            els.messages.appendChild(els.homeHero);
+        } else if (els.emptyState) {
+            els.messages.appendChild(els.emptyState);
+        }
         return;
     }
     const inner = document.createElement("div");

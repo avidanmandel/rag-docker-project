@@ -1729,10 +1729,15 @@ class UISmokeTests(unittest.TestCase):
         self.assertIn("clearSessionDocuments", js)
         self.assertIn("deleteSessionDocument", js)
         self.assertIn("document-list__delete", js)
+        self.assertIn("homeHero", js)
+        self.assertIn("messages--landing", js)
         self.assertIn("messages--has-chat", js)
         self.assertNotIn("X-ScoutMatch-Admin-Token", js)
         self.assertNotIn("Admin token required", js)
         self.assertIn("home-dashboard-art.png", html)
+        self.assertIn("hero-right", html)
+        self.assertIn("dashboard-stage__panel-img", html)
+        self.assertIn("messages--landing", css)
         self.assertIn("home-dashboard-art.png", css)
 
     def test_health_and_status(self):
