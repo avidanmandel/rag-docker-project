@@ -16,8 +16,19 @@ const API = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title }),
         }).then(r => r.json()),
-    deleteSession: id =>
-        fetch(`/api/sessions/${id}`, { method: "DELETE" }).then(r => r.json()),
+    deleteSession: (id, { deleteDocuments = false, adminToken = "" } = {}) =>
+        fetch(`/api/sessions/${id}`, {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json",
+                ...(adminToken ? { "X-ScoutMatch-Admin-Token": adminToken } : {}),
+            },
+            body: JSON.stringify({ delete_documents: deleteDocuments }),
+        }).then(async r => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || "Delete failed");
+            return data;
+        }),
     sendMessage: (id, content) =>
         fetch(`/api/sessions/${id}/messages`, {
             method: "POST",
@@ -28,11 +39,12 @@ const API = {
             if (!r.ok) throw new Error(data.detail || data.error || "Request failed");
             return data;
         }),
-    listDocuments: () => fetch("/api/documents").then(r => r.json()),
-    uploadDocument: file => {
+    listDocuments: sessionId =>
+        fetch(`/api/sessions/${sessionId}/documents`).then(r => r.json()),
+    uploadDocument: (sessionId, file) => {
         const fd = new FormData();
         fd.append("file", file);
-        return fetch("/api/documents/upload", {
+        return fetch(`/api/sessions/${sessionId}/documents/upload`, {
             method: "POST",
             body: fd,
         }).then(async r => {
@@ -45,6 +57,15 @@ const API = {
             return data;
         });
     },
+    clearSessionDocuments: (sessionId, adminToken) =>
+        fetch(`/api/sessions/${sessionId}/documents/clear`, {
+            method: "POST",
+            headers: adminToken ? { "X-ScoutMatch-Admin-Token": adminToken } : {},
+        }).then(async r => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || "Clear documents failed");
+            return data;
+        }),
     ingestionStatus: jobId =>
         fetch(`/api/ingestion/status${jobId ? `?job_id=${encodeURIComponent(jobId)}` : ""}`).then(
             r => r.json()
@@ -102,6 +123,7 @@ const els = {
     uploadStatus: document.getElementById("uploadStatus"),
     syncStatus: document.getElementById("syncStatus"),
     documentList: document.getElementById("documentList"),
+    clearDocumentsBtn: document.getElementById("clearDocumentsBtn"),
     resetProjectBtn: document.getElementById("resetProjectBtn"),
     awsBadge: document.getElementById("awsBadge"),
 };
@@ -183,8 +205,12 @@ function updateComposerState() {
 }
 
 async function refreshKbDocuments() {
+    if (!state.activeSessionId) {
+        renderKbDocuments([]);
+        return;
+    }
     try {
-        const d = await API.listDocuments();
+        const d = await API.listDocuments(state.activeSessionId);
         renderKbDocuments(d.documents || []);
     } catch {
         renderKbDocuments([]);
@@ -375,6 +401,7 @@ async function selectSession(id) {
     els.deleteBtn.disabled = false;
     renderMessages();
     renderSessions();
+    await refreshKbDocuments();
 }
 
 async function newSession({ select = true } = {}) {
@@ -414,9 +441,17 @@ async function renameActiveSession() {
 
 async function deleteActiveSession() {
     if (!state.activeSessionId) return;
-    if (!confirm("Delete this conversation? Uploaded documents will remain available.")) return;
+    if (!confirm("Delete this conversation?")) return;
+    const deleteDocuments = confirm(
+        "Delete this conversation's uploaded documents from S3 too? Choose Cancel to delete only the conversation history."
+    );
+    let adminToken = "";
+    if (deleteDocuments) {
+        adminToken = prompt("Admin token required to delete uploaded documents") || "";
+        if (!adminToken) return;
+    }
     const id = state.activeSessionId;
-    await API.deleteSession(id);
+    await API.deleteSession(id, { deleteDocuments, adminToken });
     state.sessions = state.sessions.filter(s => s.id !== id);
     state.activeSessionId = null;
     state.messages = [];
@@ -426,7 +461,34 @@ async function deleteActiveSession() {
     els.deleteBtn.disabled = true;
     renderSessions();
     renderMessages();
+    await refreshKbDocuments();
     toast("Conversation deleted");
+}
+
+async function clearActiveDocuments() {
+    if (!state.activeSessionId) {
+        toast("Choose a conversation first", { error: true });
+        return;
+    }
+    if (!confirm("Clear documents for this conversation? This will remove only this conversation's uploaded S3 files.")) {
+        return;
+    }
+    const adminToken = prompt("Admin token required to clear documents") || "";
+    if (!adminToken) return;
+    els.clearDocumentsBtn.disabled = true;
+    try {
+        const result = await API.clearSessionDocuments(state.activeSessionId, adminToken);
+        toast("Conversation documents cleared");
+        if (state.awsMode && result.ingestion_job_id) {
+            pollIngestion(result.ingestion_job_id);
+        } else {
+            await refreshKbDocuments();
+        }
+    } catch (err) {
+        toast(err.message || "Could not clear documents", { error: true });
+    } finally {
+        els.clearDocumentsBtn.disabled = false;
+    }
 }
 
 async function handleResetProject() {
@@ -675,10 +737,13 @@ async function handleUpload(file) {
         toast("Supported: TXT, MD, HTML, PDF, DOC, DOCX, CSV, XLS, XLSX", { error: true });
         return;
     }
+    if (!state.activeSessionId) {
+        await newSession({ select: true });
+    }
     els.uploadBtn.disabled = true;
     setUploadStatus(`Uploading CV to Amazon S3... (${file.name})`, "info");
     try {
-        const result = await API.uploadDocument(file);
+        const result = await API.uploadDocument(state.activeSessionId, file);
         setUploadStatus(result.message || "Upload complete.", "success");
         toast("Document uploaded to S3");
 
@@ -741,6 +806,7 @@ els.uploadInput?.addEventListener("change", e => {
     if (file) handleUpload(file);
 });
 
+els.clearDocumentsBtn?.addEventListener("click", clearActiveDocuments);
 els.resetProjectBtn?.addEventListener("click", () => handleResetProject());
 
 (async function boot() {

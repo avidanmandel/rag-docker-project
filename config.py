@@ -21,7 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DATA_DIR = BASE_DIR / "data"
 INDEX_CACHE_DIR = BASE_DIR / "index_cache"
-DB_PATH = BASE_DIR / "chat.db"
+DB_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "chat.db"))).expanduser()
 GENERATED_DIR = DATA_DIR / "generated"
 GENERATED_IMAGES_DIR = GENERATED_DIR / "images"
 SAMPLE_UPLOADS_DIR = BASE_DIR / "sample_uploads"
@@ -102,6 +102,7 @@ AWS_KB_CONTEXT_EXCERPT_MAX = int(os.getenv("AWS_KB_CONTEXT_EXCERPT_MAX", "1200")
 AWS_KB_MIN_SCORE = os.getenv("AWS_KB_MIN_SCORE", "")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "")
 AWS_S3_PREFIX = os.getenv("AWS_S3_PREFIX", "scoutmatch/knowledge-base/")
+SCOUTMATCH_ADMIN_TOKEN = os.getenv("SCOUTMATCH_ADMIN_TOKEN", "")
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "25"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import threading
 import traceback
@@ -69,6 +70,22 @@ def _parse_json_request() -> dict:
             continue
 
     return {}
+
+
+def _require_admin_token():
+    expected = (config.SCOUTMATCH_ADMIN_TOKEN or "").strip()
+    supplied = (request.headers.get("X-ScoutMatch-Admin-Token") or "").strip()
+    if not expected:
+        return jsonify({
+            "error": (
+                "Document deletion is not configured. Set SCOUTMATCH_ADMIN_TOKEN "
+                "on the server. This demo token is not suitable for production "
+                "without HTTPS."
+            ),
+        }), 403
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        return jsonify({"error": "Admin token is required for document deletion."}), 403
+    return None
 
 
 app = Flask(__name__)
@@ -481,9 +498,241 @@ def api_ingestion_status():
     return jsonify(status)
 
 
+def _session_document_payload(doc: dict) -> dict:
+    key = doc.get("s3_key") or doc.get("key") or ""
+    display = doc.get("display_name") or Path(key).name
+    category = doc.get("category") or "DOCUMENT"
+    payload = {
+        "id": doc.get("id"),
+        "session_id": doc.get("session_id"),
+        "key": key,
+        "s3_key": key,
+        "name": key,
+        "display_name": display,
+        "display_source": display,
+        "category": category,
+        "uploaded_at": doc.get("uploaded_at"),
+        "extension": Path(display).suffix.lower().lstrip("."),
+    }
+    bucket = (config.AWS_S3_BUCKET or "").strip()
+    if bucket and key:
+        payload["s3_uri"] = f"s3://{bucket}/{key}"
+    return payload
+
+
+def _local_session_upload_dir(session_id: str) -> Path:
+    safe_session = re.sub(r"[^a-zA-Z0-9_-]", "", session_id or "")
+    return config.DATA_DIR / "session_uploads" / safe_session
+
+
+def _delete_local_session_docs(session_id: str, docs: list[dict]) -> int:
+    root = _local_session_upload_dir(session_id).resolve()
+    deleted = 0
+    for doc in docs:
+        rel = str(doc.get("s3_key") or "")
+        path = (config.DATA_DIR / rel).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise RuntimeError("Refusing to delete a file outside the active session upload directory.") from exc
+        if path.exists() and path.is_file():
+            path.unlink()
+            deleted += 1
+    return deleted
+
+
+def _session_or_404(session_id: str):
+    session = database.get_session(session_id)
+    if not session:
+        return None, (jsonify({"error": "Session not found"}), 404)
+    return session, None
+
+
+@app.route("/api/sessions/<session_id>/documents", methods=["GET"])
+def api_list_session_documents(session_id):
+    """Return documents attached only to this conversation."""
+    _, error = _session_or_404(session_id)
+    if error:
+        return error
+
+    docs = [_session_document_payload(d) for d in database.list_session_documents(session_id)]
+    ingestion = aws_storage.latest_ingestion_snapshot() if _is_aws_kb_mode() else None
+    if ingestion:
+        for doc in docs:
+            doc["ingestion_status"] = ingestion.get("status")
+    return jsonify({"documents": docs})
+
+
+@app.route("/api/sessions/<session_id>/documents/upload", methods=["POST"])
+def api_upload_session_document(session_id):
+    """Upload a document to this conversation's isolated S3 prefix."""
+    _, error = _session_or_404(session_id)
+    if error:
+        return error
+    if "file" not in request.files:
+        return jsonify({"error": "No file part in the request."}), 400
+
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "No file selected."}), 400
+
+    raw = f.read()
+    filename = f.filename
+    ext = os.path.splitext(filename)[1].lower()
+
+    if not _is_aws_kb_mode():
+        safe_name = secure_filename(filename)
+        if not safe_name:
+            return jsonify({"error": "Invalid filename."}), 400
+        if ext not in DOC_UPLOAD_EXTENSIONS:
+            allowed_human = ", ".join(sorted(DOC_UPLOAD_EXTENSIONS))
+            return jsonify({"error": f"Unsupported file type '{ext}'. Allowed: {allowed_human}."}), 400
+        if len(raw) > UPLOAD_MAX_BYTES:
+            return jsonify({"error": "File is too large."}), 413
+        upload_dir = _local_session_upload_dir(session_id)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / safe_name
+        if dest.exists():
+            stem = dest.stem
+            suffix = dest.suffix
+            dest = upload_dir / f"{stem}_{uuid.uuid4().hex[:8]}{suffix}"
+        dest.write_bytes(raw)
+        rel = dest.relative_to(config.DATA_DIR).as_posix()
+        doc = database.add_session_document(
+            session_id,
+            rel,
+            dest.name,
+            "PDF" if dest.suffix.lower() == ".pdf" else "TXT",
+        )
+        threading.Thread(
+            target=_reindex_engine_background, daemon=True, name="rag-session-reindex"
+        ).start()
+        return jsonify({
+            "ok": True,
+            "document": _session_document_payload(doc),
+            "filename": dest.name,
+            "key": rel,
+            "size": len(raw),
+            "message": "File uploaded for this conversation. Re-indexing in the background.",
+        }), 201
+
+    try:
+        if ext == ".json":
+            raw, filename = aws_storage.normalise_json_to_txt(raw, filename)
+
+        safe, _ = aws_storage.validate_upload(filename, len(raw))
+        category = aws_storage._category_label(
+            safe,
+            Path(safe).suffix.lower().lstrip("."),
+        )
+        upload_result = aws_storage.upload_session_document(
+            raw,
+            safe,
+            session_id=session_id,
+            category=category,
+            content_type=f.content_type,
+        )
+        doc = database.add_session_document(
+            session_id,
+            upload_result["key"],
+            upload_result["display_name"],
+            upload_result["category"],
+        )
+        ingestion = aws_storage.start_ingestion_job()
+    except UploadValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 503
+
+    return jsonify({
+        "ok": True,
+        "document": _session_document_payload(doc),
+        "filename": upload_result["filename"],
+        "key": upload_result["key"],
+        "s3_uri": upload_result["s3_uri"],
+        "size": upload_result["size"],
+        "ingestion_job_id": ingestion.get("ingestion_job_id"),
+        "ingestion_status": ingestion.get("status"),
+        "message": (
+            "Uploading CV to Amazon S3 completed for this conversation. "
+            "Updating the ScoutMatch knowledge base..."
+        ),
+    }), 201
+
+
+@app.route("/api/sessions/<session_id>/documents/<int:document_id>", methods=["DELETE"])
+def api_delete_session_document(session_id, document_id):
+    """Delete one conversation document from S3; requires admin token."""
+    _, error = _session_or_404(session_id)
+    if error:
+        return error
+    token_error = _require_admin_token()
+    if token_error:
+        return token_error
+
+    doc = database.get_session_document(session_id, document_id)
+    if not doc:
+        return jsonify({"error": "Document not found"}), 404
+    try:
+        if _is_aws_kb_mode():
+            delete_result = aws_storage.delete_recorded_session_objects([doc])
+        else:
+            delete_result = {"deleted": _delete_local_session_docs(session_id, [doc])}
+        database.delete_session_document(session_id, document_id)
+        ingestion = aws_storage.start_ingestion_job() if _is_aws_kb_mode() else {}
+        if not _is_aws_kb_mode():
+            threading.Thread(
+                target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
+            ).start()
+    except RuntimeError as exc:
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 503
+    return jsonify({
+        "ok": True,
+        "deleted_objects": delete_result.get("deleted", 0),
+        "ingestion_job_id": ingestion.get("ingestion_job_id"),
+        "ingestion_status": ingestion.get("status"),
+    })
+
+
+@app.route("/api/sessions/<session_id>/documents/clear", methods=["POST"])
+def api_clear_session_documents(session_id):
+    """Delete all documents for one conversation; requires admin token."""
+    _, error = _session_or_404(session_id)
+    if error:
+        return error
+    token_error = _require_admin_token()
+    if token_error:
+        return token_error
+
+    docs = database.list_session_documents(session_id)
+    try:
+        if _is_aws_kb_mode():
+            delete_result = aws_storage.delete_recorded_session_objects(docs)
+        else:
+            delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
+        database.clear_session_documents(session_id)
+        ingestion = aws_storage.start_ingestion_job() if _is_aws_kb_mode() else {}
+        if not _is_aws_kb_mode():
+            threading.Thread(
+                target=_reindex_engine_background, daemon=True, name="rag-session-clear-reindex"
+            ).start()
+    except RuntimeError as exc:
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 503
+    return jsonify({
+        "ok": True,
+        "deleted_documents": len(docs),
+        "deleted_objects": delete_result.get("deleted", 0),
+        "ingestion_job_id": ingestion.get("ingestion_job_id"),
+        "ingestion_status": ingestion.get("status"),
+    })
+
+
 @app.route("/api/documents/upload", methods=["POST"])
 def api_upload_document():
-    """Upload ScoutMatch documents to S3 (AWS) or local data/ (development)."""
+    """Deprecated global upload endpoint; active UI uses session-scoped uploads."""
     if _is_aws_kb_mode():
         return _api_upload_document_aws()
 
@@ -855,8 +1104,29 @@ def api_update_session(session_id):
 def api_delete_session(session_id):
     if not database.get_session(session_id):
         return jsonify({"error": "Session not found"}), 404
+    payload = _parse_json_request()
+    delete_documents = bool(payload.get("delete_documents"))
+    if delete_documents:
+        token_error = _require_admin_token()
+        if token_error:
+            return token_error
+        docs = database.list_session_documents(session_id)
+        try:
+            if _is_aws_kb_mode():
+                aws_storage.delete_recorded_session_objects(docs)
+            else:
+                _delete_local_session_docs(session_id, docs)
+            if _is_aws_kb_mode() and docs:
+                aws_storage.start_ingestion_job()
+            if not _is_aws_kb_mode() and docs:
+                threading.Thread(
+                    target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
+                ).start()
+        except RuntimeError as exc:
+            traceback.print_exc()
+            return jsonify({"error": str(exc)}), 503
     database.delete_session(session_id)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "documents_deleted": delete_documents})
 
 
 # ---------- chat ----------

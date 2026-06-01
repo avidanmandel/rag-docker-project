@@ -4,6 +4,7 @@ SQLite-backed conversation memory for the course assistant.
 Two tables:
 - sessions(id, title, created_at, updated_at)
 - messages(id, session_id, role, content, context_json, created_at)
+- session_documents(id, session_id, s3_key, display_name, category, uploaded_at)
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import config
 
@@ -28,6 +30,7 @@ def _utcnow_iso() -> str:
 def get_connection() -> sqlite3.Connection:
     conn = getattr(_local, "conn", None)
     if conn is None:
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -73,6 +76,27 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_session "
             "ON messages(session_id, id)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_documents (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id   TEXT NOT NULL,
+                s3_key       TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                category     TEXT,
+                uploaded_at  TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_documents_session "
+            "ON session_documents(session_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_documents_s3_key "
+            "ON session_documents(s3_key)"
         )
 
 
@@ -151,6 +175,86 @@ def clear_all_conversations() -> None:
 def vacuum_database_file() -> None:
     conn = get_connection()
     conn.execute("VACUUM")
+
+
+# ---------- session documents ----------
+
+def add_session_document(
+    session_id: str,
+    s3_key: str,
+    display_name: str,
+    category: str | None = None,
+) -> dict:
+    now = _utcnow_iso()
+    conn = get_connection()
+    with conn:
+        cur = conn.execute(
+            """
+            INSERT INTO session_documents
+                (session_id, s3_key, display_name, category, uploaded_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (session_id, s3_key, display_name, category, now),
+        )
+    return {
+        "id": cur.lastrowid,
+        "session_id": session_id,
+        "s3_key": s3_key,
+        "display_name": display_name,
+        "category": category,
+        "uploaded_at": now,
+    }
+
+
+def list_session_documents(session_id: str) -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at
+        FROM session_documents
+        WHERE session_id = ?
+        ORDER BY uploaded_at DESC, id DESC
+        """,
+        (session_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_session_document(session_id: str, document_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        """
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at
+        FROM session_documents
+        WHERE session_id = ? AND id = ?
+        """,
+        (session_id, document_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_session_document(session_id: str, document_id: int) -> dict | None:
+    doc = get_session_document(session_id, document_id)
+    if not doc:
+        return None
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "DELETE FROM session_documents WHERE session_id = ? AND id = ?",
+            (session_id, document_id),
+        )
+    return doc
+
+
+def clear_session_documents(session_id: str) -> list[dict]:
+    docs = list_session_documents(session_id)
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "DELETE FROM session_documents WHERE session_id = ?",
+            (session_id,),
+        )
+    return docs
 
 
 # ---------- messages ----------

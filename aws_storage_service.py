@@ -171,6 +171,19 @@ class AWSStorageService:
         folder = subfolder or self.categorise_key(filename)
         return f"{prefix}{folder}/{filename}"
 
+    def build_session_object_key(self, session_id: str, filename: str) -> str:
+        """Build the isolated S3 key for a conversation-scoped document."""
+        safe_session = re.sub(r"[^a-zA-Z0-9_-]", "", session_id or "")
+        if not safe_session:
+            raise UploadValidationError("A valid session ID is required for upload.")
+        safe, _ = self.validate_upload(filename, 1)
+        prefix = config.normalised_s3_prefix()
+        return f"{prefix}sessions/{safe_session}/{safe}"
+
+    @staticmethod
+    def metadata_sidecar_key(source_key: str) -> str:
+        return f"{source_key}.metadata.json"
+
     def object_exists(self, key: str) -> bool:
         self._ensure_clients()
         bucket = config.AWS_S3_BUCKET.strip()
@@ -250,6 +263,68 @@ class AWSStorageService:
             "display_name": Path(key).name,
             "size": len(data),
             "extension": ext.lstrip("."),
+            "s3_uri": f"s3://{bucket}/{key}",
+        }
+
+    def upload_session_document(
+        self,
+        data: bytes,
+        filename: str,
+        *,
+        session_id: str,
+        category: str | None = None,
+        content_type: str | None = None,
+    ) -> dict:
+        """Upload a source object plus Bedrock metadata sidecar for one session."""
+        missing = config.validate_aws_config()
+        if missing:
+            raise RuntimeError(
+                "Missing AWS configuration: " + ", ".join(missing)
+            )
+
+        safe, ext = self.validate_upload(filename, len(data))
+        key = self.build_session_object_key(session_id, safe)
+        key = self.resolve_unique_key(key)
+        category_label = category or self._category_label(key, ext.lstrip("."))
+        display_name = Path(key).name
+
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        extra: dict[str, Any] = {}
+        if content_type:
+            extra["ContentType"] = content_type
+
+        metadata_key = self.metadata_sidecar_key(key)
+        metadata = {
+            "metadataAttributes": {
+                "session_id": session_id,
+                "display_name": display_name,
+                "category": category_label,
+            }
+        }
+
+        try:
+            self._s3.put_object(Bucket=bucket, Key=key, Body=data, **extra)
+            self._s3.put_object(
+                Bucket=bucket,
+                Key=metadata_key,
+                Body=json.dumps(metadata, ensure_ascii=False).encode("utf-8"),
+                ContentType="application/json",
+            )
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 session upload failed for key=%s: %s", key, exc.__class__.__name__)
+            raise RuntimeError(
+                "Failed to upload document to Amazon S3. Check IAM permissions and bucket name."
+            ) from exc
+
+        return {
+            "key": key,
+            "metadata_key": metadata_key,
+            "filename": display_name,
+            "display_name": display_name,
+            "size": len(data),
+            "extension": ext.lstrip("."),
+            "category": category_label,
             "s3_uri": f"s3://{bucket}/{key}",
         }
 
@@ -391,6 +466,87 @@ class AWSStorageService:
 
         docs.sort(key=lambda d: d.get("display_name", "").lower())
         return docs
+
+    def list_session_documents(self, session_id: str) -> list[dict]:
+        """List S3 source objects for one conversation prefix only."""
+        missing = config.validate_aws_config()
+        if missing:
+            return []
+
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        prefix = f"{config.normalised_s3_prefix()}sessions/{session_id}/"
+        docs: list[dict] = []
+
+        paginator = self._s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents") or []:
+                    key = obj.get("Key") or ""
+                    if (
+                        not key
+                        or key.endswith("/")
+                        or key.endswith(".metadata.json")
+                    ):
+                        continue
+                    name = Path(key).name
+                    ext = Path(key).suffix.lower().lstrip(".")
+                    docs.append({
+                        "key": key,
+                        "name": key,
+                        "display_name": name,
+                        "display_source": name,
+                        "size": obj.get("Size", 0),
+                        "extension": ext,
+                        "last_modified": (
+                            obj.get("LastModified").isoformat()
+                            if obj.get("LastModified")
+                            else None
+                        ),
+                        "category": self._category_label(key, ext),
+                        "s3_uri": f"s3://{bucket}/{key}",
+                    })
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 session list_objects failed: %s", exc.__class__.__name__)
+            raise RuntimeError(
+                "Failed to list documents from Amazon S3."
+            ) from exc
+
+        docs.sort(key=lambda d: d.get("display_name", "").lower())
+        return docs
+
+    def delete_recorded_session_objects(self, docs: list[dict]) -> dict:
+        """Delete only source keys supplied by the session document registry."""
+        missing = config.validate_aws_config()
+        if missing:
+            raise RuntimeError(
+                "Missing AWS configuration: " + ", ".join(missing)
+            )
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        session_prefix = f"{config.normalised_s3_prefix()}sessions/"
+        objects: list[dict[str, str]] = []
+        for doc in docs:
+            key = str(doc.get("s3_key") or doc.get("key") or "")
+            if not key.startswith(session_prefix) or key.endswith(".metadata.json"):
+                raise RuntimeError("Refusing to delete an object outside the session document prefix.")
+            objects.append({"Key": key})
+            objects.append({"Key": self.metadata_sidecar_key(key)})
+
+        if not objects:
+            return {"deleted": 0}
+
+        try:
+            self._s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": objects, "Quiet": True},
+            )
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 delete_objects failed: %s", exc.__class__.__name__)
+            raise RuntimeError(
+                "Failed to delete session documents from Amazon S3."
+            ) from exc
+        return {"deleted": len(objects)}
 
     @staticmethod
     def _category_label(key: str, ext: str) -> str:

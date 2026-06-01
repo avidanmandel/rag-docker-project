@@ -266,6 +266,31 @@ kbd {
     white-space: nowrap;
 }
 
+.clear-documents {
+    width: calc(100% - 8px);
+    margin: 8px 4px 0;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.06);
+    color: #fcd34d;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: all 120ms ease;
+}
+
+.clear-documents:hover:not(:disabled) {
+    border-color: rgba(245, 158, 11, 0.65);
+    background: rgba(245, 158, 11, 0.12);
+}
+
+.clear-documents:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .reset-project {
     width: 100%;
     margin-top: 10px;

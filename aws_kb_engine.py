@@ -255,6 +255,12 @@ def _scoutmatch_allowed_uri_prefix() -> str:
     return f"s3://{bucket}/{prefix}".lower()
 
 
+def _session_allowed_uri_prefix(session_id: str) -> str:
+    bucket = (config.AWS_S3_BUCKET or "").strip()
+    prefix = config.normalised_s3_prefix()
+    return f"s3://{bucket}/{prefix}sessions/{session_id}/".lower()
+
+
 def _is_allowed_scoutmatch_source(uri: str | None) -> bool:
     if not uri or not isinstance(uri, str):
         return False
@@ -279,18 +285,30 @@ def _is_allowed_scoutmatch_source(uri: str | None) -> bool:
     return True
 
 
+def _is_allowed_session_source(uri: str | None, session_id: str | None) -> bool:
+    if not session_id:
+        return False
+    if not _is_allowed_scoutmatch_source(uri):
+        return False
+    return str(uri).strip().lower().startswith(_session_allowed_uri_prefix(session_id))
+
+
 def _filter_scoutmatch_results(
     results: list[dict],
     *,
     min_score: float | None,
     top_k: int | None = None,
+    session_id: str | None = None,
 ) -> list[dict]:
     filtered: list[dict] = []
     for item in results:
         text = (item.get("text") or "").strip()
         if not text:
             continue
-        if not _is_allowed_scoutmatch_source(item.get("s3_uri")):
+        if session_id:
+            if not _is_allowed_session_source(item.get("s3_uri"), session_id):
+                continue
+        elif not _is_allowed_scoutmatch_source(item.get("s3_uri")):
             continue
         score = item.get("score")
         if min_score is not None:
@@ -465,8 +483,17 @@ def _rank_chunks_for_file(chunks: list[dict]) -> list[dict]:
     return sorted(chunks, key=_chunk_source_rank, reverse=True)
 
 
-def _group_validated_chunks_by_file(results: list[dict], *, min_score: float | None) -> dict[str, list[dict]]:
-    validated = _filter_scoutmatch_results(results, min_score=min_score)
+def _group_validated_chunks_by_file(
+    results: list[dict],
+    *,
+    min_score: float | None,
+    session_id: str | None = None,
+) -> dict[str, list[dict]]:
+    validated = _filter_scoutmatch_results(
+        results,
+        min_score=min_score,
+        session_id=session_id,
+    )
     grouped: dict[str, list[dict]] = {}
     for chunk in validated:
         canonical = _canonical_source_key(_chunk_source_filename(chunk))
@@ -482,8 +509,13 @@ def _select_complete_diverse_context_chunks(
     *,
     min_score: float | None = None,
     source_limit: int | None = None,
+    session_id: str | None = None,
 ) -> list[dict]:
-    grouped = _group_validated_chunks_by_file(results, min_score=min_score)
+    grouped = _group_validated_chunks_by_file(
+        results,
+        min_score=min_score,
+        session_id=session_id,
+    )
     if not grouped:
         return []
 
@@ -1039,17 +1071,29 @@ class AWSKnowledgeBaseEngine:
         top_k: int | None = None,
         *,
         candidates: int | None = None,
+        session_id: str | None = None,
     ) -> list[dict]:
         if not self.ready or self._runtime_client is None:
             raise RuntimeError("AWS Knowledge Base engine is not ready yet.")
+        if not session_id:
+            return []
         k = candidates if candidates is not None else (
             top_k if top_k is not None else config.AWS_KB_RETRIEVE_CANDIDATES
         )
+        vector_config: dict[str, Any] = {
+            "numberOfResults": k,
+            "filter": {
+                "equals": {
+                    "key": "session_id",
+                    "value": session_id,
+                }
+            },
+        }
         response = self._runtime_client.retrieve(
             knowledgeBaseId=config.BEDROCK_KB_ID.strip(),
             retrievalQuery={"text": question.strip()},
             retrievalConfiguration={
-                "vectorSearchConfiguration": {"numberOfResults": k},
+                "vectorSearchConfiguration": vector_config,
             },
         )
         results: list[dict] = []
@@ -1060,6 +1104,8 @@ class AWSKnowledgeBaseEngine:
             location = item.get("location") or {}
             s3_uri, label = _location_fields(location)
             display = _display_name_from_uri(s3_uri or label)
+            if not _is_allowed_session_source(s3_uri, session_id):
+                continue
             results.append({
                 "text": text,
                 "source": display,
@@ -1172,6 +1218,9 @@ class AWSKnowledgeBaseEngine:
         refusal = _refusal_text(question)
         min_score = config.AWS_KB_MIN_SCORE_FLOAT
 
+        if not app_session_id:
+            return _strict_refusal_response(refusal, reason="missing_session_id")
+
         if not _is_question_in_scoutmatch_domain(question, history):
             return _strict_refusal_response(refusal, reason="out_of_domain")
 
@@ -1179,6 +1228,7 @@ class AWSKnowledgeBaseEngine:
             retrieved = self.retrieve(
                 question,
                 candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
+                session_id=app_session_id,
             )
         except Exception as exc:
             logger.error("Bedrock retrieve failed: %s", exc.__class__.__name__)
@@ -1191,12 +1241,13 @@ class AWSKnowledgeBaseEngine:
             }
 
         if not retrieved:
-            return _strict_refusal_response(refusal, reason="low_similarity")
+            return _strict_refusal_response(refusal, reason="no_scoutmatch_sources")
 
         validated = _select_complete_diverse_context_chunks(
             retrieved,
             question,
             min_score=min_score,
+            session_id=app_session_id,
         )
 
         if not validated:
@@ -1400,11 +1451,14 @@ class AWSKnowledgeBaseEngine:
         self,
         question: str,
         history: list | None = None,
+        app_session_id: str | None = None,
         bedrock_session_id: str | None = None,
     ) -> dict:
         """Legacy retrieve_and_generate — diagnostics only."""
         if not self.ready or self._runtime_client is None:
             raise RuntimeError("AWS Knowledge Base engine is not ready yet.")
+        if not app_session_id:
+            raise RuntimeError("A session ID is required for AWS Knowledge Base retrieval.")
         prompt_with_history = _build_question_with_history(question, history)
         gen_config: dict[str, Any] = {
             "type": "KNOWLEDGE_BASE",
@@ -1414,6 +1468,12 @@ class AWSKnowledgeBaseEngine:
                 "retrievalConfiguration": {
                     "vectorSearchConfiguration": {
                         "numberOfResults": config.AWS_KB_TOP_K,
+                        "filter": {
+                            "equals": {
+                                "key": "session_id",
+                                "value": app_session_id,
+                            }
+                        },
                     },
                 },
                 "generationConfiguration": {

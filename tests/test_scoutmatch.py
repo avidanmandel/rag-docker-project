@@ -43,6 +43,7 @@ from aws_kb_engine import (  # noqa: E402
     _chunks_are_near_duplicate,
     _canonical_source_key,
     _filter_scoutmatch_results,
+    _is_allowed_session_source,
     _is_allowed_scoutmatch_source,
     _is_comparison_or_recommendation_question,
     _is_question_in_scoutmatch_domain,
@@ -79,8 +80,9 @@ from aws_storage_service import (  # noqa: E402
 
 SCOUT_BUCKET = "test-scoutmatch-bucket"
 SCOUT_PREFIX = "scoutmatch/knowledge-base/"
+TEST_SESSION_ID = "sessionabc123"
 SCOUT_GK_URI = (
-    f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}player_cvs/goalkeeper_daniel_cohen.txt"
+    f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/goalkeeper_daniel_cohen.txt"
 )
 
 DANIEL_PROFILE = (
@@ -228,6 +230,33 @@ def _prepare_engine_with_mocks(engine: AWSKnowledgeBaseEngine) -> None:
     engine.ready = True
     engine._runtime_client = MagicMock()
     engine._bedrock_client = MagicMock()
+    raw_answer = engine.answer
+
+    def answer_with_session(question, *args, **kwargs):
+        _rewrite_mock_retrieve_uris_for_session(engine._runtime_client.retrieve.return_value)
+        kwargs.setdefault("app_session_id", TEST_SESSION_ID)
+        return raw_answer(question, *args, **kwargs)
+
+    engine.answer = answer_with_session
+
+
+def _rewrite_mock_retrieve_uris_for_session(payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    base = f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}"
+    session_base = f"{base}sessions/{TEST_SESSION_ID}/"
+    for item in payload.get("retrievalResults") or []:
+        location = item.get("location") or {}
+        s3 = location.get("s3Location") or location.get("s3_location") or {}
+        uri = s3.get("uri")
+        if (
+            isinstance(uri, str)
+            and uri.startswith(base)
+            and f"{SCOUT_PREFIX}sessions/" not in uri
+            and f"{SCOUT_PREFIX}data/" not in uri
+            and "/data/" not in uri
+        ):
+            s3["uri"] = session_base + Path(uri).name
 
 
 class StrictRAGTests(unittest.TestCase):
@@ -1174,6 +1203,49 @@ class AWSStorageTests(unittest.TestCase):
         self.assertIn("player_cvs", result["key"])
         self.svc._s3.put_object.assert_called_once()
 
+    def test_session_upload_uses_session_prefix_and_sidecar_metadata(self):
+        self.svc._s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        self.svc._s3.put_object.return_value = {}
+        result = self.svc.upload_session_document(
+            b"CV content",
+            "goalkeeper_daniel_cohen.txt",
+            session_id=TEST_SESSION_ID,
+            category="PLAYER CV",
+        )
+        expected_prefix = f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+        self.assertTrue(result["key"].startswith(expected_prefix))
+        self.assertEqual(result["metadata_key"], result["key"] + ".metadata.json")
+        metadata_call = self.svc._s3.put_object.call_args_list[1]
+        metadata = json.loads(metadata_call.kwargs["Body"].decode("utf-8"))
+        self.assertEqual(metadata["metadataAttributes"]["session_id"], TEST_SESSION_ID)
+        self.assertEqual(metadata["metadataAttributes"]["category"], "PLAYER CV")
+
+    def test_list_session_documents_only_active_prefix(self):
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{
+            "Contents": [
+                {"Key": f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/gk.txt", "Size": 100, "LastModified": None},
+                {"Key": f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/gk.txt.metadata.json", "Size": 10, "LastModified": None},
+            ]
+        }]
+        self.svc._s3.get_paginator.return_value = paginator
+        docs = self.svc.list_session_documents(TEST_SESSION_ID)
+        self.assertEqual(len(docs), 1)
+        self.assertIn(f"sessions/{TEST_SESSION_ID}/", docs[0]["key"])
+
+    def test_delete_recorded_session_objects_deletes_source_and_sidecar(self):
+        result = self.svc.delete_recorded_session_objects([
+            {"s3_key": f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/gk.txt"}
+        ])
+        self.assertEqual(result["deleted"], 2)
+        objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        keys = {obj["Key"] for obj in objects}
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/gk.txt", keys)
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/gk.txt.metadata.json", keys)
+
     def test_start_ingestion_job(self):
         self.svc._bedrock_agent.start_ingestion_job.return_value = {
             "ingestionJob": {"ingestionJobId": "JOB123", "status": "STARTING"}
@@ -1225,6 +1297,49 @@ class SessionTests(unittest.TestCase):
         s1 = database.create_session()
         s2 = database.create_session()
         self.assertNotEqual(s1["id"], s2["id"])
+        self.assertEqual(database.list_session_documents(s1["id"]), [])
+        self.assertEqual(database.list_session_documents(s2["id"]), [])
+
+    def test_session_documents_are_isolated(self):
+        s1 = database.create_session()
+        s2 = database.create_session()
+        doc = database.add_session_document(
+            s1["id"],
+            f"{SCOUT_PREFIX}sessions/{s1['id']}/gk.txt",
+            "gk.txt",
+            "PLAYER CV",
+        )
+        self.assertEqual(len(database.list_session_documents(s1["id"])), 1)
+        self.assertEqual(database.list_session_documents(s2["id"]), [])
+        self.assertEqual(database.get_session_document(s1["id"], doc["id"])["display_name"], "gk.txt")
+        deleted = database.delete_session_document(s1["id"], doc["id"])
+        self.assertEqual(deleted["s3_key"], f"{SCOUT_PREFIX}sessions/{s1['id']}/gk.txt")
+        self.assertEqual(database.list_session_documents(s1["id"]), [])
+
+    def test_clear_session_documents_returns_only_active_docs(self):
+        s1 = database.create_session()
+        s2 = database.create_session()
+        database.add_session_document(s1["id"], f"{SCOUT_PREFIX}sessions/{s1['id']}/a.txt", "a.txt", "TXT")
+        database.add_session_document(s2["id"], f"{SCOUT_PREFIX}sessions/{s2['id']}/b.txt", "b.txt", "TXT")
+        cleared = database.clear_session_documents(s1["id"])
+        self.assertEqual(len(cleared), 1)
+        self.assertEqual(database.list_session_documents(s1["id"]), [])
+        self.assertEqual(len(database.list_session_documents(s2["id"])), 1)
+
+    def test_database_path_parent_created_for_persistent_mount(self):
+        conn = getattr(database._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            database._local.conn = None
+        nested_dir = Path(self.tmp.name).with_suffix("") / "runtime"
+        nested_db = nested_dir / "chat.db"
+        database.DB_PATH = str(nested_db)
+        database.init_db()
+        self.assertTrue(nested_db.exists())
+        conn = getattr(database._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            database._local.conn = None
 
     def test_delete_conversation_only_local(self):
         s = database.create_session()
@@ -1252,6 +1367,200 @@ class FollowUpTests(unittest.TestCase):
         self.assertIn("Daniel Cohen", text)
 
 
+class SessionScopedRetrievalTests(unittest.TestCase):
+    def test_retrieve_sends_metadata_filter_equals_session_id(self):
+        engine = AWSKnowledgeBaseEngine()
+        engine.ready = True
+        engine._runtime_client = MagicMock()
+        engine._runtime_client.retrieve.return_value = _retrieve_payload(
+            DANIEL_PROFILE,
+            uri=SCOUT_GK_URI,
+        )
+        results = engine.retrieve("Which goalkeeper fits?", session_id=TEST_SESSION_ID)
+        self.assertEqual(len(results), 1)
+        config_arg = engine._runtime_client.retrieve.call_args.kwargs["retrievalConfiguration"]
+        self.assertEqual(
+            config_arg["vectorSearchConfiguration"]["filter"],
+            {"equals": {"key": "session_id", "value": TEST_SESSION_ID}},
+        )
+
+    def test_uri_guard_rejects_another_session(self):
+        other_uri = (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/other-session/gk.txt"
+        )
+        self.assertFalse(_is_allowed_session_source(other_uri, TEST_SESSION_ID))
+
+    def test_answer_without_session_id_refuses_safely(self):
+        engine = AWSKnowledgeBaseEngine()
+        engine.ready = True
+        engine._runtime_client = MagicMock()
+        engine._bedrock_client = MagicMock()
+        result = engine.answer("Which goalkeeper fits build-up play?")
+        self.assertTrue(result["refused"])
+        self.assertEqual(result["reason"], "missing_session_id")
+        engine._runtime_client.retrieve.assert_not_called()
+
+
+class SessionDocumentApiTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.tmp_data = tempfile.TemporaryDirectory()
+        self._orig_db = database.DB_PATH
+        self._orig_token = config.SCOUTMATCH_ADMIN_TOKEN
+        self._orig_rag_backend = config.RAG_BACKEND
+        self._orig_data_dir = config.DATA_DIR
+        database.DB_PATH = self.tmp.name
+        database._local.conn = None
+        database.init_db()
+        config.SCOUTMATCH_ADMIN_TOKEN = "test-admin-token"
+
+        import app as flask_app
+
+        self.flask_app = flask_app
+        self.client = flask_app.app.test_client()
+        flask_app.app.config["TESTING"] = True
+
+        self.svc = AWSStorageService()
+        self.svc._s3 = MagicMock()
+        self.svc._bedrock_agent = MagicMock()
+        self.svc._s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        self.svc._bedrock_agent.start_ingestion_job.return_value = {
+            "ingestionJob": {"ingestionJobId": "JOB123", "status": "STARTING"}
+        }
+        self.storage_patch = patch.object(flask_app, "aws_storage", self.svc)
+        self.storage_patch.start()
+
+    def tearDown(self):
+        self.storage_patch.stop()
+        conn = getattr(database._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            database._local.conn = None
+        database.DB_PATH = self._orig_db
+        config.SCOUTMATCH_ADMIN_TOKEN = self._orig_token
+        config.RAG_BACKEND = self._orig_rag_backend
+        config.DATA_DIR = self._orig_data_dir
+        Path(self.tmp.name).unlink(missing_ok=True)
+        self.tmp_data.cleanup()
+
+    def _create_session(self) -> dict:
+        resp = self.client.post("/api/sessions", json={})
+        self.assertEqual(resp.status_code, 201)
+        return resp.get_json()
+
+    def test_upload_requires_and_uses_session_id_and_records_row(self):
+        session = self._create_session()
+        resp = self.client.post(
+            f"/api/sessions/{session['id']}/documents/upload",
+            data={"file": (io.BytesIO(b"CV content"), "goalkeeper_daniel_cohen.txt")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.get_json()
+        self.assertIn(f"sessions/{session['id']}/", body["key"])
+        docs = database.list_session_documents(session["id"])
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["s3_key"], body["key"])
+
+    def test_listing_returns_only_active_session_documents(self):
+        s1 = self._create_session()
+        s2 = self._create_session()
+        database.add_session_document(s1["id"], f"{SCOUT_PREFIX}sessions/{s1['id']}/a.txt", "a.txt", "TXT")
+        database.add_session_document(s2["id"], f"{SCOUT_PREFIX}sessions/{s2['id']}/b.txt", "b.txt", "TXT")
+        resp = self.client.get(f"/api/sessions/{s1['id']}/documents")
+        self.assertEqual(resp.status_code, 200)
+        docs = resp.get_json()["documents"]
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["display_name"], "a.txt")
+
+    def test_clear_documents_requires_admin_token_and_deletes_sidecars(self):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        missing = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
+        self.assertEqual(missing.status_code, 403)
+        bad = self.client.post(
+            f"/api/sessions/{session['id']}/documents/clear",
+            headers={"X-ScoutMatch-Admin-Token": "bad"},
+        )
+        self.assertEqual(bad.status_code, 403)
+        ok = self.client.post(
+            f"/api/sessions/{session['id']}/documents/clear",
+            headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+        objects = self.svc._s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        keys = {obj["Key"] for obj in objects}
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt", keys)
+        self.assertIn(f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt.metadata.json", keys)
+        self.svc._bedrock_agent.start_ingestion_job.assert_called()
+
+    def test_delete_conversation_history_only_keeps_s3_documents(self):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        resp = self.client.delete(f"/api/sessions/{session['id']}", json={"delete_documents": False})
+        self.assertEqual(resp.status_code, 200)
+        self.svc._s3.delete_objects.assert_not_called()
+
+    def test_delete_conversation_with_documents_requires_admin_token(self):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        denied = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+        )
+        self.assertEqual(denied.status_code, 403)
+        ok = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+            headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.svc._s3.delete_objects.assert_called_once()
+
+    def test_local_mode_session_upload_list_and_clear(self):
+        config.RAG_BACKEND = "local"
+        config.DATA_DIR = Path(self.tmp_data.name)
+        session = self._create_session()
+        with patch.object(self.flask_app, "_reindex_engine_background", return_value=None):
+            upload = self.client.post(
+                f"/api/sessions/{session['id']}/documents/upload",
+                data={"file": (io.BytesIO(b"Local CV"), "local_goalkeeper.txt")},
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(upload.status_code, 201)
+        key = upload.get_json()["key"]
+        self.assertIn(f"session_uploads/{session['id']}/", key)
+        listed = self.client.get(f"/api/sessions/{session['id']}/documents")
+        self.assertEqual(len(listed.get_json()["documents"]), 1)
+        with patch.object(self.flask_app, "_reindex_engine_background", return_value=None):
+            cleared = self.client.post(
+                f"/api/sessions/{session['id']}/documents/clear",
+                headers={"X-ScoutMatch-Admin-Token": "test-admin-token"},
+            )
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+
+
 class UISmokeTests(unittest.TestCase):
     def test_homepage_renders_scoutmatch(self):
         import app as flask_app
@@ -1263,7 +1572,14 @@ class UISmokeTests(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("ScoutMatch AI", html)
         self.assertIn("Upload CV", html)
+        self.assertIn("Clear documents", html)
         self.assertIn("Grounded answers only", html)
+
+    def test_frontend_uses_session_scoped_document_endpoints(self):
+        js = (PROJECT_ROOT / "static/js/app.js").read_text(encoding="utf-8")
+        self.assertIn("/api/sessions/${sessionId}/documents", js)
+        self.assertIn("clearSessionDocuments", js)
+        self.assertIn("X-ScoutMatch-Admin-Token", js)
 
     def test_health_and_status(self):
         import app as flask_app
