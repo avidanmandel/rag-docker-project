@@ -1217,6 +1217,23 @@ class AWSStorageTests(unittest.TestCase):
         self.assertEqual(safe, "daniel_cohen_cv.txt")
         self.assertEqual(ext, ".txt")
 
+    def test_validate_pdf_docx_csv_extensions(self):
+        for filename, expected_ext in (
+            ("player_profile.pdf", ".pdf"),
+            ("scouting_report.docx", ".docx"),
+            ("squad_stats.csv", ".csv"),
+        ):
+            with self.subTest(filename=filename):
+                safe, ext = self.svc.validate_upload(filename, 512)
+                self.assertEqual(ext, expected_ext)
+                self.assertTrue(safe.endswith(expected_ext))
+
+    def test_reject_unsupported_extension(self):
+        with self.assertRaises(UploadValidationError) as ctx:
+            self.svc.validate_upload("malware.exe", 100)
+        self.assertIn("Unsupported file type", str(ctx.exception))
+        self.assertIn(".exe", str(ctx.exception))
+
     def test_reject_path_traversal(self):
         with self.assertRaises(UploadValidationError):
             self.svc.validate_upload("../secret.txt", 100)
@@ -1251,6 +1268,36 @@ class AWSStorageTests(unittest.TestCase):
         metadata = json.loads(metadata_call.kwargs["Body"].decode("utf-8"))
         self.assertEqual(metadata["metadataAttributes"]["session_id"], TEST_SESSION_ID)
         self.assertEqual(metadata["metadataAttributes"]["category"], "PLAYER CV")
+
+    def _session_upload(self, filename: str, content: bytes) -> dict:
+        self.svc._s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        self.svc._s3.put_object.return_value = {}
+        return self.svc.upload_session_document(
+            content,
+            filename,
+            session_id=TEST_SESSION_ID,
+            category="PLAYER CV",
+        )
+
+    def test_session_upload_pdf_docx_csv_use_session_prefix_and_sidecar(self):
+        samples = {
+            "forward_audit_player.pdf": b"%PDF-1.4 audit player profile",
+            "forward_audit_player.docx": b"PK audit docx content",
+            "forward_audit_player.csv": b"Name,Position\nAudit Player,ST\n",
+        }
+        expected_prefix = f"{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/"
+        for filename, content in samples.items():
+            with self.subTest(filename=filename):
+                result = self._session_upload(filename, content)
+                self.assertTrue(result["key"].startswith(expected_prefix))
+                self.assertEqual(result["metadata_key"], result["key"] + ".metadata.json")
+                metadata_call = self.svc._s3.put_object.call_args_list[-1]
+                metadata = json.loads(metadata_call.kwargs["Body"].decode("utf-8"))
+                self.assertEqual(metadata["metadataAttributes"]["session_id"], TEST_SESSION_ID)
+                self.svc._s3.put_object.reset_mock()
 
     def test_list_session_documents_only_active_prefix(self):
         paginator = MagicMock()
@@ -1507,6 +1554,40 @@ class SessionDocumentApiTests(unittest.TestCase):
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]["s3_key"], body["key"])
 
+    def _upload_file(self, session_id: str, filename: str, content: bytes):
+        return self.client.post(
+            f"/api/sessions/{session_id}/documents/upload",
+            data={"file": (io.BytesIO(content), filename)},
+            content_type="multipart/form-data",
+        )
+
+    def test_upload_txt_pdf_docx_csv_session_scoped_with_ingestion(self):
+        session = self._create_session()
+        uploads = {
+            "goalkeeper_audit.txt": b"Full Name: Audit Goalkeeper\nPosition: GK\n",
+            "goalkeeper_audit.pdf": b"%PDF-1.4 audit goalkeeper profile",
+            "goalkeeper_audit.docx": b"PK audit goalkeeper docx",
+            "goalkeeper_audit.csv": b"Name,Position\nAudit Goalkeeper,GK\n",
+        }
+        for filename, content in uploads.items():
+            with self.subTest(filename=filename):
+                resp = self._upload_file(session["id"], filename, content)
+                self.assertEqual(resp.status_code, 201, resp.get_json())
+                body = resp.get_json()
+                self.assertIn(f"sessions/{session['id']}/", body["key"])
+                self.assertEqual(body.get("ingestion_job_id"), "JOB123")
+        self.svc._bedrock_agent.start_ingestion_job.assert_called()
+        self.assertEqual(len(database.list_session_documents(session["id"])), len(uploads))
+
+    def test_upload_unsupported_extension_rejected(self):
+        session = self._create_session()
+        resp = self._upload_file(session["id"], "bad_file.exe", b"binary")
+        self.assertEqual(resp.status_code, 400)
+        body = resp.get_json()
+        self.assertIn("Unsupported file type", body.get("error", ""))
+        self.assertEqual(database.list_session_documents(session["id"]), [])
+        self.svc._bedrock_agent.start_ingestion_job.assert_not_called()
+
     def test_listing_returns_only_active_session_documents(self):
         s1 = self._create_session()
         s2 = self._create_session()
@@ -1755,6 +1836,11 @@ class UISmokeTests(unittest.TestCase):
             r"messages--has-chat::after[\s\S]*linear-gradient\(\s*to right",
         )
         self.assertRegex(css, r"messages--has-chat \.messages__inner[\s\S]*z-index:\s*1")
+
+    def test_upload_input_accepts_required_formats(self):
+        html = (PROJECT_ROOT / "templates/index.html").read_text(encoding="utf-8")
+        for ext in (".txt", ".pdf", ".docx", ".csv"):
+            self.assertIn(ext, html, f"missing accept extension {ext}")
 
     def test_health_and_status(self):
         import app as flask_app
