@@ -255,6 +255,23 @@ kbd {
     background: rgba(239, 68, 68, 0.12);
 }
 
+.document-list__readonly {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: auto;
+}
+
+.sidebar__label--spaced {
+    margin-top: 14px;
+}
+
+.document-list__item--readonly .document-list__lock {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    opacity: 0.85;
+}
+
 .document-list__badge {
     flex-shrink: 0;
     min-width: 34px;

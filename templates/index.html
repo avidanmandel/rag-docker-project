@@ -54,7 +54,13 @@
 
             <div class="sidebar__kb">
                 <div class="sidebar__label sidebar__label--row">
-                    <span>Player Documents</span>
+                    <span>Club Knowledge</span>
+                    <span class="document-list__readonly" title="Preloaded club data">&#128274; Read-only</span>
+                </div>
+                <div class="document-list document-list--baseline" id="baselineDocumentList"></div>
+
+                <div class="sidebar__label sidebar__label--row sidebar__label--spaced">
+                    <span>Uploaded Candidate Documents</span>
                     <button type="button" class="upload-btn" id="uploadBtn" title="Upload CV or scouting report">
                         Upload CV
                     </button>
@@ -67,7 +73,7 @@
                 </div>
                 <div class="upload-card__status" id="uploadStatus" hidden></div>
                 <div class="sync-status" id="syncStatus" hidden></div>
-                <div class="document-list" id="documentList"></div>
+                <div class="document-list document-list--session" id="documentList"></div>
                 <button type="button" class="clear-documents" id="clearDocumentsBtn">
                     Clear documents
                 </button>

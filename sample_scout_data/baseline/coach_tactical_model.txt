@@ -1,0 +1,29 @@
+ScoutMatch FC Tactical Model
+Head Coach: Daniel Barak
+
+Primary Formation:
+4-2-3-1
+
+Alternative Formation:
+4-3-3
+
+Right Back Requirements:
+* immediate availability preferred
+* right-footed player preferred
+* good build-up ability
+* accurate crossing
+* overlapping runs
+* salary must fit budget
+
+Player Below the Striker Requirements:
+* attacking midfielder or second striker
+* vision score at least 8
+* creativity score at least 8
+* key passing score at least 8
+* immediate availability preferred
+* salary must fit budget
+
+Forward Requirements:
+* link-up play
+* movement
+* salary no more than 50,000 EUR unless exception approved

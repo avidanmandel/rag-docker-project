@@ -203,12 +203,17 @@ def _canonical_player_key(filename: str) -> str:
 
 def _name_from_filename(filename: str) -> str | None:
     stem = _canonical_player_key(filename)
+    if stem.endswith("_cv"):
+        stem = stem[:-3]
     for prefix in _POSITION_PREFIXES:
         if stem.startswith(prefix):
             body = stem[len(prefix):]
             parts = [part for part in body.split("_") if part]
             if len(parts) >= 2:
                 return " ".join(part.capitalize() for part in parts)
+    parts = [part for part in stem.split("_") if part]
+    if len(parts) >= 2:
+        return " ".join(part.capitalize() for part in parts)
     return None
 
 

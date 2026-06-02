@@ -7,6 +7,7 @@ the production path when RAG_BACKEND=aws_kb.
 """
 
 import os
+import re
 from pathlib import Path
 
 try:
@@ -103,6 +104,22 @@ AWS_KB_MIN_SCORE = os.getenv("AWS_KB_MIN_SCORE", "")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "")
 AWS_S3_PREFIX = os.getenv("AWS_S3_PREFIX", "scoutmatch/knowledge-base/")
 SCOUTMATCH_ADMIN_TOKEN = os.getenv("SCOUTMATCH_ADMIN_TOKEN", "")
+
+# --- Baseline club knowledge (read-only, all conversations) ----------------
+BASELINE_KNOWLEDGE_ENABLED = os.getenv(
+    "BASELINE_KNOWLEDGE_ENABLED", "false"
+).strip().lower() in ("1", "true", "yes")
+AWS_BASELINE_SET_ID = os.getenv("AWS_BASELINE_SET_ID", "production").strip() or "production"
+AWS_BASELINE_S3_PREFIX = os.getenv("AWS_BASELINE_S3_PREFIX", "").strip()
+BASELINE_SYNC_STATE_READY = "READY"
+BASELINE_SYNC_STATE_SYNCING = "SYNCING"
+BASELINE_SYNC_STATE_ERROR = "ERROR"
+BASELINE_SYNCING_TEXT_EN = (
+    "ScoutMatch club knowledge is still updating. Please wait a moment and try again."
+)
+BASELINE_SYNCING_TEXT_HE = (
+    "ידע המועדון של ScoutMatch עדיין מתעדכן. נסה שוב בעוד רגע."
+)
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "25"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -212,3 +229,15 @@ def normalised_s3_prefix() -> str:
     if prefix and not prefix.endswith("/"):
         prefix += "/"
     return prefix
+
+
+def baseline_s3_prefix(baseline_set_id: str | None = None) -> str:
+    """Managed baseline prefix: scoutmatch/knowledge-base/baseline/<set_id>/"""
+    if AWS_BASELINE_S3_PREFIX:
+        prefix = AWS_BASELINE_S3_PREFIX.strip()
+        if not prefix.endswith("/"):
+            prefix += "/"
+        return prefix
+    set_id = (baseline_set_id or AWS_BASELINE_SET_ID or "production").strip()
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", set_id) or "production"
+    return f"{normalised_s3_prefix()}baseline/{safe}/"

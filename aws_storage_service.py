@@ -365,7 +365,9 @@ class AWSStorageService:
         metadata_key = self.metadata_sidecar_key(key)
         metadata = {
             "metadataAttributes": {
+                "scope": "session",
                 "session_id": session_id,
+                "document_type": "candidate_document",
                 "display_name": display_name,
                 "category": category_label,
             }
@@ -719,6 +721,206 @@ class AWSStorageService:
             "html": "TXT",
         }
         return ext_map.get(ext, ext.upper() if ext else "DOC")
+
+    def build_baseline_object_key(
+        self,
+        filename: str,
+        *,
+        baseline_set_id: str | None = None,
+    ) -> str:
+        safe, _ = self.validate_upload(filename, 1)
+        prefix = config.baseline_s3_prefix(baseline_set_id)
+        return f"{prefix}{safe}"
+
+    def upload_baseline_document(
+        self,
+        data: bytes,
+        filename: str,
+        *,
+        baseline_set_id: str | None = None,
+        category: str | None = None,
+        content_hash: str | None = None,
+        content_type: str | None = None,
+    ) -> dict:
+        """Upload managed baseline source + metadata sidecar."""
+        import hashlib
+
+        missing = config.validate_aws_config()
+        if missing:
+            raise RuntimeError(
+                "Missing AWS configuration: " + ", ".join(missing)
+            )
+
+        set_id = (baseline_set_id or config.AWS_BASELINE_SET_ID).strip()
+        safe, ext = self.validate_upload(filename, len(data))
+        key = self.build_baseline_object_key(safe, baseline_set_id=set_id)
+        digest = content_hash or hashlib.sha256(data).hexdigest()
+        category_label = category or self._baseline_category_label(safe)
+        display_name = Path(key).name
+
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        extra: dict[str, Any] = {}
+        if content_type:
+            extra["ContentType"] = content_type
+
+        metadata_key = self.metadata_sidecar_key(key)
+        metadata = {
+            "metadataAttributes": {
+                "scope": "baseline",
+                "baseline_set_id": set_id,
+                "document_type": "club_knowledge",
+                "managed_by": "scoutmatch",
+                "filename": display_name,
+                "content_hash": digest,
+                "category": category_label,
+                "display_name": display_name,
+            }
+        }
+
+        try:
+            self._s3.put_object(Bucket=bucket, Key=key, Body=data, **extra)
+            self._s3.put_object(
+                Bucket=bucket,
+                Key=metadata_key,
+                Body=json.dumps(metadata, ensure_ascii=False).encode("utf-8"),
+                ContentType="application/json",
+            )
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 baseline upload failed for key=%s: %s", key, exc.__class__.__name__)
+            raise RuntimeError(
+                "Failed to upload baseline document to Amazon S3."
+            ) from exc
+
+        return {
+            "key": key,
+            "metadata_key": metadata_key,
+            "display_name": display_name,
+            "size": len(data),
+            "extension": ext.lstrip("."),
+            "category": category_label,
+            "content_hash": digest,
+            "baseline_set_id": set_id,
+            "s3_uri": f"s3://{bucket}/{key}",
+        }
+
+    @staticmethod
+    def _baseline_category_label(filename: str) -> str:
+        lower = filename.lower()
+        if "club_profile" in lower:
+            return "Club Profile"
+        if "tactical" in lower or "coach" in lower:
+            return "Tactical Model"
+        if "squad" in lower or "depth" in lower:
+            return "Squad Depth"
+        if "budget" in lower:
+            return "Transfer Budget"
+        if "fixture" in lower:
+            return "Fixtures"
+        if "priorities" in lower or "winter" in lower:
+            return "Recruitment Priorities"
+        if "policy" in lower:
+            return "Recruitment Policy"
+        return "Club Knowledge"
+
+    def list_baseline_s3_objects(
+        self,
+        baseline_set_id: str | None = None,
+    ) -> list[dict]:
+        """List managed baseline source objects (not sidecars) for one set."""
+        missing = config.validate_aws_config()
+        if missing:
+            return []
+
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        prefix = config.baseline_s3_prefix(baseline_set_id)
+        docs: list[dict] = []
+
+        paginator = self._s3.get_paginator("list_objects_v2")
+        try:
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents") or []:
+                    key = obj.get("Key") or ""
+                    if (
+                        not key
+                        or key.endswith("/")
+                        or key.endswith(".metadata.json")
+                    ):
+                        continue
+                    name = Path(key).name
+                    ext = Path(key).suffix.lower().lstrip(".")
+                    docs.append({
+                        "key": key,
+                        "display_name": name,
+                        "size": obj.get("Size", 0),
+                        "extension": ext,
+                        "category": self._baseline_category_label(name),
+                        "s3_uri": f"s3://{bucket}/{key}",
+                    })
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 baseline list failed: %s", exc.__class__.__name__)
+            raise RuntimeError("Failed to list baseline documents from Amazon S3.") from exc
+
+        docs.sort(key=lambda d: d.get("display_name", "").lower())
+        return docs
+
+    def delete_baseline_managed_objects(
+        self,
+        keys: list[str],
+        *,
+        baseline_set_id: str | None = None,
+    ) -> dict:
+        """Delete only keys under the configured managed baseline prefix."""
+        missing = config.validate_aws_config()
+        if missing:
+            raise RuntimeError(
+                "Missing AWS configuration: " + ", ".join(missing)
+            )
+        set_id = (baseline_set_id or config.AWS_BASELINE_SET_ID).strip()
+        allowed_prefix = config.baseline_s3_prefix(set_id).lower()
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        objects: list[dict[str, str]] = []
+        for key in keys:
+            normalized = str(key or "")
+            if not normalized.lower().startswith(allowed_prefix):
+                raise RuntimeError("Refusing to delete object outside managed baseline prefix.")
+            if normalized.endswith(".metadata.json"):
+                objects.append({"Key": normalized})
+            else:
+                objects.append({"Key": normalized})
+                objects.append({"Key": self.metadata_sidecar_key(normalized)})
+
+        if not objects:
+            return {"deleted": 0}
+
+        try:
+            self._s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": objects, "Quiet": True},
+            )
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("S3 baseline delete failed: %s", exc.__class__.__name__)
+            raise RuntimeError("Failed to delete baseline documents from Amazon S3.") from exc
+        return {"deleted": len(objects)}
+
+    def read_object_bytes(self, key: str) -> bytes:
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        response = self._s3.get_object(Bucket=bucket, Key=key)
+        return response["Body"].read()
+
+    def read_metadata_sidecar(self, source_key: str) -> dict | None:
+        self._ensure_clients()
+        bucket = config.AWS_S3_BUCKET.strip()
+        meta_key = self.metadata_sidecar_key(source_key)
+        try:
+            response = self._s3.get_object(Bucket=bucket, Key=meta_key)
+            payload = json.loads(response["Body"].read().decode("utf-8"))
+            return payload.get("metadataAttributes") or payload
+        except ClientError:
+            return None
 
 
 # Module-level singleton used by Flask routes.

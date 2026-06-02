@@ -130,6 +130,7 @@ const els = {
     uploadStatus: document.getElementById("uploadStatus"),
     syncStatus: document.getElementById("syncStatus"),
     documentList: document.getElementById("documentList"),
+    baselineDocumentList: document.getElementById("baselineDocumentList"),
     clearDocumentsBtn: document.getElementById("clearDocumentsBtn"),
     resetProjectBtn: document.getElementById("resetProjectBtn"),
     awsBadge: document.getElementById("awsBadge"),
@@ -250,21 +251,50 @@ function updateComposerState() {
 
 async function refreshKbDocuments() {
     if (!state.activeSessionId) {
+        renderBaselineDocuments([]);
         renderKbDocuments([]);
         return;
     }
     try {
         const d = await API.listDocuments(state.activeSessionId);
-        renderKbDocuments(d.documents || []);
+        renderBaselineDocuments(d.club_knowledge || []);
+        renderKbDocuments(d.candidate_documents || d.documents || []);
     } catch {
+        renderBaselineDocuments([]);
         renderKbDocuments([]);
     }
+}
+
+function renderBaselineDocuments(docs) {
+    if (!els.baselineDocumentList) return;
+    els.baselineDocumentList.innerHTML = "";
+    if (!docs.length) {
+        const empty = document.createElement("div");
+        empty.className = "document-list__empty";
+        empty.textContent = "Preloaded club data";
+        els.baselineDocumentList.appendChild(empty);
+        return;
+    }
+    docs.forEach(doc => {
+        const row = document.createElement("div");
+        row.className = "document-list__item document-list__item--readonly";
+        const cat = (doc.category || "Club Knowledge").toUpperCase();
+        const rawShown = doc.display_name || doc.display_source || doc.name || "";
+        const shown = rawShown.includes("/") ? rawShown.split("/").pop() : rawShown;
+        row.innerHTML = `
+            <span class="document-list__badge document-list__badge--team">${escapeHtml(cat.split(" ")[0])}</span>
+            <span class="document-list__name" title="${escapeHtml(rawShown)}">${escapeHtml(shown)}</span>
+            <span class="document-list__lock" title="Read-only club knowledge">&#128274;</span>
+        `;
+        els.baselineDocumentList.appendChild(row);
+    });
 }
 
 function renderKbDocuments(docs) {
     if (!els.documentList) return;
     els.documentList.innerHTML = "";
-    if (!docs.length) {
+    const sessionDocs = (docs || []).filter(doc => doc.scope !== "baseline" && !doc.read_only);
+    if (!sessionDocs.length) {
         const empty = document.createElement("div");
         empty.className = "document-list__empty";
         empty.textContent = state.awsMode
@@ -273,7 +303,7 @@ function renderKbDocuments(docs) {
         els.documentList.appendChild(empty);
         return;
     }
-    docs.forEach(doc => {
+    sessionDocs.forEach(doc => {
         const row = document.createElement("div");
         row.className = "document-list__item";
         const cat = (doc.category || "TXT").toUpperCase();

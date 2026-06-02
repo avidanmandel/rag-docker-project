@@ -15,6 +15,12 @@ from typing import Any
 import boto3
 
 import config
+from baseline_club_knowledge import (
+    build_baseline_club_answer,
+    build_baseline_demo_answer,
+    is_baseline_only_question,
+    source_scope_label,
+)
 from requirement_verification import (
     EXACT_MATCH_ACKNOWLEDGMENT_RETRY_INSTRUCTION,
     MATRIX_CONTRADICTION_RETRY_INSTRUCTION,
@@ -195,6 +201,17 @@ _SCOUTMATCH_DOMAIN_KEYWORDS = (
     "מוכן לעבור",
     "scouting",
     "requirements",
+    "club",
+    "budget",
+    "fixture",
+    "formation",
+    "scoutmatch fc",
+    "right back",
+    "below the striker",
+    "תקציב",
+    "מטרה",
+    "מגן ימני",
+    "מתחת לחלוץ",
 )
 
 _FOLLOW_UP_PATTERNS = (
@@ -385,6 +402,33 @@ def _session_allowed_uri_prefix(session_id: str) -> str:
     return f"s3://{bucket}/{prefix}sessions/{session_id}/".lower()
 
 
+def _baseline_allowed_uri_prefix(baseline_set_id: str | None = None) -> str:
+    bucket = (config.AWS_S3_BUCKET or "").strip()
+    prefix = config.baseline_s3_prefix(baseline_set_id).rstrip("/")
+    return f"s3://{bucket}/{prefix}/".lower()
+
+
+def _is_allowed_baseline_source(uri: str | None, baseline_set_id: str | None = None) -> bool:
+    if not config.BASELINE_KNOWLEDGE_ENABLED:
+        return False
+    if not uri or not _is_allowed_scoutmatch_source(uri):
+        return False
+    return str(uri).strip().lower().startswith(_baseline_allowed_uri_prefix(baseline_set_id))
+
+
+def _is_allowed_combined_source(
+    uri: str | None,
+    session_id: str | None,
+    *,
+    baseline_set_id: str | None = None,
+) -> bool:
+    if not uri:
+        return False
+    if _is_allowed_baseline_source(uri, baseline_set_id):
+        return True
+    return _is_allowed_session_source(uri, session_id)
+
+
 def _is_allowed_scoutmatch_source(uri: str | None) -> bool:
     if not uri or not isinstance(uri, str):
         return False
@@ -423,28 +467,74 @@ def _filter_scoutmatch_results(
     min_score: float | None,
     top_k: int | None = None,
     session_id: str | None = None,
+    baseline_set_id: str | None = None,
 ) -> list[dict]:
     filtered: list[dict] = []
     for item in results:
         text = (item.get("text") or "").strip()
         if not text:
             continue
-        if session_id:
-            if not _is_allowed_session_source(item.get("s3_uri"), session_id):
+        uri = item.get("s3_uri")
+        if session_id or config.BASELINE_KNOWLEDGE_ENABLED:
+            if not _is_allowed_combined_source(uri, session_id, baseline_set_id=baseline_set_id):
                 continue
-        elif not _is_allowed_scoutmatch_source(item.get("s3_uri")):
+        elif not _is_allowed_scoutmatch_source(uri):
             continue
         score = item.get("score")
         if min_score is not None:
             if score is None or float(score) < min_score:
                 continue
-        if not _is_football_relevant_chunk(item):
+        if not _is_football_relevant_chunk(item) and not _is_allowed_baseline_source(uri, baseline_set_id):
             continue
         filtered.append(item)
     filtered.sort(key=lambda row: row.get("score") or 0.0, reverse=True)
     if top_k is not None:
         return filtered[:top_k]
     return filtered
+
+
+def _build_retrieval_filter(session_id: str) -> dict[str, Any]:
+    """Bedrock metadata filter: baseline set OR active session (legacy + scoped)."""
+    if not config.BASELINE_KNOWLEDGE_ENABLED:
+        return {
+            "equals": {
+                "key": "session_id",
+                "value": session_id,
+            }
+        }
+    clauses: list[dict[str, Any]] = [
+        {
+            "equals": {
+                "key": "session_id",
+                "value": session_id,
+            }
+        },
+        {
+            "andAll": [
+                {"equals": {"key": "scope", "value": "session"}},
+                {"equals": {"key": "session_id", "value": session_id}},
+            ]
+        },
+    ]
+    if config.BASELINE_KNOWLEDGE_ENABLED:
+        set_id = config.AWS_BASELINE_SET_ID
+        clauses.extend([
+            {
+                "andAll": [
+                    {"equals": {"key": "scope", "value": "baseline"}},
+                    {"equals": {"key": "baseline_set_id", "value": set_id}},
+                ]
+            },
+            {
+                "equals": {
+                    "key": "baseline_set_id",
+                    "value": set_id,
+                }
+            },
+        ])
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"orAll": clauses}
 
 
 def _chunk_source_filename(chunk: dict) -> str:
@@ -1522,12 +1612,7 @@ class AWSKnowledgeBaseEngine:
         )
         vector_config: dict[str, Any] = {
             "numberOfResults": k,
-            "filter": {
-                "equals": {
-                    "key": "session_id",
-                    "value": session_id,
-                }
-            },
+            "filter": _build_retrieval_filter(session_id),
         }
         response = self._runtime_client.retrieve(
             knowledgeBaseId=config.BEDROCK_KB_ID.strip(),
@@ -1544,7 +1629,7 @@ class AWSKnowledgeBaseEngine:
             location = item.get("location") or {}
             s3_uri, label = _location_fields(location)
             display = _display_name_from_uri(s3_uri or label)
-            if not _is_allowed_session_source(s3_uri, session_id):
+            if not _is_allowed_combined_source(s3_uri, session_id):
                 continue
             results.append({
                 "text": text,
@@ -1662,6 +1747,8 @@ class AWSKnowledgeBaseEngine:
         bedrock_session_id: str | None = None,
         session_document_names: list[str] | None = None,
         session_player_facts: list[dict] | None = None,
+        baseline_club_facts: dict | None = None,
+        baseline_document_names: list[str] | None = None,
     ) -> dict:
         if not question or not question.strip():
             return {
@@ -1734,6 +1821,29 @@ class AWSKnowledgeBaseEngine:
             }
 
         if not retrieved:
+            club_facts = baseline_club_facts or {}
+            if config.BASELINE_KNOWLEDGE_ENABLED and is_baseline_only_question(question):
+                baseline_answer = build_baseline_club_answer(question, club_facts)
+                if baseline_answer:
+                    sources = [
+                        {
+                            "source": name,
+                            "display_name": name,
+                            "scope_label": "Club Knowledge",
+                        }
+                        for name in (baseline_document_names or [])[:5]
+                    ]
+                    if not sources:
+                        sources = [{"source": "club baseline", "scope_label": "Club Knowledge"}]
+                    return {
+                        "answer": baseline_answer,
+                        "context": sources,
+                        "main_source": sources[0] if sources else None,
+                        "refused": False,
+                        "reason": None,
+                        "generation_mode": "aws_kb_baseline",
+                        "bedrock_session_id": bedrock_session_id,
+                    }
             return _strict_refusal_response(refusal, reason="no_scoutmatch_sources")
 
         validated = (
@@ -1854,6 +1964,43 @@ class AWSKnowledgeBaseEngine:
                 "generation_mode": "aws_kb_aggregate",
                 "bedrock_session_id": bedrock_session_id,
             }
+
+        if config.BASELINE_KNOWLEDGE_ENABLED:
+            demo_answer = build_baseline_demo_answer(
+                question,
+                registry_facts or [],
+                baseline_club_facts or {},
+            )
+            if demo_answer:
+                sources = chunks_to_source_cards(validated)
+                if not sources:
+                    sources = [
+                        {
+                            "source": name,
+                            "display_name": name,
+                            "scope_label": source_scope_label(name, name),
+                        }
+                        for name in (baseline_document_names or [])[:3]
+                    ]
+                for src in sources:
+                    if "scope_label" not in src:
+                        src["scope_label"] = source_scope_label(
+                            src.get("s3_uri") or src.get("source"),
+                            src.get("display_name"),
+                        )
+                return {
+                    "answer": demo_answer,
+                    "context": sources,
+                    "main_source": select_main_source(
+                        sources,
+                        answer=demo_answer,
+                        question=question,
+                    ),
+                    "refused": False,
+                    "reason": None,
+                    "generation_mode": "aws_kb_baseline_demo",
+                    "bedrock_session_id": bedrock_session_id,
+                }
 
         context_block = build_grounded_context_block(validated)
         if not context_block.strip():

@@ -1,0 +1,101 @@
+{
+  "scope": "session",
+  "files": [
+    {
+      "filename": "ron_ben_ari_cv.pdf",
+      "format": "PDF",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Ron Ben Ari",
+        "43000",
+        "Immediate",
+        "YES"
+      ],
+      "expected_business_role": "right_back_candidate",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "dor_levi_cv.docx",
+      "format": "DOCX",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Dor Levi",
+        "47000",
+        "Immediate",
+        "NO"
+      ],
+      "expected_business_role": "right_back_candidate",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "tal_raz_cv.docx",
+      "format": "DOCX",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Tal Raz",
+        "50000",
+        "Vision 9"
+      ],
+      "expected_business_role": "below_striker_candidate",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "eyal_mor_cv.csv",
+      "format": "CSV",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Eyal Mor",
+        "45000"
+      ],
+      "expected_business_role": "midfielder_candidate",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "pedro_silva_cv.txt",
+      "format": "TXT",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Pedro Silva",
+        "48000",
+        "Left"
+      ],
+      "expected_business_role": "forward_candidate",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "ron_ben_ari_availability_update.txt",
+      "format": "TXT",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [
+        "Ron Ben Ari",
+        "March 2026"
+      ],
+      "expected_business_role": "availability_update",
+      "uploaded_live": true,
+      "related": true
+    },
+    {
+      "filename": "unrelated_titanic.csv",
+      "format": "CSV",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [],
+      "expected_business_role": "unrelated_refusal",
+      "uploaded_live": false,
+      "related": false
+    },
+    {
+      "filename": "prompt_injection_test.txt",
+      "format": "TXT",
+      "expected_upload_result": "201",
+      "expected_parsed_facts": [],
+      "expected_business_role": "injection_resistance",
+      "uploaded_live": true,
+      "related": true
+    }
+  ]
+}

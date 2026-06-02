@@ -28,6 +28,7 @@ import config  # noqa: E402
 GEMINI_API_KEY = config.GEMINI_API_KEY
 HF_TOKEN = config.HF_TOKEN
 import database  # noqa: E402
+from baseline_club_knowledge import parse_demo_candidate_content  # noqa: E402
 from requirement_verification import _name_from_filename, _parse_facts_from_text  # noqa: E402
 from rag_engine import RAGEngine  # noqa: E402
 from aws_kb_engine import AWS_KB_MODE_MSG, AWSKnowledgeBaseEngine  # noqa: E402
@@ -65,7 +66,9 @@ def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict
             text = raw.decode("latin-1", errors="ignore")
     except Exception:
         text = raw.decode("latin-1", errors="ignore")
-    parsed = _parse_facts_from_text(text)
+    parsed = parse_demo_candidate_content(text, filename) if text else {}
+    if not parsed:
+        parsed = _parse_facts_from_text(text)
     player_name = parsed.get("full_name") or _name_from_filename(filename)
     return {
         "parsed_player_name": player_name,
@@ -73,7 +76,10 @@ def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict
         "parsed_relocation": parsed.get("relocation_north"),
         "parsed_availability": parsed.get("availability"),
         "parsed_position": parsed.get("position"),
-        "parsed_preferred_foot": parsed.get("dominant_foot"),
+        "parsed_preferred_foot": parsed.get("preferred_foot") or parsed.get("dominant_foot"),
+        "parsed_vision": parsed.get("vision"),
+        "parsed_creativity": parsed.get("creativity"),
+        "parsed_key_passing": parsed.get("key_passing"),
     }
 
 
@@ -417,6 +423,16 @@ def api_status():
                 "ingestion_job_id": ingestion.get("ingestion_job_id"),
                 "status": ingestion.get("status"),
             }
+        payload["baseline_knowledge_enabled"] = config.BASELINE_KNOWLEDGE_ENABLED
+        payload["baseline_set_id"] = config.AWS_BASELINE_SET_ID
+        if config.BASELINE_KNOWLEDGE_ENABLED:
+            baseline_sync = database.get_baseline_sync_state()
+            payload["baseline_ready"] = (
+                baseline_sync.get("sync_state") == config.BASELINE_SYNC_STATE_READY
+                and bool(database.list_baseline_documents())
+            )
+            payload["baseline_sync_state"] = baseline_sync.get("sync_state")
+            payload["baseline_document_count"] = len(database.list_baseline_documents())
     return jsonify(payload)
 
 
@@ -589,6 +605,29 @@ def api_ingestion_status():
     return jsonify(status)
 
 
+def _baseline_document_payload(doc: dict) -> dict:
+    key = doc.get("s3_key") or doc.get("key") or ""
+    display = doc.get("display_name") or Path(key).name
+    bucket = (config.AWS_S3_BUCKET or "").strip()
+    payload = {
+        "id": doc.get("id"),
+        "key": key,
+        "s3_key": key,
+        "display_name": display,
+        "display_source": display,
+        "category": doc.get("category") or "Club Knowledge",
+        "uploaded_at": doc.get("uploaded_at"),
+        "scope": "baseline",
+        "scope_label": "Club Knowledge",
+        "read_only": True,
+        "managed_by": doc.get("managed_by") or "scoutmatch",
+        "extension": Path(display).suffix.lower().lstrip("."),
+    }
+    if bucket and key:
+        payload["s3_uri"] = f"s3://{bucket}/{key}"
+    return payload
+
+
 def _session_document_payload(doc: dict) -> dict:
     key = doc.get("s3_key") or doc.get("key") or ""
     display = doc.get("display_name") or Path(key).name
@@ -604,6 +643,9 @@ def _session_document_payload(doc: dict) -> dict:
         "category": category,
         "uploaded_at": doc.get("uploaded_at"),
         "extension": Path(display).suffix.lower().lstrip("."),
+        "scope": "session",
+        "scope_label": "Uploaded Candidate Document",
+        "read_only": False,
     }
     bucket = (config.AWS_S3_BUCKET or "").strip()
     if bucket and key:
@@ -639,19 +681,46 @@ def _session_or_404(session_id: str):
     return session, None
 
 
+@app.route("/api/baseline/documents", methods=["GET"])
+def api_list_baseline_documents():
+    """Return read-only club knowledge documents for the active baseline set."""
+    if not config.BASELINE_KNOWLEDGE_ENABLED:
+        return jsonify({"documents": [], "baseline_set_id": config.AWS_BASELINE_SET_ID})
+    docs = [_baseline_document_payload(d) for d in database.list_baseline_documents()]
+    sync = database.get_baseline_sync_state()
+    return jsonify({
+        "documents": docs,
+        "baseline_set_id": config.AWS_BASELINE_SET_ID,
+        "sync_state": sync.get("sync_state"),
+        "read_only": True,
+    })
+
+
 @app.route("/api/sessions/<session_id>/documents", methods=["GET"])
 def api_list_session_documents(session_id):
-    """Return documents attached only to this conversation."""
+    """Return baseline club knowledge plus session candidate documents."""
     _, error = _session_or_404(session_id)
     if error:
         return error
 
-    docs = [_session_document_payload(d) for d in database.list_session_documents(session_id)]
+    baseline_docs = (
+        [_baseline_document_payload(d) for d in database.list_baseline_documents()]
+        if config.BASELINE_KNOWLEDGE_ENABLED
+        else []
+    )
+    candidate_docs = [
+        _session_document_payload(d) for d in database.list_session_documents(session_id)
+    ]
     ingestion = aws_storage.latest_ingestion_snapshot() if _is_aws_kb_mode() else None
     if ingestion:
-        for doc in docs:
+        for doc in candidate_docs:
             doc["ingestion_status"] = ingestion.get("status")
-    return jsonify({"documents": docs})
+    return jsonify({
+        "documents": baseline_docs + candidate_docs,
+        "club_knowledge": baseline_docs,
+        "candidate_documents": candidate_docs,
+        "baseline_set_id": config.AWS_BASELINE_SET_ID if config.BASELINE_KNOWLEDGE_ENABLED else None,
+    })
 
 
 @app.route("/api/sessions/<session_id>/documents/upload", methods=["POST"])
@@ -755,6 +824,9 @@ def api_upload_session_document(session_id):
             parsed_availability=parsed_facts.get("parsed_availability"),
             parsed_position=parsed_facts.get("parsed_position"),
             parsed_preferred_foot=parsed_facts.get("parsed_preferred_foot"),
+            parsed_vision=parsed_facts.get("parsed_vision"),
+            parsed_creativity=parsed_facts.get("parsed_creativity"),
+            parsed_key_passing=parsed_facts.get("parsed_key_passing"),
         )
         ingestion = _sync_session_documents(session_id)
     except UploadValidationError as exc:
@@ -1290,6 +1362,33 @@ def api_send_message(session_id):
     history = database.get_history_for_llm(session_id, limit=20)
     user_msg = database.add_message(session_id, "user", question)
 
+    if _is_aws_kb_mode() and not database.is_baseline_retrieval_ready():
+        sync_msg = (
+            config.BASELINE_SYNCING_TEXT_HE
+            if _is_hebrew_text(question)
+            else config.BASELINE_SYNCING_TEXT_EN
+        )
+        assistant_msg = database.add_message(
+            session_id,
+            "assistant",
+            sync_msg,
+            context=[],
+            refused=True,
+            reason="baseline_syncing",
+            generation_mode="aws_kb",
+            main_source=None,
+            document_revision_at_answer=int(session.get("document_revision") or 0),
+        )
+        return jsonify({
+            "user_message": user_msg,
+            "assistant_message": assistant_msg,
+            "refused": True,
+            "reason": "baseline_syncing",
+            "sources": [],
+            "main_source": None,
+            "generation_mode": "aws_kb",
+        })
+
     if _is_aws_kb_mode() and not database.is_retrieval_ready(session_id):
         sync_msg = _syncing_retrieval_message(question)
         assistant_msg = database.add_message(
@@ -1322,6 +1421,10 @@ def api_send_message(session_id):
             for doc in database.list_session_documents(session_id)
         ]
         answer_kwargs["session_player_facts"] = database.list_session_player_facts(session_id)
+        answer_kwargs["baseline_club_facts"] = database.aggregate_baseline_club_facts()
+        answer_kwargs["baseline_document_names"] = [
+            doc["display_name"] for doc in database.list_baseline_documents()
+        ]
 
     try:
         result = engine.answer(**answer_kwargs)

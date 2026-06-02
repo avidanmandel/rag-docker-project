@@ -1,0 +1,151 @@
+{
+  "baseline_set_id": "production",
+  "scope": "baseline",
+  "files": [
+    {
+      "filename": "club_profile.txt",
+      "format": "TXT",
+      "category": "Club Profile",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "top four"
+      ],
+      "expected_questions": [
+        "club main goal"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "coach_tactical_model.txt",
+      "format": "TXT",
+      "category": "Tactical Model",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "4-2-3-1",
+        "right back",
+        "below the striker"
+      ],
+      "expected_questions": [
+        "below striker recommendation"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "squad_depth_chart.csv",
+      "format": "CSV",
+      "category": "Squad Depth",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "Right Back High",
+        "Attacking Midfielder High"
+      ],
+      "expected_questions": [
+        "urgent positions"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "transfer_budget.txt",
+      "format": "TXT",
+      "category": "Transfer Budget",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "100,000 EUR combined"
+      ],
+      "expected_questions": [
+        "transfer budget"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "upcoming_fixtures.csv",
+      "format": "CSV",
+      "category": "Fixtures",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "five fixtures"
+      ],
+      "expected_questions": [
+        "fixture schedule"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "fixture_congestion_note.txt",
+      "format": "TXT",
+      "category": "Fixtures",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "5 matches in 18 days"
+      ],
+      "expected_questions": [
+        "immediate availability"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "winter_window_priorities.txt",
+      "format": "TXT",
+      "category": "Recruitment Priorities",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "right back",
+        "attacking midfielder"
+      ],
+      "expected_questions": [
+        "urgent positions"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "recruitment_policy.txt",
+      "format": "TXT",
+      "category": "Recruitment Policy",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "read-only baseline"
+      ],
+      "expected_questions": [
+        "policy"
+      ],
+      "binary": false
+    },
+    {
+      "filename": "tactical_summary.docx",
+      "format": "DOCX",
+      "category": "Tactical Model",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "4-2-3-1"
+      ],
+      "expected_questions": [
+        "tactical summary"
+      ],
+      "binary": true
+    },
+    {
+      "filename": "winter_window_overview.pdf",
+      "format": "PDF",
+      "category": "Recruitment Priorities",
+      "expected_scope": "baseline",
+      "expected_baseline_set_id": "production",
+      "expected_key_facts": [
+        "100,000 EUR",
+        "right back"
+      ],
+      "expected_questions": [
+        "budget overview"
+      ],
+      "binary": true
+    }
+  ]
+}

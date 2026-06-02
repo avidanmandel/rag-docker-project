@@ -123,12 +123,46 @@ def init_db() -> None:
             ("parsed_availability", "ALTER TABLE session_documents ADD COLUMN parsed_availability TEXT"),
             ("parsed_position", "ALTER TABLE session_documents ADD COLUMN parsed_position TEXT"),
             ("parsed_preferred_foot", "ALTER TABLE session_documents ADD COLUMN parsed_preferred_foot TEXT"),
+            ("parsed_vision", "ALTER TABLE session_documents ADD COLUMN parsed_vision INTEGER"),
+            ("parsed_creativity", "ALTER TABLE session_documents ADD COLUMN parsed_creativity INTEGER"),
+            ("parsed_key_passing", "ALTER TABLE session_documents ADD COLUMN parsed_key_passing INTEGER"),
         ):
             if not _column_exists(conn, "session_documents", column):
                 conn.execute(ddl)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_session_documents_content_hash "
             "ON session_documents(session_id, content_hash)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baseline_documents (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                baseline_set_id TEXT NOT NULL,
+                s3_key          TEXT NOT NULL,
+                display_name    TEXT NOT NULL,
+                category        TEXT,
+                content_hash    TEXT,
+                managed_by      TEXT NOT NULL DEFAULT 'scoutmatch',
+                sync_state      TEXT NOT NULL DEFAULT 'READY',
+                uploaded_at     TEXT NOT NULL,
+                parsed_facts_json TEXT,
+                UNIQUE(baseline_set_id, s3_key)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_baseline_documents_set "
+            "ON baseline_documents(baseline_set_id)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baseline_sync (
+                baseline_set_id TEXT PRIMARY KEY,
+                sync_state      TEXT NOT NULL DEFAULT 'READY',
+                synced_at       TEXT,
+                last_job_id     TEXT
+            )
+            """
         )
 
 
@@ -278,6 +312,9 @@ def add_session_document(
     parsed_availability: str | None = None,
     parsed_position: str | None = None,
     parsed_preferred_foot: str | None = None,
+    parsed_vision: int | None = None,
+    parsed_creativity: int | None = None,
+    parsed_key_passing: int | None = None,
 ) -> dict:
     now = _utcnow_iso()
     conn = get_connection()
@@ -287,13 +324,15 @@ def add_session_document(
             INSERT INTO session_documents
                 (session_id, s3_key, display_name, category, uploaded_at, content_hash,
                  parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-                 parsed_position, parsed_preferred_foot)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 parsed_position, parsed_preferred_foot, parsed_vision, parsed_creativity,
+                 parsed_key_passing)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id, s3_key, display_name, category, now, content_hash,
                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-                parsed_position, parsed_preferred_foot,
+                parsed_position, parsed_preferred_foot, parsed_vision, parsed_creativity,
+                parsed_key_passing,
             ),
         )
     return {
@@ -310,7 +349,15 @@ def add_session_document(
         "parsed_availability": parsed_availability,
         "parsed_position": parsed_position,
         "parsed_preferred_foot": parsed_preferred_foot,
+        "parsed_vision": parsed_vision,
+        "parsed_creativity": parsed_creativity,
+        "parsed_key_passing": parsed_key_passing,
     }
+
+
+def _is_availability_update_document(doc: dict) -> bool:
+    name = (doc.get("display_name") or "").lower()
+    return "availability_update" in name or "candidate update" in name
 
 
 def _is_scouting_report_document(doc: dict) -> bool:
@@ -357,6 +404,15 @@ def _merge_player_fact_entry(entry: dict, doc: dict, *, enrich_only: bool = Fals
         entry["availability"] = availability
     if foot and (not enrich_only or not entry.get("preferred_foot")):
         entry["preferred_foot"] = foot
+    vision = doc.get("parsed_vision")
+    creativity = doc.get("parsed_creativity")
+    key_pass = doc.get("parsed_key_passing")
+    if vision is not None and (not enrich_only or entry.get("vision") is None):
+        entry["vision"] = int(vision)
+    if creativity is not None and (not enrich_only or entry.get("creativity") is None):
+        entry["creativity"] = int(creativity)
+    if key_pass is not None and (not enrich_only or entry.get("key_passing") is None):
+        entry["key_passing"] = int(key_pass)
     if fname and fname not in entry["source_filenames"]:
         entry["source_filenames"].append(fname)
 
@@ -379,7 +435,24 @@ def list_session_player_facts(session_id: str) -> list[dict]:
         position = (doc.get("parsed_position") or "").strip()
         foot = (doc.get("parsed_preferred_foot") or "").strip()
         availability = doc.get("parsed_availability")
-        if salary is None and not relocation and not position and not foot:
+        vision = doc.get("parsed_vision")
+        creativity = doc.get("parsed_creativity")
+        key_pass = doc.get("parsed_key_passing")
+        if _is_availability_update_document(doc):
+            if not name:
+                return
+            key = name.lower()
+            entry = merged.get(key)
+            if entry is None:
+                entry = {"full_name": name, "source_filenames": []}
+                merged[key] = entry
+            if availability:
+                entry["availability"] = availability
+            fname = doc.get("display_name") or ""
+            if fname and fname not in entry["source_filenames"]:
+                entry["source_filenames"].append(fname)
+            return
+        if salary is None and not relocation and not position and not foot and vision is None:
             return
         key = name.lower()
         if enrich_only and key not in merged:
@@ -399,6 +472,12 @@ def list_session_player_facts(session_id: str) -> list[dict]:
                 entry["position"] = position
             if foot:
                 entry["preferred_foot"] = foot
+            if vision is not None:
+                entry["vision"] = int(vision)
+            if creativity is not None:
+                entry["creativity"] = int(creativity)
+            if key_pass is not None:
+                entry["key_passing"] = int(key_pass)
             merged[key] = entry
             return
         _merge_player_fact_entry(entry, doc, enrich_only=enrich_only)
@@ -412,6 +491,10 @@ def list_session_player_facts(session_id: str) -> list[dict]:
         if not _is_scouting_report_document(doc):
             continue
         ingest(doc, enrich_only=True)
+
+    for doc in reversed(docs):
+        if _is_availability_update_document(doc):
+            ingest(doc, enrich_only=False)
 
     facts = list(merged.values())
     facts.sort(key=lambda row: (row.get("full_name") or "").lower())
@@ -460,7 +543,8 @@ def list_session_documents(session_id: str) -> list[dict]:
         """
         SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash,
                parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-               parsed_position, parsed_preferred_foot
+               parsed_position, parsed_preferred_foot, parsed_vision, parsed_creativity,
+               parsed_key_passing
         FROM session_documents
         WHERE session_id = ?
         ORDER BY uploaded_at DESC, id DESC
@@ -620,3 +704,178 @@ def get_history_for_llm(session_id: str, limit: int = 20) -> list[dict]:
         (session_id, limit),
     ).fetchall()
     return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+
+# ---------- baseline club knowledge ----------
+
+
+def upsert_baseline_document(
+    baseline_set_id: str,
+    s3_key: str,
+    display_name: str,
+    *,
+    category: str | None = None,
+    content_hash: str | None = None,
+    managed_by: str = "scoutmatch",
+    sync_state: str = config.BASELINE_SYNC_STATE_READY,
+    parsed_facts: dict | None = None,
+) -> dict:
+    now = _utcnow_iso()
+    facts_json = json.dumps(parsed_facts) if parsed_facts else None
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO baseline_documents (
+                baseline_set_id, s3_key, display_name, category, content_hash,
+                managed_by, sync_state, uploaded_at, parsed_facts_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(baseline_set_id, s3_key) DO UPDATE SET
+                display_name = excluded.display_name,
+                category = excluded.category,
+                content_hash = excluded.content_hash,
+                managed_by = excluded.managed_by,
+                sync_state = excluded.sync_state,
+                uploaded_at = excluded.uploaded_at,
+                parsed_facts_json = excluded.parsed_facts_json
+            """,
+            (
+                baseline_set_id,
+                s3_key,
+                display_name,
+                category,
+                content_hash,
+                managed_by,
+                sync_state,
+                now,
+                facts_json,
+            ),
+        )
+    row = conn.execute(
+        "SELECT * FROM baseline_documents WHERE baseline_set_id = ? AND s3_key = ?",
+        (baseline_set_id, s3_key),
+    ).fetchone()
+    return dict(row) if row else {}
+
+
+def list_baseline_documents(baseline_set_id: str | None = None) -> list[dict]:
+    set_id = baseline_set_id or config.AWS_BASELINE_SET_ID
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM baseline_documents WHERE baseline_set_id = ? ORDER BY display_name",
+        (set_id,),
+    ).fetchall()
+    results: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        raw = item.pop("parsed_facts_json", None)
+        if raw:
+            try:
+                item["parsed_facts"] = json.loads(raw)
+            except json.JSONDecodeError:
+                item["parsed_facts"] = {}
+        else:
+            item["parsed_facts"] = {}
+        results.append(item)
+    return results
+
+
+def get_baseline_document(baseline_set_id: str, s3_key: str) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM baseline_documents WHERE baseline_set_id = ? AND s3_key = ?",
+        (baseline_set_id, s3_key),
+    ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    raw = item.pop("parsed_facts_json", None)
+    item["parsed_facts"] = json.loads(raw) if raw else {}
+    return item
+
+
+def delete_baseline_document_row(baseline_set_id: str, s3_key: str) -> None:
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "DELETE FROM baseline_documents WHERE baseline_set_id = ? AND s3_key = ?",
+            (baseline_set_id, s3_key),
+        )
+
+
+def list_baseline_managed_keys(baseline_set_id: str) -> list[str]:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT s3_key FROM baseline_documents WHERE baseline_set_id = ?",
+        (baseline_set_id,),
+    ).fetchall()
+    return [r["s3_key"] for r in rows]
+
+
+def get_baseline_sync_state(baseline_set_id: str | None = None) -> dict:
+    set_id = baseline_set_id or config.AWS_BASELINE_SET_ID
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM baseline_sync WHERE baseline_set_id = ?",
+        (set_id,),
+    ).fetchone()
+    if row:
+        return dict(row)
+    return {
+        "baseline_set_id": set_id,
+        "sync_state": config.BASELINE_SYNC_STATE_READY,
+        "synced_at": None,
+        "last_job_id": None,
+    }
+
+
+def set_baseline_sync_state(
+    baseline_set_id: str,
+    *,
+    sync_state: str,
+    last_job_id: str | None = None,
+) -> None:
+    now = _utcnow_iso()
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO baseline_sync (baseline_set_id, sync_state, synced_at, last_job_id)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(baseline_set_id) DO UPDATE SET
+                sync_state = excluded.sync_state,
+                synced_at = excluded.synced_at,
+                last_job_id = excluded.last_job_id
+            """,
+            (
+                baseline_set_id,
+                sync_state,
+                now if sync_state == config.BASELINE_SYNC_STATE_READY else None,
+                last_job_id,
+            ),
+        )
+
+
+def is_baseline_retrieval_ready(baseline_set_id: str | None = None) -> bool:
+    if not config.BASELINE_KNOWLEDGE_ENABLED:
+        return True
+    state = get_baseline_sync_state(baseline_set_id).get("sync_state")
+    return state == config.BASELINE_SYNC_STATE_READY
+
+
+def aggregate_baseline_club_facts(baseline_set_id: str | None = None) -> dict:
+    """Merge parsed facts from all baseline documents for deterministic answers."""
+    merged: dict = {}
+    for doc in list_baseline_documents(baseline_set_id):
+        facts = doc.get("parsed_facts") or {}
+        for key, value in facts.items():
+            if value is None:
+                continue
+            if key == "urgent_positions" and isinstance(value, list):
+                existing = merged.setdefault("urgent_positions", [])
+                for pos in value:
+                    if pos not in existing:
+                        existing.append(pos)
+            elif key not in merged or merged[key] in (None, "", []):
+                merged[key] = value
+    return merged

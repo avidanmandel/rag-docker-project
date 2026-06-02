@@ -1,0 +1,8 @@
+position,current_players,available_players,injured_players,priority,notes
+Goalkeeper,2,2,0,Low,Sufficient depth
+Right Back,1,0,1,High,Immediate reinforcement required
+Center Back,4,4,0,Medium,Monitor depth
+Left Back,2,2,0,Low,Sufficient depth
+Defensive Midfielder,3,3,0,Low,Sufficient depth
+Attacking Midfielder,1,1,0,High,Need creative depth
+Forward,2,1,1,High,Need budget-conscious option
