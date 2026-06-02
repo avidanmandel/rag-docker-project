@@ -4,8 +4,9 @@
 |-------|-------|
 | **Project name** | ScoutMatch AI |
 | **Branch** | `feature/session-scoped-documents` |
-| **Release commit** | v11 business-gate cutover (see git log) |
+| **Release commit** | `f91dd19` |
 | **Production image** | `scoutmatch-ai:session-docs-v11` |
+| **Image ID** | `e1107945c6a3` |
 | **Rollback image** | `scoutmatch-ai:session-docs-v10` |
 | **Container name** | `scoutmatch-ai` |
 | **Public URL** | http://3.239.47.249/ |

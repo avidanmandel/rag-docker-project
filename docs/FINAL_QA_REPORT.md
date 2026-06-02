@@ -2,6 +2,7 @@
 
 **Audit date:** 2026-06-02 (UTC)  
 **Branch:** `feature/session-scoped-documents`  
+**Release commit:** `f91dd19c09e128cea181365796d438768d801920`  
 **Production image:** `scoutmatch-ai:session-docs-v11`  
 **Rollback image:** `scoutmatch-ai:session-docs-v10`
 
