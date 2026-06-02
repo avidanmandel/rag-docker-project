@@ -55,11 +55,11 @@ echo "${ST}" | python3 -c 'import sys,json; r=json.load(sys.stdin); print("salar
 TI=$(curl -fsS -X POST "${PUBLIC}/api/sessions/${SID}/messages" -H 'Content-Type: application/json' -d '{"content":"What happened to the Titanic ship disaster?"}')
 echo "${TI}" | python3 -c 'import sys,json; r=json.load(sys.stdin); print("titanic_refused", r.get("refused"), "sources", len(r.get("sources") or []))'
 
-DOC_ID=$(curl -fsS "${PUBLIC}/api/sessions/${SID}/documents" | python3 -c 'import sys,json; docs=json.load(sys.stdin); print(next((d["id"] for d in docs if "titanic" in d.get("display_name","").lower()), docs[0]["id"]))')
+DOC_ID=$(curl -fsS "${PUBLIC}/api/sessions/${SID}/documents" | python3 -c 'import sys,json; payload=json.load(sys.stdin); docs=payload.get("documents") or payload; print(next((d["id"] for d in docs if "titanic" in d.get("display_name","").lower()), docs[0]["id"]))')
 curl -fsS -X DELETE "${PUBLIC}/api/sessions/${SID}/documents/${DOC_ID}" >/dev/null
 wait_ready after_delete_sync
 
-curl -fsS -X DELETE "${PUBLIC}/api/sessions/${SID}/documents" >/dev/null
+curl -fsS -X POST "${PUBLIC}/api/sessions/${SID}/documents/clear" >/dev/null
 wait_ready after_clear_sync
 
 CLR=$(curl -fsS -X POST "${PUBLIC}/api/sessions/${SID}/messages" -H 'Content-Type: application/json' -d '{"content":"What is Public Striker salary?"}')
