@@ -7,8 +7,10 @@ Last updated: 2026-06-02
 | Item | Value |
 |------|-------|
 | Branch | `feature/session-scoped-documents` |
-| Target image | `scoutmatch-ai:session-docs-v10` |
+| Target image | `scoutmatch-ai:session-docs-v10` (**production active**) |
 | Rollback | `scoutmatch-ai:session-docs-v9` |
+| Release commit | `3f3d4b3` / `bb8598b` |
+| Strict audit | **BLOCKERS 0** (2026-06-02) |
 | EC2 | `ubuntu@3.239.47.249` |
 | Release checkout | `/home/ubuntu/scoutmatch-ai-session-docs-release` |
 

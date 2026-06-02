@@ -4,9 +4,9 @@
 |-------|-------|
 | **Project name** | ScoutMatch AI |
 | **Branch** | `feature/session-scoped-documents` |
-| **Release commit** | `a587cf4e64a7bf17094271071ca72a941c475427` |
+| **Release commit** | `bb8598b` (`3f3d4b3` app fix + `bb8598b` deploy scripts) |
 | **Production image** | `scoutmatch-ai:session-docs-v10` |
-| **Image ID** | *(set after EC2 build)* |
+| **Image ID** | `801e957a392b` |
 | **Container name** | `scoutmatch-ai` |
 | **Public URL** | http://3.239.47.249/ |
 | **Runtime mount** | `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime` |
@@ -16,25 +16,22 @@
 
 ## v10 changes
 
-- Upload-time `session_player_facts` used for all deterministic aggregates (relocation, defenders, availability, salary).
+- Upload-time `session_player_facts` used for all deterministic aggregates.
 - `parsed_position` stored at upload for CSV/PDF/DOCX/TXT.
-- Audit runner reads session IDs from `${LOG_FILE}`; persistence phase tolerant to missing sessions.
+- Audit runner: `${LOG_FILE}` session IDs, tolerant persistence checks, S3 cleanup timeout.
 
 ## Release verification (2026-06-02)
 
 | Check | Result |
 |-------|--------|
-| Local HEAD | `a587cf4` |
-| Remote HEAD | `a587cf4` (matches local) |
-| EC2 release folder HEAD | `a587cf4` |
-| Container state | running |
-| Source checksum vs container | **match** (`app.py`, `aws_kb_engine.py`, `database.py`, `requirement_verification.py`, `aws_storage_service.py`) |
-| `rag_backend` | `aws_kb` |
-| `engine_class` | `AWSKnowledgeBaseEngine` |
-| `ready` | `true` |
+| Local / remote / EC2 HEAD | `bb8598b` / `bb8598b` / `3f3d4b3+` |
+| Strict candidate audit | **BLOCKERS 0** |
+| Source checksum vs container | **match** (5/5 files) |
+| Production | `session-docs-v10` active |
+| `rag_backend` / `engine_class` / `ready` | `aws_kb` / `AWSKnowledgeBaseEngine` / `true` |
 
 ## Notes
 
-- Production v9 remains active during loopback candidate audits.
-- Candidate validation uses disposable sessions and synthetic documents only.
-- Do not commit `.env`, PEM keys, `chat.db`, or raw logs under `artifacts/logs/`.
+- Cutover performed after strict validation BLOCKERS 0.
+- Submission ZIP: `dist/Avidan_RAG_Docker_Project-submission.zip`
+- AWS cleanup: dry-run only via `scripts/aws_cleanup_dry_run.sh`
