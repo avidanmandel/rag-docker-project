@@ -2,52 +2,32 @@
 
 | Field | Value |
 |-------|-------|
-| **Project name** | ScoutMatch AI |
 | **Branch** | `feature/session-scoped-documents` |
-| **Release commit** | `f91dd19` |
-| **Production image** | `scoutmatch-ai:session-docs-v11` |
-| **Image ID** | `e1107945c6a3` |
-| **Rollback image** | `scoutmatch-ai:session-docs-v10` |
-| **Container name** | `scoutmatch-ai` |
+| **Release commit** | `0a7be41` |
+| **Production image** | `scoutmatch-ai:baseline-club-v12` |
+| **Image ID** | `915ec8bc45c4` |
+| **Rollback image** | `scoutmatch-ai:session-docs-v11` |
 | **Public URL** | http://3.239.47.249/ |
-| **Runtime mount** | `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime` |
-| **DB path** | `DATABASE_PATH=/app/runtime/chat.db` |
-| **Last QA timestamp** | 2026-06-02 (UTC) |
+| **Baseline set (production)** | `production` (10 managed documents) |
+| **Last QA** | 2026-06-02 (UTC) |
 
-## Business acceptance gate (v11)
-
-| Check | Result |
-|-------|--------|
-| Static UI checks (12) | **PASS** |
-| Format matrix (TXT/PDF/DOCX/CSV/BOM/Unicode/spaces) | **PASS** |
-| Salary total 471,000 EUR | **PASS** |
-| Left foot (Pedro Silva + Luca Romano) | **PASS** |
-| Defender relocation EN/HE (Amit Levy + Luca Romano) | **PASS** |
-| GK immediate ≤70k (Marco Silva only) | **PASS** |
-| Cheapest right back EN/HE (Ron Ben Ari, 43,000 EUR) | **PASS** |
-| Invalid document validation (4xx, no side effects) | **PASS** |
-| Lifecycle / isolation / persistence / reconcile | **PASS** |
-| v11 loopback gate blockers | **0** |
-| Production cutover | **session-docs-v11** |
-
-## v11 changes
-
-- Deterministic structured filters: left foot, defender relocation, GK compound, cheapest right back (EN/HE).
-- Upload-time registry merge: CV salary retained; scouting reports enrich only; unrelated fixtures excluded.
-- Quoted CSV salary values parsed correctly (`"58,000 EUR"`).
-- Invalid uploads rejected before S3/DB (corrupt PDF/DOCX, malformed CSV, empty, exe, traversal, oversize).
-
-## Release verification
+## v12 baseline club knowledge
 
 | Check | Result |
 |-------|--------|
-| Unit tests | **250 passed**, 4 warnings |
-| Business gate EC2 | **BLOCKERS 0** (`/tmp/business_gate_v11_iter3.log`) |
-| Source checksum vs container | verify after cutover |
-| `rag_backend` / `engine_class` / `ready` | `aws_kb` / `AWSKnowledgeBaseEngine` / `true` |
+| Baseline business gate (loopback) | **BLOCKERS 0** (`/tmp/baseline_gate_v12_final.log`) |
+| v11 business gate (prior release) | **BLOCKERS 0** |
+| Unit tests | **262 passed** |
+| Production `baseline_ready` | **true** |
+| Runtime checksum vs checkout | **5/5 match** |
+
+## Knowledge scopes
+
+- **Baseline (read-only):** `scoutmatch/knowledge-base/baseline/production/`
+- **Session candidates:** `scoutmatch/knowledge-base/sessions/<session_id>/`
 
 ## Notes
 
-- Baseline club-knowledge feature **not started** (deferred).
-- AWS cleanup: dry-run only via `scripts/aws_cleanup_dry_run.sh` (no `--apply`).
-- Submission ZIP: `dist/Avidan_RAG_Docker_Project-submission.zip`
+- Screenshot PNG files unchanged (manual capture deferred).
+- AWS cleanup `--apply` not executed.
+- EC2 and Bedrock KB remain active.

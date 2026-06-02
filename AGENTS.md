@@ -7,7 +7,7 @@ Session-scoped RAG football recruitment assistant. Production runs on EC2 with D
 ## Branch and release
 
 - **Branch:** `feature/session-scoped-documents`
-- **Production image:** `scoutmatch-ai:session-docs-v10` (rollback: `session-docs-v9`)
+- **Production image:** `scoutmatch-ai:baseline-club-v12` (rollback: `session-docs-v11`)
 - **Public URL:** http://3.239.47.249/
 - **EC2 release folder:** `/home/ubuntu/scoutmatch-ai-session-docs-release`
 - **Runtime mount:** `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime`
@@ -22,7 +22,8 @@ Session-scoped RAG football recruitment assistant. Production runs on EC2 with D
 | `database.py` | SQLite sessions, documents, parsed upload facts |
 | `requirement_verification.py` | Deterministic fact parsing and aggregate builders |
 | `scripts/full_live_validation_matrix.py` | Strict live validation (use `--strict`) |
-| `scripts/deploy_session_docs_v10.sh` | Build, validate candidate, cutover |
+| `scripts/run_baseline_business_gate.sh` | v12 baseline + demo candidate gate |
+| `scripts/seed_baseline_club_knowledge.py` | Seed read-only club knowledge to S3 |
 
 ## Rules for agents
 
