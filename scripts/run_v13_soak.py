@@ -218,6 +218,14 @@ def verify_production() -> tuple[bool, str]:
         return False, str(exc)[:200]
 
 
+def sync_tooling_into_prod_container() -> None:
+    for rel in (
+        "scripts/cleanup_candidate_baseline_set.py",
+        "scripts/seed_baseline_club_knowledge.py",
+    ):
+        run_cmd(["sudo", "docker", "cp", str(APP_DIR / rel), f"{PROD_CONTAINER}:/app/{rel}"])
+
+
 def count_session_s3_keys(session_id: str) -> int:
     code, out = run_cmd([
         "sudo", "docker", "exec", PROD_CONTAINER,
@@ -264,6 +272,7 @@ def start_candidate() -> None:
         "-p", "127.0.0.1:5001:5000",
         "--env-file", env_file,
         "-v", f"{RUNTIME}:/app/runtime",
+        "-v", f"{APP_DIR}/scripts:/app/scripts:ro",
         "-e", "DATABASE_PATH=/app/runtime/chat.db",
         "-e", "BASELINE_KNOWLEDGE_ENABLED=true",
         "-e", f"AWS_BASELINE_SET_ID={BASELINE_SET_ID}",
@@ -478,6 +487,7 @@ def cycle_11_persistence() -> bool:
         "-p", "127.0.0.1:5001:5000",
         "--env-file", env_file,
         "-v", f"{RUNTIME}:/app/runtime",
+        "-v", f"{APP_DIR}/scripts:/app/scripts:ro",
         "-e", "DATABASE_PATH=/app/runtime/chat.db",
         "-e", "BASELINE_KNOWLEDGE_ENABLED=true",
         "-e", f"AWS_BASELINE_SET_ID={BASELINE_SET_ID}",
@@ -537,6 +547,7 @@ def run_soak() -> int:
             path.unlink()
 
     log(f"SOAK_START baseline_set={BASELINE_SET_ID} candidate={CANDIDATE}")
+    sync_tooling_into_prod_container()
     ok, detail = verify_production()
     if not ok:
         log(f"SOAK_ABORT prerequisites production_unhealthy {detail}")
