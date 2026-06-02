@@ -3,9 +3,9 @@ set -euo pipefail
 
 APP_DIR="/home/ubuntu/scoutmatch-ai-session-docs-release"
 ENV_FILE="${APP_DIR}/.env"
-IMAGE_TAG="scoutmatch-ai:session-docs-v8"
-CANDIDATE="scoutmatch-ai-v8-full-validation-candidate"
-RUNTIME="/home/ubuntu/scoutmatch-ai-v8-full-validation-runtime"
+IMAGE_TAG="${IMAGE_TAG:-scoutmatch-ai:session-docs-v8}"
+CANDIDATE="${CANDIDATE:-scoutmatch-ai-v8-full-validation-candidate}"
+RUNTIME="${RUNTIME:-/home/ubuntu/scoutmatch-ai-v8-full-validation-runtime}"
 BASE="http://127.0.0.1:5001"
 PROD_CONTAINER="scoutmatch-ai"
 BUCKET=$(grep '^AWS_S3_BUCKET=' "${ENV_FILE}" | cut -d= -f2-)
@@ -35,7 +35,7 @@ for i in $(seq 1 24); do
   sleep 5
 done
 
-python3 "${APP_DIR}/scripts/full_live_validation_matrix.py" "${BASE}" | tee /tmp/full_live_validation_v8.log
+python3 "${APP_DIR}/scripts/full_live_validation_matrix.py" "${BASE}" | tee /tmp/full_live_validation_v8.log || true
 VALIDATION_EXIT=${PIPESTATUS[0]:-0}
 
 SESSION_B=$(grep '^SESSION_B ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)

@@ -26,6 +26,10 @@ _RELOCATION_RE = re.compile(
     r"Relocation Willingness:\s*(YES|NO|MAYBE)",
     re.IGNORECASE,
 )
+_AVAILABILITY_RE = re.compile(
+    r"Availability:\s*(.+?)(?:\n|$)",
+    re.IGNORECASE,
+)
 _BUILDUP_RE = re.compile(
     r"Build-up Ability:\s*(Strong|Limited|Inconsistent)",
     re.IGNORECASE,
@@ -210,8 +214,26 @@ def _infer_calm_from_narrative(text: str) -> str | None:
     return None
 
 
+def _normalize_csv_facts_text(text: str) -> str:
+    """Convert simple field,value CSV rows into label lines for fact parsing."""
+    lines: list[str] = []
+    for raw_line in _normalize_line_endings(text).splitlines():
+        line = raw_line.strip()
+        if not line or line.lower().startswith("field,"):
+            continue
+        if "," in line and ":" not in line.split(",", 1)[0]:
+            field, value = line.split(",", 1)
+            field = field.strip()
+            value = value.strip()
+            if field and value:
+                lines.append(f"{field}: {value}")
+                continue
+        lines.append(raw_line)
+    return "\n".join(lines)
+
+
 def _parse_facts_from_text(text: str) -> dict[str, Any]:
-    text = _normalize_line_endings(text)
+    text = _normalize_csv_facts_text(_normalize_line_endings(text))
     facts: dict[str, Any] = {}
     exp = _EXPERIENCE_RE.search(text)
     if exp:
@@ -222,6 +244,9 @@ def _parse_facts_from_text(text: str) -> dict[str, Any]:
     relocation = _RELOCATION_RE.search(text)
     if relocation:
         facts["relocation_north"] = relocation.group(1).upper()
+    availability = _AVAILABILITY_RE.search(text)
+    if availability:
+        facts["availability"] = availability.group(1).strip()
     buildup = _BUILDUP_RE.search(text)
     if buildup:
         facts["build_up_ability"] = buildup.group(1).capitalize()
@@ -292,6 +317,7 @@ def extract_verified_player_facts(chunks: list[dict]) -> list[dict[str, Any]]:
             "professional_experience_years": parsed.get("professional_experience_years"),
             "annual_salary_eur": parsed.get("annual_salary_eur"),
             "relocation_north": parsed.get("relocation_north"),
+            "availability": parsed.get("availability"),
             "build_up_ability": parsed.get("build_up_ability"),
             "calm_under_pressure": parsed.get("calm_under_pressure"),
             "dominant_foot": parsed.get("dominant_foot"),
@@ -301,6 +327,179 @@ def extract_verified_player_facts(chunks: list[dict]) -> list[dict[str, Any]]:
     players = list(grouped.values())
     players.sort(key=lambda row: (row.get("full_name") or "").lower())
     return players
+
+
+def is_salary_total_question(question: str) -> bool:
+    q = (question or "").lower()
+    return any(
+        phrase in q or phrase in (question or "")
+        for phrase in (
+            "total annual salary",
+            "total salary",
+            "salary of all uploaded",
+            "משכורת הכוללת",
+        )
+    )
+
+
+def is_relocation_list_question(question: str) -> bool:
+    q = (question or "").lower()
+    aggregate_markers = (
+        "all candidates",
+        "all players",
+        "show all",
+        "every candidate",
+        "every player",
+        "הצג את כל",
+        "כל השחקנים",
+        "שחקנים שמוכנים",
+        "candidates willing to relocate",
+    )
+    relocation_markers = (
+        "willing to relocate",
+        "מוכנים לעבור",
+        "ready to relocate",
+    )
+    return (
+        any(marker in q or marker in (question or "") for marker in aggregate_markers)
+        and any(marker in q or marker in (question or "") for marker in relocation_markers)
+    )
+
+
+def is_immediate_availability_question(question: str) -> bool:
+    q = (question or "").lower()
+    return any(
+        phrase in q
+        for phrase in (
+            "available immediately",
+            "availability immediately",
+            "who are available immediately",
+            "which players are available immediately",
+            "זמינים מיידית",
+        )
+    )
+
+
+def is_defender_comparison_question(question: str) -> bool:
+    q = (question or "").lower()
+    return "compare all defenders" in q or "השווה בין כל המגנים" in (question or "")
+
+
+def _format_eur(amount: int) -> str:
+    return f"{amount:,} EUR"
+
+
+def _is_immediate_availability(value: str | None) -> bool:
+    if not value:
+        return False
+    lowered = value.lower()
+    return "immediate" in lowered or "מייד" in lowered
+
+
+def build_salary_total_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    priced = [p for p in player_facts if p.get("annual_salary_eur") is not None]
+    if not priced:
+        return None
+    total = sum(int(p["annual_salary_eur"]) for p in priced)
+    if _HEBREW_RE.search(question or ""):
+        breakdown = "\n".join(
+            f"- {p.get('full_name')}: {_format_eur(int(p['annual_salary_eur']))}"
+            for p in priced
+        )
+        return (
+            f"המשכורת הכוללת של כל השחקנים המועלים היא {_format_eur(total)}.\n\n"
+            f"פירוט:\n{breakdown}"
+        )
+    breakdown = "\n".join(
+        f"- {p.get('full_name')}: {_format_eur(int(p['annual_salary_eur']))}"
+        for p in priced
+    )
+    return (
+        f"The total annual salary of all uploaded players is {_format_eur(total)}.\n\n"
+        f"Breakdown:\n{breakdown}"
+    )
+
+
+def build_relocation_list_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    willing = [
+        p for p in player_facts
+        if p.get("relocation_north") == "YES" and p.get("full_name")
+    ]
+    if not willing:
+        return None
+    names = [str(p["full_name"]) for p in willing]
+    if _HEBREW_RE.search(question or ""):
+        listed = "\n".join(f"- {name}" for name in names)
+        return (
+            "השחקנים שמוכנים לעבור קבוצה לפי המסמכים המצורפים:\n"
+            f"{listed}"
+        )
+    listed = "\n".join(f"- {name}" for name in names)
+    return (
+        "Candidates willing to relocate based on the uploaded documents:\n"
+        f"{listed}"
+    )
+
+
+def build_immediate_availability_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    available = [
+        p for p in player_facts
+        if _is_immediate_availability(p.get("availability")) and p.get("full_name")
+    ]
+    if not available:
+        return None
+    names = [str(p["full_name"]) for p in available]
+    listed = "\n".join(f"- {name}" for name in names)
+    if _HEBREW_RE.search(question or ""):
+        return f"השחקנים הזמינים מיידית לפי המסמכים:\n{listed}"
+    return f"Players available immediately based on the uploaded documents:\n{listed}"
+
+
+def build_defender_comparison_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    defenders = [
+        p for p in player_facts
+        if p.get("full_name")
+        and "defender" in str(p.get("position") or "").lower()
+    ]
+    if not defenders:
+        return None
+    blocks: list[str] = []
+    for player in defenders:
+        blocks.append(
+            f"{player.get('full_name')} — "
+            f"Salary: {_format_eur(int(player['annual_salary_eur'])) if player.get('annual_salary_eur') else 'unknown'}; "
+            f"Relocation: {player.get('relocation_north') or 'unknown'}; "
+            f"Availability: {player.get('availability') or 'unknown'}"
+        )
+    header = "השוואה בין המגנים:" if _HEBREW_RE.search(question or "") else "Defender comparison:"
+    return header + "\n" + "\n".join(blocks)
+
+
+def build_deterministic_aggregate_answer(
+    question: str,
+    player_facts: list[dict[str, Any]],
+) -> str | None:
+    if is_salary_total_question(question):
+        return build_salary_total_answer(player_facts, question)
+    if is_relocation_list_question(question):
+        return build_relocation_list_answer(player_facts, question)
+    if is_immediate_availability_question(question):
+        return build_immediate_availability_answer(player_facts, question)
+    if is_defender_comparison_question(question):
+        return build_defender_comparison_answer(player_facts, question)
+    return None
 
 
 def extract_recruitment_requirements(question: str) -> dict[str, Any]:

@@ -71,6 +71,7 @@ from aws_kb_engine import (  # noqa: E402
 from requirement_verification import (  # noqa: E402
     EXACT_MATCH_ACKNOWLEDGMENT_RETRY_INSTRUCTION,
     MATRIX_CONTRADICTION_RETRY_INSTRUCTION,
+    build_deterministic_aggregate_answer,
     build_safe_exact_match_fallback,
     build_verified_candidate_matrix,
     extract_recruitment_requirements,
@@ -3249,6 +3250,47 @@ class FootballRelevanceTests(unittest.TestCase):
         self.assertTrue(_is_aggregate_question("Show all candidates willing to relocate"))
         self.assertTrue(_is_aggregate_question("מהי המשכורת הכוללת של כל השחקנים?"))
         self.assertFalse(_is_aggregate_question("Who is Daniel Cohen?"))
+
+
+class AggregateAnswerTests(unittest.TestCase):
+    def test_csv_facts_parsed(self):
+        csv_text = (
+            "field,value\n"
+            "Full Name,Amit Levy\n"
+            "Position,Defender\n"
+            "Annual Salary Expectation,58000 EUR\n"
+            "Relocation Willingness,YES\n"
+            "Availability,July 2025\n"
+        )
+        facts = _parse_facts_from_text(csv_text)
+        self.assertEqual(facts.get("full_name"), "Amit Levy")
+        self.assertEqual(facts.get("annual_salary_eur"), 58000)
+        self.assertEqual(facts.get("relocation_north"), "YES")
+
+    def test_salary_total_aggregate_answer(self):
+        players = [
+            {"full_name": "Or David", "annual_salary_eur": 58000},
+            {"full_name": "Pedro Silva", "annual_salary_eur": 48000},
+            {"full_name": "Daniel Cohen", "annual_salary_eur": 75000},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "What is the total annual salary of all uploaded players?",
+            players,
+        )
+        self.assertIn("181,000 EUR", answer or "")
+        self.assertIn("Or David", answer or "")
+
+    def test_relocation_aggregate_answer(self):
+        players = [
+            {"full_name": "Or David", "relocation_north": "YES"},
+            {"full_name": "Noam David", "relocation_north": "NO"},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Show all candidates willing to relocate",
+            players,
+        )
+        self.assertIn("Or David", answer or "")
+        self.assertNotIn("Noam David", answer or "")
 
 
 class MessageApiSyncGuardTests(unittest.TestCase):

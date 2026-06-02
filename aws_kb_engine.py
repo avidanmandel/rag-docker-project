@@ -19,6 +19,7 @@ from requirement_verification import (
     EXACT_MATCH_ACKNOWLEDGMENT_RETRY_INSTRUCTION,
     MATRIX_CONTRADICTION_RETRY_INSTRUCTION,
     PLAYER_NAME_VARIANTS,
+    build_deterministic_aggregate_answer,
     build_safe_exact_match_fallback,
     build_verified_candidate_matrix,
     extract_recruitment_requirements,
@@ -478,6 +479,21 @@ def _is_player_cv_chunk(chunk: dict) -> bool:
     if _is_team_requirements_chunk(chunk) or _is_scouting_report_chunk(chunk):
         return False
     return any(fn.startswith(prefix) for prefix in _POSITION_PREFIXES)
+
+
+def _player_present_in_validated_chunks(player_name: str, chunks: list[dict]) -> bool:
+    tokens = _name_tokens(player_name)
+    if not tokens:
+        return False
+    for chunk in chunks:
+        haystack = " ".join([
+            _chunk_source_filename(chunk),
+            chunk.get("text") or "",
+            chunk.get("source") or "",
+        ]).lower().replace("_", " ")
+        if all(token in haystack for token in tokens):
+            return True
+    return False
 
 
 def _is_comparison_or_recommendation_question(question: str) -> bool:
@@ -1687,9 +1703,48 @@ class AWSKnowledgeBaseEngine:
                 reason="no_scoutmatch_sources",
             )
 
+        filtered_results = _filter_scoutmatch_results(
+            retrieved,
+            min_score=min_score,
+            session_id=app_session_id,
+        )
+
         if profile_player:
             prefer_name = _english_player_name(profile_player)
             validated = _prefer_named_player_chunks(validated, prefer_name)
+            if not _player_present_in_validated_chunks(prefer_name, validated):
+                return _strict_refusal_response(
+                    refusal,
+                    reason="unknown_player",
+                )
+
+        player_facts = extract_verified_player_facts(
+            filtered_results if _is_aggregate_question(question) else validated
+        )
+        aggregate_answer = build_deterministic_aggregate_answer(
+            question,
+            player_facts,
+        )
+        if aggregate_answer:
+            sources = chunks_to_source_cards(validated)
+            if not sources:
+                return _strict_refusal_response(
+                    refusal,
+                    reason="no_sources",
+                )
+            return {
+                "answer": aggregate_answer,
+                "context": sources,
+                "main_source": select_main_source(
+                    sources,
+                    answer=aggregate_answer,
+                    question=question,
+                ),
+                "refused": False,
+                "reason": None,
+                "generation_mode": "aws_kb_aggregate",
+                "bedrock_session_id": bedrock_session_id,
+            }
 
         context_block = build_grounded_context_block(validated)
         if not context_block.strip():
@@ -1697,7 +1752,6 @@ class AWSKnowledgeBaseEngine:
 
         verified_matrix: dict[str, Any] | None = None
         matrix_block = ""
-        player_facts = extract_verified_player_facts(validated)
         if should_build_verified_matrix(question, player_facts):
             requirements = extract_recruitment_requirements(question)
             verified_matrix = build_verified_candidate_matrix(
