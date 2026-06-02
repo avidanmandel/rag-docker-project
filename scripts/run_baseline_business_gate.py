@@ -198,6 +198,19 @@ def ensure_baseline_fixtures() -> None:
 
 def seed_baseline_set() -> None:
     ensure_baseline_fixtures()
+    candidate = os.environ.get("CANDIDATE", "").strip()
+    if candidate:
+        subprocess.check_call([
+            "sudo", "docker", "exec",
+            "-e", "BASELINE_KNOWLEDGE_ENABLED=true",
+            "-e", f"AWS_BASELINE_SET_ID={BASELINE_SET_ID}",
+            "-e", "DATABASE_PATH=/app/runtime/chat.db",
+            candidate,
+            "python", "scripts/seed_baseline_club_knowledge.py",
+            "--apply",
+            "--baseline-set-id", BASELINE_SET_ID,
+        ])
+        return
     env = os.environ.copy()
     env["BASELINE_KNOWLEDGE_ENABLED"] = "true"
     env["AWS_BASELINE_SET_ID"] = BASELINE_SET_ID

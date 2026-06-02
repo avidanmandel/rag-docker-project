@@ -30,6 +30,7 @@ mkdir -p "${RUNTIME}"
 
 export BASELINE_SET_ID AWS_BASELINE_SET_ID="${BASELINE_SET_ID}"
 export DATABASE_PATH="${RUNTIME}/chat.db"
+export CANDIDATE="${CANDIDATE}"
 
 sudo docker run -d \
   --name "${CANDIDATE}" \
