@@ -1730,6 +1730,15 @@ class AWSKnowledgeBaseEngine:
             min_score=min_score,
             session_id=app_session_id,
         )
+        fact_source = (
+            _filter_scoutmatch_results(
+                retrieved,
+                min_score=None,
+                session_id=app_session_id,
+            )
+            if aggregate_question
+            else filtered_results
+        )
 
         if profile_player:
             prefer_name = _english_player_name(profile_player)
@@ -1741,7 +1750,7 @@ class AWSKnowledgeBaseEngine:
                 )
 
         player_facts = extract_verified_player_facts(
-            filtered_results if aggregate_question else validated
+            fact_source if aggregate_question else validated
         )
         aggregate_answer = build_deterministic_aggregate_answer(
             question,
