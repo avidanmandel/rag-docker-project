@@ -447,8 +447,9 @@ def main() -> int:
     )
 
     print("=== PHASE 8: DELETE + CLEAR ===")
-    pre_delete_msgs = http_json("GET", f"/api/sessions/{sid_a}/messages").get("messages") or []
-    pre_delete_rev = int(http_json("GET", f"/api/sessions/{sid_a}").get("document_revision") or 0)
+    session_detail = http_json("GET", f"/api/sessions/{sid_a}")
+    pre_delete_msgs = session_detail.get("messages") or []
+    pre_delete_rev = int(session_detail.get("document_revision") or 0)
 
     or_doc = next((d for d in doc_list if d.get("display_name") == "forward_or_david.txt"), None)
     if or_doc:
@@ -479,7 +480,7 @@ def main() -> int:
                 stale_found = True
                 break
     if not stale_found:
-        for msg in http_json("GET", f"/api/sessions/{sid_a}/messages").get("messages") or []:
+        for msg in (http_json("GET", f"/api/sessions/{sid_a}").get("messages") or []):
             if msg.get("role") == "assistant":
                 rev_at = msg.get("document_revision_at_answer")
                 cur_rev = int(http_json("GET", f"/api/sessions/{sid_a}").get("document_revision") or 0)
