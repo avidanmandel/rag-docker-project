@@ -21,10 +21,12 @@ from requirement_verification import (
     PLAYER_NAME_VARIANTS,
     build_deterministic_aggregate_answer,
     build_safe_exact_match_fallback,
+    build_salary_total_answer,
     build_verified_candidate_matrix,
     extract_recruitment_requirements,
     extract_verified_player_facts,
     format_verified_matrix_for_prompt,
+    is_salary_total_question,
     should_build_verified_matrix,
     validate_answer_against_verified_matrix,
     validate_exact_match_acknowledgment,
@@ -1752,6 +1754,47 @@ class AWSKnowledgeBaseEngine:
         player_facts = extract_verified_player_facts(
             fact_source if aggregate_question else validated
         )
+        if aggregate_question and is_salary_total_question(question):
+            salary_chunks: list[dict] = list(fact_source)
+            for name in (session_document_names or []):
+                lower = name.lower()
+                if not any(lower.startswith(prefix) for prefix in _POSITION_PREFIXES):
+                    continue
+                if any(token in lower for token in ("_report", "titanic", "prompt_injection")):
+                    continue
+                stem = Path(name).stem.replace("_", " ")
+                salary_chunks.extend(
+                    self.retrieve(
+                        f"{stem} annual salary expectation player CV",
+                        session_id=app_session_id,
+                        candidates=3,
+                    )
+                )
+            player_facts = extract_verified_player_facts(
+                _dedupe_retrieved_chunks(salary_chunks)
+            )
+            salary_answer = build_salary_total_answer(player_facts, question)
+            if salary_answer:
+                sources = chunks_to_source_cards(validated)
+                if not sources:
+                    return _strict_refusal_response(
+                        refusal,
+                        reason="no_sources",
+                    )
+                return {
+                    "answer": salary_answer,
+                    "context": sources,
+                    "main_source": select_main_source(
+                        sources,
+                        answer=salary_answer,
+                        question=question,
+                    ),
+                    "refused": False,
+                    "reason": None,
+                    "generation_mode": "aws_kb_aggregate",
+                    "bedrock_session_id": bedrock_session_id,
+                }
+
         aggregate_answer = build_deterministic_aggregate_answer(
             question,
             player_facts,
