@@ -104,9 +104,11 @@ done
 LEFT_TOTAL=0
 for sid in "${SESSION_A}" "${SESSION_B}" "${SESSION_C}"; do
   [ -z "${sid}" ] && continue
-  COUNT=$(aws s3 ls "s3://${BUCKET}/scoutmatch/knowledge-base/sessions/${sid}/" 2>/dev/null | wc -l | tr -d ' ')
+  COUNT=$(timeout 45 aws s3 ls "s3://${BUCKET}/scoutmatch/knowledge-base/sessions/${sid}/" 2>/dev/null | wc -l | tr -d ' ' || echo "timeout")
   echo "leftover_${sid}=${COUNT}"
-  LEFT_TOTAL=$((LEFT_TOTAL + COUNT))
+  if [[ "${COUNT}" =~ ^[0-9]+$ ]]; then
+    LEFT_TOTAL=$((LEFT_TOTAL + COUNT))
+  fi
 done
 echo "final_disposable_s3_keys=${LEFT_TOTAL}"
 
