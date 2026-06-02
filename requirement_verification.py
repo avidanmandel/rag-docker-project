@@ -74,6 +74,26 @@ _POSITION_PREFIXES = (
     "defender_",
     "midfielder_",
     "forward_",
+    "right_back_",
+    "left_back_",
+    "attacking_midfielder_",
+)
+
+_EXCLUDED_FACT_FILENAME_MARKERS = (
+    "titanic",
+    "prompt_injection",
+    "team_requirements",
+    "tactical_requirements",
+    "format_",
+    "quoted_csv",
+    "bom_csv",
+    "duplicate_",
+    "empty_file",
+    "corrupt_",
+    "malformed_",
+    "unsupported",
+    "oversized",
+    "escape",
 )
 
 MATRIX_CONTRADICTION_RETRY_INSTRUCTION = (
@@ -224,7 +244,7 @@ def _normalize_csv_facts_text(text: str) -> str:
         if "," in line and ":" not in line.split(",", 1)[0]:
             field, value = line.split(",", 1)
             field = field.strip()
-            value = value.strip()
+            value = value.strip().strip('"').strip("'")
             if field and value:
                 lines.append(f"{field}: {value}")
                 continue
@@ -343,6 +363,8 @@ def is_salary_total_question(question: str) -> bool:
 
 
 def is_relocation_list_question(question: str) -> bool:
+    if is_defender_relocation_filter_question(question):
+        return False
     q = (question or "").lower()
     aggregate_markers = (
         "all candidates",
@@ -359,6 +381,8 @@ def is_relocation_list_question(question: str) -> bool:
         "willing to relocate",
         "מוכנים לעבור",
         "ready to relocate",
+        "רילוקיישן",
+        "relocation",
     )
     return (
         any(marker in q or marker in (question or "") for marker in aggregate_markers)
@@ -367,6 +391,8 @@ def is_relocation_list_question(question: str) -> bool:
 
 
 def is_immediate_availability_question(question: str) -> bool:
+    if is_goalkeeper_budget_immediate_question(question):
+        return False
     q = (question or "").lower()
     return any(
         phrase in q
@@ -400,7 +426,20 @@ def build_salary_total_answer(
     player_facts: list[dict[str, Any]],
     question: str,
 ) -> str | None:
-    priced = [p for p in player_facts if p.get("annual_salary_eur") is not None]
+    seen: set[str] = set()
+    priced: list[dict[str, Any]] = []
+    for player in player_facts:
+        name = (player.get("full_name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        salary = player.get("annual_salary_eur")
+        if salary is None:
+            continue
+        seen.add(key)
+        priced.append(player)
     if not priced:
         return None
     total = sum(int(p["annual_salary_eur"]) for p in priced)
@@ -464,6 +503,235 @@ def build_immediate_availability_answer(
     return f"Players available immediately based on the uploaded documents:\n{listed}"
 
 
+def _is_defender_position(position: str | None) -> bool:
+    pos = (position or "").lower()
+    return "defender" in pos or "right back" in pos or "left back" in pos or "center back" in pos
+
+
+def _is_goalkeeper_position(position: str | None) -> bool:
+    return "goalkeeper" in (position or "").lower()
+
+
+def _is_right_back_position(position: str | None) -> bool:
+    pos = (position or "").lower().strip()
+    return pos == "right back" or "right back" in pos
+
+
+def _preferred_foot_is_left(player: dict[str, Any]) -> bool:
+    foot = (player.get("preferred_foot") or player.get("dominant_foot") or "").lower()
+    return foot == "left"
+
+
+def _extract_max_salary_eur(question: str) -> int | None:
+    q = question or ""
+    for pattern in (
+        r"(?:no more than|at most|maximum(?: of)?|up to)\s+([\d,]+)\s*(?:eur|€)?",
+        r"([\d,]+)\s*(?:eur|€)\s*(?:maximum|max|or less)",
+        r"costs?\s+no more than\s+([\d,]+)",
+    ):
+        match = re.search(pattern, q, re.IGNORECASE)
+        if match:
+            return _parse_int(match.group(1))
+    compact = q.replace(",", "")
+    for match in re.finditer(r"(\d{4,6})\s*(?:eur|€)?", compact, re.IGNORECASE):
+        value = _parse_int(match.group(1))
+        if value and value >= 10000:
+            return value
+    return None
+
+
+def is_left_foot_preference_question(question: str) -> bool:
+    q = question or ""
+    lowered = q.lower()
+    return any(
+        phrase in lowered or phrase in q
+        for phrase in (
+            "left foot",
+            "prefer the left",
+            "preferred foot left",
+            "prefer left foot",
+            "רגל שמאל",
+            "רגל שמאלית",
+            "שמאלית",
+        )
+    ) and "right foot" not in lowered
+
+
+def is_defender_relocation_filter_question(question: str) -> bool:
+    q = question or ""
+    lowered = q.lower()
+    if is_defender_comparison_question(question):
+        return False
+    defender = any(token in lowered or token in q for token in ("defender", "defenders", "מגנים", "מגן"))
+    relocate = any(
+        token in lowered or token in q
+        for token in (
+            "relocate",
+            "relocation",
+            "willing to relocate",
+            "רילוקיישן",
+            "לעבור קבוצה",
+        )
+    )
+    return defender and relocate
+
+
+def is_goalkeeper_budget_immediate_question(question: str) -> bool:
+    q = question or ""
+    lowered = q.lower()
+    goalkeeper = "goalkeeper" in lowered or "goalkeepers" in lowered or "שוער" in q
+    immediate = "immediate" in lowered or "מייד" in q
+    budget = _extract_max_salary_eur(q) is not None or any(
+        token in lowered for token in ("no more than", "at most", "maximum", "up to", "תקציב")
+    )
+    return goalkeeper and immediate and budget
+
+
+def is_cheapest_right_back_question(question: str) -> bool:
+    q = question or ""
+    lowered = q.lower()
+    right_back = any(
+        token in lowered or token in q
+        for token in (
+            "right back",
+            "right-back",
+            "מגן הימני",
+            "מגן ימני",
+            "המגן הימני",
+        )
+    )
+    cheapest = any(
+        token in lowered or token in q
+        for token in (
+            "cheapest",
+            "lowest salary",
+            "lowest cost",
+            "הזול",
+            "זול ביותר",
+        )
+    )
+    return right_back and cheapest
+
+
+def is_cheapest_player_question(question: str) -> bool:
+    q = question or ""
+    lowered = q.lower()
+    if is_cheapest_right_back_question(question):
+        return False
+    return any(
+        token in lowered or token in q
+        for token in (
+            "cheapest player",
+            "lowest salary player",
+            "who is the cheapest",
+            "השחקן הזול",
+        )
+    )
+
+
+def build_left_foot_preference_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    matches = [
+        p for p in player_facts
+        if p.get("full_name") and _preferred_foot_is_left(p)
+    ]
+    if not matches:
+        return None
+    names = [str(p["full_name"]) for p in matches]
+    listed = "\n".join(f"- {name}" for name in names)
+    if _HEBREW_RE.search(question or ""):
+        return f"השחקנים עם רגל שמאלית לפי המסמכים:\n{listed}"
+    return f"Players who prefer the left foot based on the uploaded documents:\n{listed}"
+
+
+def build_defender_relocation_filter_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    matches = [
+        p for p in player_facts
+        if p.get("full_name")
+        and _is_defender_position(p.get("position"))
+        and p.get("relocation_north") == "YES"
+    ]
+    if not matches:
+        return None
+    names = [str(p["full_name"]) for p in matches]
+    listed = "\n".join(f"- {name}" for name in names)
+    if _HEBREW_RE.search(question or ""):
+        return f"המגנים שמוכנים לרילוקיישן לפי המסמכים:\n{listed}"
+    return f"Defenders willing to relocate based on the uploaded documents:\n{listed}"
+
+
+def build_goalkeeper_budget_immediate_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    max_salary = _extract_max_salary_eur(question or "")
+    if max_salary is None:
+        return None
+    matches = [
+        p for p in player_facts
+        if p.get("full_name")
+        and _is_goalkeeper_position(p.get("position"))
+        and _is_immediate_availability(p.get("availability"))
+        and p.get("annual_salary_eur") is not None
+        and int(p["annual_salary_eur"]) <= max_salary
+    ]
+    if not matches:
+        return None
+    lines = [
+        f"- {p['full_name']}: {_format_eur(int(p['annual_salary_eur']))}"
+        for p in matches
+    ]
+    header = (
+        f"Goalkeepers available immediately with salary up to {_format_eur(max_salary)}:"
+        if not _HEBREW_RE.search(question or "")
+        else f"שוערים זמינים מיידית עם שכר עד {_format_eur(max_salary)}:"
+    )
+    return header + "\n" + "\n".join(lines)
+
+
+def build_cheapest_right_back_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    candidates = [
+        p for p in player_facts
+        if p.get("full_name")
+        and _is_right_back_position(p.get("position"))
+        and p.get("annual_salary_eur") is not None
+    ]
+    if not candidates:
+        return None
+    cheapest = min(candidates, key=lambda row: int(row["annual_salary_eur"]))
+    salary = _format_eur(int(cheapest["annual_salary_eur"]))
+    name = str(cheapest["full_name"])
+    if _HEBREW_RE.search(question or ""):
+        return f"המגן הימני הזול ביותר הוא {name} עם שכר {salary}."
+    return f"The cheapest right back is {name} at {salary}."
+
+
+def build_cheapest_player_answer(
+    player_facts: list[dict[str, Any]],
+    question: str,
+) -> str | None:
+    priced = [
+        p for p in player_facts
+        if p.get("full_name") and p.get("annual_salary_eur") is not None
+    ]
+    if not priced:
+        return None
+    cheapest = min(priced, key=lambda row: int(row["annual_salary_eur"]))
+    salary = _format_eur(int(cheapest["annual_salary_eur"]))
+    name = str(cheapest["full_name"])
+    if _HEBREW_RE.search(question or ""):
+        return f"השחקן הזול ביותר הוא {name} עם שכר {salary}."
+    return f"The cheapest player is {name} at {salary}."
+
+
 def build_defender_comparison_answer(
     player_facts: list[dict[str, Any]],
     question: str,
@@ -493,6 +761,16 @@ def build_deterministic_aggregate_answer(
 ) -> str | None:
     if is_salary_total_question(question):
         return build_salary_total_answer(player_facts, question)
+    if is_left_foot_preference_question(question):
+        return build_left_foot_preference_answer(player_facts, question)
+    if is_defender_relocation_filter_question(question):
+        return build_defender_relocation_filter_answer(player_facts, question)
+    if is_goalkeeper_budget_immediate_question(question):
+        return build_goalkeeper_budget_immediate_answer(player_facts, question)
+    if is_cheapest_right_back_question(question):
+        return build_cheapest_right_back_answer(player_facts, question)
+    if is_cheapest_player_question(question):
+        return build_cheapest_player_answer(player_facts, question)
     if is_relocation_list_question(question):
         return build_relocation_list_answer(player_facts, question)
     if is_immediate_availability_question(question):

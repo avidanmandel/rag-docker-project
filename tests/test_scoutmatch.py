@@ -1665,11 +1665,38 @@ class SessionDocumentApiTests(unittest.TestCase):
 
     def test_upload_txt_pdf_docx_csv_session_scoped_with_ingestion(self):
         session = self._create_session()
+        pdf_text = "Full Name: Audit Goalkeeper\\nPosition: Goalkeeper\\n"
+        pdf_stream = f"BT /F1 10 Tf 14 TL 50 750 Td ({pdf_text}) Tj ET"
+        pdf_bytes = (
+            b"%PDF-1.4\n"
+            b"1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n"
+            b"2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj\n"
+            b"3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>endobj\n"
+            + f"4 0 obj<< /Length {len(pdf_stream)} >>stream\n".encode()
+            + pdf_stream.encode("latin-1", errors="replace")
+            + b"\nendstream endobj\n"
+            b"5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n"
+            b"xref\n0 6\n0000000000 65535 f \n"
+            b"trailer<< /Size 6 /Root 1 0 R >>\nstartxref\n0\n%%EOF"
+        )
+        docx_xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            "<w:body><w:p><w:r><w:t>Full Name: Audit Goalkeeper</w:t></w:r></w:p></w:body></w:document>"
+        )
+        import zipfile
+
+        docx_buf = io.BytesIO()
+        with zipfile.ZipFile(docx_buf, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'></Types>")
+            archive.writestr("_rels/.rels", "<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'></Relationships>")
+            archive.writestr("word/document.xml", docx_xml)
         uploads = {
-            "goalkeeper_audit.txt": b"Full Name: Audit Goalkeeper\nPosition: GK\n",
-            "goalkeeper_audit.pdf": b"%PDF-1.4 audit goalkeeper profile",
-            "goalkeeper_audit.docx": b"PK audit goalkeeper docx",
-            "goalkeeper_audit.csv": b"Name,Position\nAudit Goalkeeper,GK\n",
+            "goalkeeper_audit.txt": b"Full Name: Audit Goalkeeper\nPosition: Goalkeeper\n",
+            "goalkeeper_audit.pdf": pdf_bytes,
+            "goalkeeper_audit.docx": docx_buf.getvalue(),
+            "goalkeeper_audit.csv": b"field,value\nFull Name,Audit Goalkeeper\nPosition,Goalkeeper\n",
         }
         for filename, content in uploads.items():
             with self.subTest(filename=filename):
@@ -3356,6 +3383,136 @@ class AggregateAnswerTests(unittest.TestCase):
                 database._local.conn = None
             database.DB_PATH = orig_db
             os.unlink(tmp.name)
+
+    def test_list_session_player_facts_merges_cv_and_scouting_report(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        orig_db = database.DB_PATH
+        try:
+            database.DB_PATH = tmp.name
+            database._local.conn = None
+            database.init_db()
+            session = database.create_session("merge test")
+            database.add_session_document(
+                session["id"],
+                "scoutmatch/knowledge-base/sessions/x/forward_or_david.txt",
+                "forward_or_david.txt",
+                "Player CV",
+                parsed_player_name="Or David",
+                parsed_salary_eur=58000,
+                parsed_relocation="YES",
+                parsed_availability="January 2026",
+                parsed_position="Forward",
+            )
+            database.add_session_document(
+                session["id"],
+                "scoutmatch/knowledge-base/sessions/x/scouting_report_or_david.txt",
+                "scouting_report_or_david.txt",
+                "Scouting Report",
+                parsed_player_name="Or David",
+                parsed_position="Forward",
+            )
+            facts = database.list_session_player_facts(session["id"])
+            self.assertEqual(len(facts), 1)
+            self.assertEqual(facts[0]["annual_salary_eur"], 58000)
+        finally:
+            conn = getattr(database._local, "conn", None)
+            if conn is not None:
+                conn.close()
+                database._local.conn = None
+            database.DB_PATH = orig_db
+            os.unlink(tmp.name)
+
+    def test_quoted_csv_salary_parsed_from_fixture(self):
+        fixture = (
+            Path(__file__).resolve().parent
+            / "fixtures"
+            / "business_acceptance"
+            / "defender_amit_levy.csv"
+        )
+        facts = _parse_facts_from_text(fixture.read_text(encoding="utf-8"))
+        self.assertEqual(facts.get("annual_salary_eur"), 58000)
+        self.assertEqual(facts.get("full_name"), "Amit Levy")
+
+    def test_left_foot_aggregate_answer(self):
+        players = [
+            {"full_name": "Pedro Silva", "preferred_foot": "Left"},
+            {"full_name": "Luca Romano", "preferred_foot": "Left"},
+            {"full_name": "Or David", "preferred_foot": "Right"},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Which players prefer the left foot?",
+            players,
+        )
+        self.assertIn("Pedro Silva", answer or "")
+        self.assertIn("Luca Romano", answer or "")
+        self.assertNotIn("Or David", answer or "")
+
+    def test_defender_relocation_filter_answer(self):
+        players = [
+            {"full_name": "Amit Levy", "position": "Defender / Right Back", "relocation_north": "YES"},
+            {"full_name": "Luca Romano", "position": "Defender / Left Back", "relocation_north": "YES"},
+            {"full_name": "Noam David", "position": "Defender / Center Back", "relocation_north": "NO"},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Which defenders are willing to relocate?",
+            players,
+        )
+        self.assertIn("Amit Levy", answer or "")
+        self.assertIn("Luca Romano", answer or "")
+        self.assertNotIn("Noam David", answer or "")
+
+    def test_goalkeeper_compound_filter_answer(self):
+        players = [
+            {"full_name": "Daniel Cohen", "position": "Goalkeeper", "availability": "Immediate", "annual_salary_eur": 75000},
+            {"full_name": "Marco Silva", "position": "Goalkeeper", "availability": "Immediate", "annual_salary_eur": 65000},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Which goalkeepers are available immediately and cost no more than 70,000 EUR?",
+            players,
+        )
+        self.assertIn("Marco Silva", answer or "")
+        self.assertNotIn("Daniel Cohen", answer or "")
+
+    def test_cheapest_right_back_answer(self):
+        players = [
+            {"full_name": "Ron Ben Ari", "position": "Right Back", "annual_salary_eur": 43000},
+            {"full_name": "Dor Levi", "position": "Right Back", "annual_salary_eur": 47000},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Who is the cheapest right back?",
+            players,
+        )
+        self.assertIn("Ron Ben Ari", answer or "")
+        self.assertIn("43,000 EUR", answer or "")
+
+    def test_hebrew_cheapest_right_back_answer(self):
+        players = [
+            {"full_name": "Ron Ben Ari", "position": "Right Back", "annual_salary_eur": 43000},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "מי המגן הימני הזול ביותר?",
+            players,
+        )
+        self.assertIn("Ron Ben Ari", answer or "")
+        self.assertIn("43,000 EUR", answer or "")
+
+    def test_validate_document_content_rejects_corrupt_pdf(self):
+        svc = AWSStorageService()
+        with self.assertRaises(UploadValidationError):
+            svc.validate_document_content(b"NOT-A-VALID-PDF", ".pdf")
+
+    def test_validate_document_content_accepts_titanic_csv(self):
+        svc = AWSStorageService()
+        svc.validate_document_content(
+            b"passenger_id,name,survived,age\n1,Braund,0,22\n",
+            ".csv",
+        )
+
+    def test_validate_document_content_rejects_malformed_csv(self):
+        svc = AWSStorageService()
+        with self.assertRaises(UploadValidationError):
+            svc.validate_document_content(b"random,data,without,headers\nfoo,bar\n", ".csv")
 
 
 class MessageApiSyncGuardTests(unittest.TestCase):

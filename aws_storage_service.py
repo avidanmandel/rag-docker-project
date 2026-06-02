@@ -164,6 +164,67 @@ class AWSStorageService:
 
         return safe, ext
 
+    def validate_document_content(self, raw: bytes, ext: str) -> None:
+        """Reject corrupt or malformed document payloads before upload."""
+        if ext == ".pdf":
+            try:
+                import io
+
+                from pypdf import PdfReader
+
+                reader = PdfReader(io.BytesIO(raw))
+                if not reader.pages:
+                    raise UploadValidationError("The PDF file appears to be empty or corrupt.")
+                reader.pages[0].extract_text()
+            except UploadValidationError:
+                raise
+            except Exception as exc:
+                raise UploadValidationError(
+                    "The PDF file could not be read. It may be corrupt."
+                ) from exc
+            return
+
+        if ext == ".docx":
+            try:
+                import io
+                import zipfile
+
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    if "word/document.xml" not in archive.namelist():
+                        raise UploadValidationError(
+                            "The Word document appears to be corrupt."
+                        )
+            except UploadValidationError:
+                raise
+            except Exception as exc:
+                raise UploadValidationError(
+                    "The Word document could not be read. It may be corrupt."
+                ) from exc
+            return
+
+        if ext == ".csv":
+            text = raw.decode("utf-8-sig", errors="replace").strip()
+            if not text:
+                raise UploadValidationError("The CSV file is empty.")
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if not lines:
+                raise UploadValidationError("The CSV file is empty.")
+            first_line = lines[0].lower()
+            first_col = first_line.split(",", 1)[0].strip()
+            if first_line.startswith("field,value") or first_line == "field,value":
+                return
+            if "full name" in first_line or first_line.startswith("name,"):
+                return
+            if first_col in {"random", "foo", "bar", "without", "headers"}:
+                raise UploadValidationError(
+                    "CSV files must include a field,value header row or recognizable player headers."
+                )
+            if "," in first_line:
+                return
+            raise UploadValidationError(
+                "CSV files must include a field,value header row or recognizable player headers."
+            )
+
     def categorise_key(self, filename: str) -> str:
         """Choose S3 subfolder based on filename patterns."""
         lower = filename.lower()

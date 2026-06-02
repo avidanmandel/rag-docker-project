@@ -7,50 +7,46 @@ Last updated: 2026-06-02
 | Item | Value |
 |------|-------|
 | Branch | `feature/session-scoped-documents` |
-| Target image | `scoutmatch-ai:session-docs-v10` (**production active**) |
-| Rollback | `scoutmatch-ai:session-docs-v9` |
-| Release commit | `3f3d4b3` / `bb8598b` |
-| Strict audit | **BLOCKERS 0** (2026-06-02) |
+| Production image | `scoutmatch-ai:session-docs-v11` |
+| Rollback | `scoutmatch-ai:session-docs-v10` |
+| Business gate | **BLOCKERS 0** (v11, 2026-06-02) |
 | EC2 | `ubuntu@3.239.47.249` |
 | Release checkout | `/home/ubuntu/scoutmatch-ai-session-docs-release` |
 
-## What was fixed (v10)
+## What was fixed (v11)
 
-1. **Amit Levy CSV aggregates** — All deterministic aggregates (relocation, defenders, availability) now prefer upload-time `session_player_facts` from SQLite, not only chunk extraction. Added `parsed_position` at upload for CSV/PDF/DOCX/TXT.
-2. **Audit runner** — Session IDs read from `${LOG_FILE}` (last line); persistence uses tolerant HTTP checks; fallback to SESSION_A if SESSION_B unavailable.
-3. **Deploy reliability** — Validation exit code gates cutover; LF enforced for shell scripts.
+1. **Salary aggregate** — Quoted CSV salary fields parse correctly; total 471,000 EUR with unique player dedupe.
+2. **Registry merge** — CV facts retained when scouting reports uploaded; unrelated fixtures excluded from player registry.
+3. **Structured filters** — Left foot, defender relocation, GK compound, cheapest right back (EN + HE) are deterministic.
+4. **Invalid uploads** — Corrupt/malformed files rejected at upload with friendly 4xx; no S3/DB/revision side effects.
 
-## Strict validation
+## Business acceptance gate
 
-Run on EC2 before any cutover:
+Run on EC2 loopback candidate (does not change production until cutover):
 
 ```bash
-bash scripts/run_strict_release_audit_v10.sh
-grep '^BLOCKERS ' /tmp/strict_release_audit_v10.log
+IMAGE_TAG=scoutmatch-ai:session-docs-v11 \
+CANDIDATE=scoutmatch-ai-v11-business-gate-candidate \
+RUNTIME=/home/ubuntu/scoutmatch-ai-v11-business-gate-runtime \
+bash scripts/run_business_acceptance_gate.sh
+grep '^BLOCKERS ' /tmp/business_gate_v11_iter3.log
 ```
 
-Must show `BLOCKERS 0` for production cutover via `deploy_session_docs_v10.sh`.
+Must show `BLOCKERS 0` before production cutover.
 
-## Known gaps (pre-v10 audit)
+## Next work (deferred)
 
-v9 strict audit failed on Amit Levy in relocation/defender answers. v10 code addresses root cause (registry facts + position). Re-verify on EC2 after build.
-
-## Submission
-
-- Checklist: `docs/SUBMISSION_CHECKLIST.md`
-- ZIP script: `bash scripts/prepare_submission_zip.sh` → `dist/Avidan_RAG_Docker_Project-submission.zip`
-- AWS cleanup (dry-run only): `bash scripts/aws_cleanup_dry_run.sh`
+- **Baseline club knowledge** — not started; do not begin until explicitly requested.
 
 ## Do not
 
 - Print or commit secrets (`.env`, PEM, DB contents)
-- Delete production user data or Bedrock KB
+- Run `aws_cleanup --apply` or terminate EC2 without explicit approval
+- Modify screenshot PNG files or run screenshot automation unless requested
 - Cut over with `BLOCKERS > 0`
-- Leave loopback candidate containers on port 5001 after validation
 
-## Next agent actions
+## Useful scripts
 
-1. Push latest commit to origin.
-2. On EC2: `git pull`, `bash scripts/run_strict_release_audit_v10.sh`.
-3. If `BLOCKERS 0`: `bash scripts/deploy_session_docs_v10.sh`.
-4. Update `docs/PROJECT_STATE.md` and `docs/FINAL_QA_REPORT.md` with v10 image ID and audit result.
+- Business gate: `scripts/run_business_acceptance_gate.sh`
+- Checksum: `scripts/ec2_checksum_check.sh`
+- AWS cleanup dry-run: `scripts/aws_cleanup_dry_run.sh`

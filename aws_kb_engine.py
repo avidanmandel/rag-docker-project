@@ -26,6 +26,11 @@ from requirement_verification import (
     extract_recruitment_requirements,
     extract_verified_player_facts,
     format_verified_matrix_for_prompt,
+    is_cheapest_player_question,
+    is_cheapest_right_back_question,
+    is_defender_relocation_filter_question,
+    is_goalkeeper_budget_immediate_question,
+    is_left_foot_preference_question,
     is_salary_total_question,
     should_build_verified_matrix,
     validate_answer_against_verified_matrix,
@@ -62,6 +67,9 @@ _POSITION_PREFIXES = (
     "defender_",
     "midfielder_",
     "forward_",
+    "right_back_",
+    "left_back_",
+    "attacking_midfielder_",
 )
 
 EXPLICIT_GENERATION_PROMPT = """You are ScoutMatch AI, an AI-powered football recruitment assistant.
@@ -288,6 +296,16 @@ _AGGREGATE_QUESTION_PATTERNS = (
     "כל המגנים",
     "כל השוערים",
     "תקציב של",
+    "left foot",
+    "prefer the left",
+    "defenders willing",
+    "defenders are willing",
+    "goalkeepers are available",
+    "cheapest right back",
+    "cheapest player",
+    "מגן הימני",
+    "מגנים מוכנים",
+    "רילוקיישן",
 )
 
 
@@ -459,7 +477,18 @@ def _is_football_relevant_chunk(chunk: dict) -> bool:
 
 def _is_aggregate_question(question: str) -> bool:
     q = (question or "").lower()
-    return any(p in q for p in _AGGREGATE_QUESTION_PATTERNS)
+    if any(p in q for p in _AGGREGATE_QUESTION_PATTERNS):
+        return True
+    return any(
+        detector(question)
+        for detector in (
+            is_left_foot_preference_question,
+            is_defender_relocation_filter_question,
+            is_goalkeeper_budget_immediate_question,
+            is_cheapest_right_back_question,
+            is_cheapest_player_question,
+        )
+    )
 
 
 def _is_timestamped_source_filename(filename: str) -> bool:

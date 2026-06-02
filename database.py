@@ -18,6 +18,8 @@ from pathlib import Path
 
 import config
 
+from requirement_verification import _name_from_filename
+
 
 DB_PATH = str(config.DB_PATH)
 _local = threading.local()
@@ -120,6 +122,7 @@ def init_db() -> None:
             ("parsed_relocation", "ALTER TABLE session_documents ADD COLUMN parsed_relocation TEXT"),
             ("parsed_availability", "ALTER TABLE session_documents ADD COLUMN parsed_availability TEXT"),
             ("parsed_position", "ALTER TABLE session_documents ADD COLUMN parsed_position TEXT"),
+            ("parsed_preferred_foot", "ALTER TABLE session_documents ADD COLUMN parsed_preferred_foot TEXT"),
         ):
             if not _column_exists(conn, "session_documents", column):
                 conn.execute(ddl)
@@ -274,6 +277,7 @@ def add_session_document(
     parsed_relocation: str | None = None,
     parsed_availability: str | None = None,
     parsed_position: str | None = None,
+    parsed_preferred_foot: str | None = None,
 ) -> dict:
     now = _utcnow_iso()
     conn = get_connection()
@@ -283,13 +287,13 @@ def add_session_document(
             INSERT INTO session_documents
                 (session_id, s3_key, display_name, category, uploaded_at, content_hash,
                  parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-                 parsed_position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 parsed_position, parsed_preferred_foot)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id, s3_key, display_name, category, now, content_hash,
                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-                parsed_position,
+                parsed_position, parsed_preferred_foot,
             ),
         )
     return {
@@ -305,39 +309,111 @@ def add_session_document(
         "parsed_relocation": parsed_relocation,
         "parsed_availability": parsed_availability,
         "parsed_position": parsed_position,
+        "parsed_preferred_foot": parsed_preferred_foot,
     }
+
+
+def _is_scouting_report_document(doc: dict) -> bool:
+    name = (doc.get("display_name") or "").lower()
+    category = str(doc.get("category") or "").upper()
+    return "scouting_report" in name or category in {"SCOUT REPORT", "SCOUTING REPORT"}
+
+
+def _is_excluded_registry_document(doc: dict) -> bool:
+    name = (doc.get("display_name") or "").lower()
+    return any(marker in name for marker in (
+        "titanic",
+        "prompt_injection",
+        "team_requirements",
+        "tactical_requirements",
+        "format_",
+        "quoted_csv",
+        "bom_csv",
+        "duplicate_",
+        "empty_file",
+        "corrupt_",
+        "malformed_",
+        "unsupported",
+        "oversized",
+        "escape",
+    ))
+
+
+def _merge_player_fact_entry(entry: dict, doc: dict, *, enrich_only: bool = False) -> None:
+    salary = doc.get("parsed_salary_eur")
+    relocation = doc.get("parsed_relocation")
+    position = (doc.get("parsed_position") or "").strip()
+    availability = doc.get("parsed_availability")
+    foot = (doc.get("parsed_preferred_foot") or "").strip()
+    fname = doc.get("display_name") or ""
+
+    if salary is not None and (not enrich_only or entry.get("annual_salary_eur") is None):
+        entry["annual_salary_eur"] = int(salary)
+    if relocation and (not enrich_only or not entry.get("relocation_north")):
+        entry["relocation_north"] = relocation
+    if position and (not enrich_only or not entry.get("position")):
+        entry["position"] = position
+    if availability and (not enrich_only or not entry.get("availability")):
+        entry["availability"] = availability
+    if foot and (not enrich_only or not entry.get("preferred_foot")):
+        entry["preferred_foot"] = foot
+    if fname and fname not in entry["source_filenames"]:
+        entry["source_filenames"].append(fname)
 
 
 def list_session_player_facts(session_id: str) -> list[dict]:
     """Return upload-time parsed player facts for aggregate queries."""
     docs = list_session_documents(session_id)
-    facts: list[dict] = []
-    seen: set[str] = set()
-    for doc in docs:
+    merged: dict[str, dict] = {}
+
+    def ingest(doc: dict, *, enrich_only: bool) -> None:
+        if _is_excluded_registry_document(doc):
+            return
         name = (doc.get("parsed_player_name") or "").strip()
         if not name:
-            continue
+            name = (_name_from_filename(doc.get("display_name") or "") or "").strip()
+        if not name:
+            return
         salary = doc.get("parsed_salary_eur")
         relocation = doc.get("parsed_relocation")
         position = (doc.get("parsed_position") or "").strip()
+        foot = (doc.get("parsed_preferred_foot") or "").strip()
         availability = doc.get("parsed_availability")
-        if salary is None and not relocation and not position:
-            continue
+        if salary is None and not relocation and not position and not foot:
+            return
         key = name.lower()
-        if key in seen:
+        if enrich_only and key not in merged:
+            return
+        fname = doc.get("display_name") or ""
+        entry = merged.get(key)
+        if entry is None:
+            entry = {
+                "full_name": name,
+                "relocation_north": relocation,
+                "availability": availability,
+                "source_filenames": [fname] if fname else [],
+            }
+            if salary is not None:
+                entry["annual_salary_eur"] = int(salary)
+            if position:
+                entry["position"] = position
+            if foot:
+                entry["preferred_foot"] = foot
+            merged[key] = entry
+            return
+        _merge_player_fact_entry(entry, doc, enrich_only=enrich_only)
+
+    for doc in reversed(docs):
+        if _is_scouting_report_document(doc):
             continue
-        seen.add(key)
-        row: dict = {
-            "full_name": name,
-            "relocation_north": relocation,
-            "availability": availability,
-            "source_filenames": [doc.get("display_name") or ""],
-        }
-        if salary is not None:
-            row["annual_salary_eur"] = int(salary)
-        if position:
-            row["position"] = position
-        facts.append(row)
+        ingest(doc, enrich_only=False)
+
+    for doc in reversed(docs):
+        if not _is_scouting_report_document(doc):
+            continue
+        ingest(doc, enrich_only=True)
+
+    facts = list(merged.values())
     facts.sort(key=lambda row: (row.get("full_name") or "").lower())
     return facts
 
@@ -384,7 +460,7 @@ def list_session_documents(session_id: str) -> list[dict]:
         """
         SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash,
                parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
-               parsed_position
+               parsed_position, parsed_preferred_foot
         FROM session_documents
         WHERE session_id = ?
         ORDER BY uploaded_at DESC, id DESC

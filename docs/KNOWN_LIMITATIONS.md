@@ -37,3 +37,19 @@ No auto-scaling, blue/green fleet, or multi-AZ failover. Rollback is manual via 
 ## Shell script line endings
 
 Deploy and validation shell scripts must use Unix (LF) line endings on EC2. Windows CRLF breaks `set -euo pipefail` under bash.
+
+## Corrupt PDF/DOCX and malformed CSV uploads
+
+Upload validation checks extension, size, and basic file structure before S3 ingest. Corrupt PDF/DOCX payloads and CSV files without a `field,value` header (or recognizable player headers) are rejected with HTTP 400. Empty files, unsupported extensions, path traversal filenames, and oversize uploads are also rejected.
+
+## Position-specific cheapest-player queries
+
+Deterministic cheapest-by-position answers (e.g. right back) use upload-time registry facts when the question matches a structured aggregate pattern.
+
+## Compound goalkeeper filters
+
+Deterministic goalkeeper + availability + salary-ceiling questions use registry facts when matched; other compound filters may still rely on LLM retrieval.
+
+## CV + scouting report fact merge
+
+When a scouting report and player CV share the same parsed name, registry merge retains CV structured fields (salary, foot, availability) while scouting reports enrich narrative facts only. Scouting reports cannot seed new registry players without a matching CV document.

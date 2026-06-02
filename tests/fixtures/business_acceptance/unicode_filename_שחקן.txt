@@ -1,0 +1,3 @@
+UNICODE FILENAME PLAYER
+Full Name: Unicode Test Player
+Verification: UNICODE-OK

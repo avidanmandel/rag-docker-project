@@ -2,48 +2,46 @@
 
 **Audit date:** 2026-06-02 (UTC)  
 **Branch:** `feature/session-scoped-documents`  
-**Release commit:** `3f3d4b331d7d4672222eafe8f5a9d70a6f0c9365`  
-**Production image:** `scoutmatch-ai:session-docs-v10`
+**Production image:** `scoutmatch-ai:session-docs-v11`  
+**Rollback image:** `scoutmatch-ai:session-docs-v10`
 
-## v10 fix summary
+## v11 fix summary
 
-- Deterministic aggregates use upload-time `session_player_facts` (SQLite), not chunk extraction alone.
-- `parsed_position` stored at upload for CSV/PDF/DOCX/TXT.
-- Audit runner reads session IDs from `${LOG_FILE}`; persistence phase uses tolerant HTTP checks.
-- Cleanup phase uses `timeout 45` on S3 listing to avoid hang.
+- **Salary aggregate 471,000 EUR** — Quoted CSV values (`"58,000 EUR"`) now parse; Amit Levy salary included in registry totals.
+- **CV + scouting report merge** — Two-pass registry: CVs seed facts; scouting reports enrich without erasing structured CV fields or creating duplicate players.
+- **Deterministic filters** — Left foot, defender relocation (EN/HE), GK immediate + salary ceiling, cheapest right back (EN/HE) use upload-time registry facts.
+- **Invalid document validation** — Corrupt PDF/DOCX, malformed CSV, empty files, exe, path traversal, oversize rejected with HTTP 400; no S3/DB/revision side effects.
 
-## Strict loopback candidate (v10)
+## Business acceptance gate (v11 loopback)
 
-**Result:** **PASS — BLOCKERS 0**
+**Result:** **PASS — BLOCKERS 0**  
+**Log:** `/tmp/business_gate_v11_iter3.log` on EC2
 
-| Test | Result |
-|------|--------|
-| English relocation (6 players incl. Amit Levy) | PASS |
-| Hebrew relocation (6 players incl. Amit Levy) | PASS |
-| Defender comparison (Amit Levy, Luca Romano, Noam David) | PASS |
-| Salary total 471,000 EUR | PASS |
-| Immediate availability (6 players) | PASS |
-| Refusals / injection / delete / clear / isolation | PASS |
-| Persistence restart + recreate | PASS |
-| Reconcile dry-run | PASS (`complete: 1`) |
+| Mandatory test | Expected | Result |
+|----------------|----------|--------|
+| BA-AGG-salary | 471,000 EUR | PASS |
+| BA-FLT-left-foot | Pedro Silva + Luca Romano | PASS |
+| BA-FLT-defender-reloc | Amit Levy + Luca Romano only | PASS |
+| BA-FLT-he-def | Amit Levy + Luca Romano (Hebrew) | PASS |
+| BA-FLT-goalkeeper | Marco Silva only (≤70k immediate) | PASS |
+| BA-FLT-cheapest-rb | Ron Ben Ari, 43,000 EUR | PASS |
+| BA-FLT-he-rb | Ron Ben Ari, 43,000 EUR (Hebrew) | PASS |
+| BA-INV corrupt/malformed | HTTP 4xx | PASS |
+| Persistence restart + recreate | HTTP 200 | PASS |
+| Reconcile dry-run | complete | PASS |
+| Final disposable S3 keys | 0 | PASS |
 
 ## Unit tests
 
 ```
 python -m pytest tests/test_scoutmatch.py -q --tb=no
-240 passed, 4 warnings, 0 failures, ~18s
-```
-
-## Fixture validation
-
-```
-python scripts/validate_release_fixtures.py
-BLOCKERS 0 (TXT, CSV, PDF, DOCX)
+250 passed, 4 warnings, 0 failures, ~8s
 ```
 
 ## Production cutover
 
-- Cutover from `session-docs-v9` → `session-docs-v10` after duplicate strict validation BLOCKERS 0.
+- Cutover from `session-docs-v10` → `session-docs-v11` after business gate BLOCKERS 0.
+- Production DB backed up under `/home/ubuntu/scoutmatch-ai-runtime/rollback/` before cutover.
 - Public endpoints HTTP 200; `ready=true`.
 
 ## Verdict
@@ -51,9 +49,10 @@ BLOCKERS 0 (TXT, CSV, PDF, DOCX)
 | Criterion | Status |
 |-----------|--------|
 | **release_ready** | **yes** |
-| **submission_package_ready** | **yes** |
+| **baseline_club_knowledge** | **not started** |
 
 ## Artifacts
 
-- Submission ZIP: `dist/Avidan_RAG_Docker_Project-submission.zip` (local)
+- Business gate runner: `scripts/run_business_acceptance_gate.py` + `.sh`
+- Fixtures: `tests/fixtures/business_acceptance/` (35 files)
 - AWS cleanup dry-run: `scripts/aws_cleanup_dry_run.sh` (no deletions)

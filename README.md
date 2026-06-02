@@ -6,7 +6,68 @@ ScoutMatch AI helps football club managers, coaches, and scouts find the right p
 
 ---
 
+## Project topic and document set
+
+**Topic:** AI-powered football recruitment assistant with strict session-scoped RAG.
+
+**Chosen document set (demo / sample):**
+
+| Category | Location | Examples |
+|----------|----------|----------|
+| Player CVs | `sample_scout_data/player_cvs/` | TXT, CSV, PDF, DOCX formats |
+| Scouting reports | `sample_scout_data/scouting_reports/` | Per-player reports |
+| Team requirements | `sample_scout_data/team_requirements.txt` | Squad needs |
+| Live demo upload | `sample_scout_data/demo_upload_later/` | Optional extra CV |
+
+Production stores uploaded session documents under `s3://<bucket>/scoutmatch/knowledge-base/sessions/<session_id>/`.
+
+---
+
+## Public test URL
+
+**Live deployment:** http://3.239.47.249/
+
+Verify:
+
+- http://3.239.47.249/api/health
+- http://3.239.47.249/api/status → `ready: true`, `rag_backend: aws_kb`
+
+---
+
+## Supported upload formats
+
+TXT, PDF, DOCX, CSV (also MD, HTML, DOC, XLS, XLSX per `config.py`).
+
+---
+
+## Example grounded questions
+
+After uploading player CVs in a session:
+
+| Language | Example question |
+|----------|------------------|
+| English | Who is Or David? |
+| English | Show all candidates willing to relocate |
+| English | What is the total annual salary of all uploaded players? |
+| English | Compare all defenders |
+| Hebrew | מי זה אור דוד? |
+| Hebrew | מהי המשכורת הכוללת של כל השחקנים? |
+
+Out-of-domain (should refuse, no sources): *Are there good players on the Titanic?*
+
+---
+
 ## Architecture (production)
+
+```
+Documents (upload)
+    → Amazon S3 (scoutmatch/knowledge-base/sessions/<session_id>/)
+    → Bedrock Knowledge Base ingestion (sync)
+    → Bedrock retrieve + Converse generation
+    → Flask app (boto3) in Docker
+    → EC2 (port 80)
+    → Public browser access
+```
 
 ```
 Browser (phone / laptop)
@@ -238,3 +299,50 @@ python test_aws_kb.py   # live AWS only, requires credentials
 ## Local development fallback
 
 Set `RAG_BACKEND=local` with `GEMINI_API_KEY` and `HF_TOKEN` to use the original FAISS pipeline over `data/`. Course starter files remain for local testing only.
+
+---
+
+## Screenshots
+
+Submission evidence lives in `submission_evidence/`:
+
+- **Automated:** API JSON snapshots, endpoint results, QA summary (see `submission_evidence/README.md`)
+- **Manual browser:** `submission_evidence/MANUAL_BROWSER_SCREENSHOT_CHECKLIST.md` — home page, grounded answers, refusals, delete/clear confirmations
+- **AWS Console:** `submission_evidence/AWS_CONSOLE_SCREENSHOT_CHECKLIST.md` — Bedrock KB, data source, sync, EC2, security group
+
+Capture PNGs before final ZIP upload. Do not commit secrets in screenshots.
+
+---
+
+## Cleanup (after screenshots and demo)
+
+**Run only after** you have captured all required screenshots and finished the live demo.
+
+1. Delete disposable test sessions in the UI (or API with `delete_documents: true`).
+2. On EC2, run **dry-run first** (no deletions):
+
+   ```bash
+   bash scripts/aws_cleanup_dry_run.sh
+   ```
+
+3. Do **not** delete the Bedrock Knowledge Base, EC2 instance, or production runtime DB unless your course explicitly requires teardown.
+4. See `docs/SUBMISSION_CHECKLIST.md` and `docs/DEPLOYMENT_RUNBOOK.md`.
+
+---
+
+## Known limitations
+
+See `docs/KNOWN_LIMITATIONS.md` — Bedrock ingestion latency, stale historical answers, session-scoped retrieval only, single-host deployment.
+
+---
+
+## Further documentation
+
+| Doc | Purpose |
+|-----|---------|
+| `docs/PROJECT_STATE.md` | Release commit, image tag, URL |
+| `docs/FINAL_QA_REPORT.md` | QA verdict and strict validation |
+| `docs/BUSINESS_ACCEPTANCE_MATRIX.md` | Business-logic acceptance gate (v11) |
+| `docs/DEPLOYMENT_RUNBOOK.md` | EC2 deploy and rollback |
+| `AGENTS.md` | Agent/developer guide |
+| `docs/AGENT_HANDOFF.md` | Handoff notes |

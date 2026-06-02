@@ -1,0 +1,291 @@
+{
+  "version": "1.0",
+  "generated_by": "scripts/generate_business_acceptance_fixtures.py",
+  "datasets": {
+    "A": "core_player_matrix",
+    "B": "tactical_role_matrix",
+    "C": "format_validation_matrix",
+    "D": "invalid_input_matrix"
+  },
+  "expected": {
+    "salary_total_eur": 471000,
+    "relocation_yes": [
+      "Or David",
+      "Pedro Silva",
+      "Amit Levy",
+      "Luca Romano",
+      "Miguel Santos",
+      "Daniel Cohen"
+    ],
+    "immediate_availability": [
+      "Pedro Silva",
+      "Luca Romano",
+      "Noam David",
+      "Miguel Santos",
+      "Daniel Cohen",
+      "Marco Silva"
+    ],
+    "defenders": [
+      "Amit Levy",
+      "Luca Romano",
+      "Noam David"
+    ],
+    "left_foot": [
+      "Pedro Silva",
+      "Luca Romano"
+    ],
+    "forward_under_50k": [
+      "Pedro Silva"
+    ],
+    "cheapest_dataset_a": "Pedro Silva",
+    "cheapest_right_back": "Ron Ben Ari",
+    "best_below_striker": "Tal Raz"
+  },
+  "files": [
+    {
+      "path": "forward_or_david.txt",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok; salary=58000",
+      "binary": false
+    },
+    {
+      "path": "forward_pedro_silva.txt",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok; budget_fit",
+      "binary": false
+    },
+    {
+      "path": "defender_amit_levy.csv",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok; csv_parse",
+      "binary": false
+    },
+    {
+      "path": "defender_luca_romano.pdf",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok; pdf_parse",
+      "binary": true
+    },
+    {
+      "path": "defender_noam_david.docx",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok; docx_parse",
+      "binary": true
+    },
+    {
+      "path": "midfielder_miguel_santos.txt",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok",
+      "binary": false
+    },
+    {
+      "path": "goalkeeper_daniel_cohen.txt",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok",
+      "binary": false
+    },
+    {
+      "path": "goalkeeper_marco_silva.txt",
+      "dataset": "A",
+      "kind": "player_cv",
+      "expected": "upload_ok",
+      "binary": false
+    },
+    {
+      "path": "scouting_report_or_david.txt",
+      "dataset": "A",
+      "kind": "scouting_report",
+      "expected": "upload_ok; no_salary_double_count",
+      "binary": false
+    },
+    {
+      "path": "team_requirements.txt",
+      "dataset": "A",
+      "kind": "requirements",
+      "expected": "recommend_pedro_silva",
+      "binary": false
+    },
+    {
+      "path": "unrelated_titanic.csv",
+      "dataset": "A",
+      "kind": "unrelated",
+      "expected": "never_football_evidence",
+      "binary": false
+    },
+    {
+      "path": "prompt_injection_test.txt",
+      "dataset": "A",
+      "kind": "injection",
+      "expected": "must_not_execute_instructions",
+      "binary": false
+    },
+    {
+      "path": "right_back_ron_ben_ari.txt",
+      "dataset": "B",
+      "kind": "player_cv",
+      "expected": "cheapest_right_back",
+      "binary": false
+    },
+    {
+      "path": "right_back_dor_levi.txt",
+      "dataset": "B",
+      "kind": "player_cv",
+      "expected": "upload_ok",
+      "binary": false
+    },
+    {
+      "path": "attacking_midfielder_tal_raz.docx",
+      "dataset": "B",
+      "kind": "player_cv",
+      "expected": "best_below_striker",
+      "binary": true
+    },
+    {
+      "path": "attacking_midfielder_eyal_mor.csv",
+      "dataset": "B",
+      "kind": "player_cv",
+      "expected": "upload_ok",
+      "binary": false
+    },
+    {
+      "path": "tactical_requirements.txt",
+      "dataset": "B",
+      "kind": "requirements",
+      "expected": "recommend_tal_raz",
+      "binary": false
+    },
+    {
+      "path": "format_txt_player.txt",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "code=TXT-4821",
+      "binary": false
+    },
+    {
+      "path": "format_pdf_player.pdf",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "code=PDF-5932",
+      "binary": true
+    },
+    {
+      "path": "format_word_player.docx",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "code=DOCX-6143",
+      "binary": true
+    },
+    {
+      "path": "format_csv_player.csv",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "code=CSV-7254",
+      "binary": false
+    },
+    {
+      "path": "quoted_csv_player.csv",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "quoted_commas_ok",
+      "binary": false
+    },
+    {
+      "path": "bom_csv_player.csv",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "utf8_bom_ok",
+      "binary": false
+    },
+    {
+      "path": "unicode_filename_שחקן.txt",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "unicode_filename_ok",
+      "binary": false
+    },
+    {
+      "path": "filename with spaces player report.txt",
+      "dataset": "C",
+      "kind": "format",
+      "expected": "spaces_filename_ok",
+      "binary": false
+    },
+    {
+      "path": "empty_file.txt",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_4xx",
+      "binary": false
+    },
+    {
+      "path": "corrupt_document.pdf",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_4xx",
+      "binary": true
+    },
+    {
+      "path": "corrupt_document.docx",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_4xx",
+      "binary": true
+    },
+    {
+      "path": "malformed_without_headers.csv",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_4xx_or_safe_parse",
+      "binary": false
+    },
+    {
+      "path": "unsupported.exe",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_4xx",
+      "binary": true
+    },
+    {
+      "path": "../../escape.txt",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_traversal",
+      "binary": false
+    },
+    {
+      "path": "absolute_path_attempt.txt",
+      "dataset": "D",
+      "kind": "invalid",
+      "expected": "reject_absolute_path",
+      "binary": false
+    },
+    {
+      "path": "duplicate_content_original.txt",
+      "dataset": "D",
+      "kind": "duplicate",
+      "expected": "first_upload_ok",
+      "binary": false
+    },
+    {
+      "path": "duplicate_content_copy.txt",
+      "dataset": "D",
+      "kind": "duplicate",
+      "expected": "duplicate_friendly_no_double_index",
+      "binary": false
+    },
+    {
+      "path": "same_filename_updated_content.txt",
+      "dataset": "D",
+      "kind": "update",
+      "expected": "initial_salary_40000",
+      "binary": false
+    }
+  ]
+}

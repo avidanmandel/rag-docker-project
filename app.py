@@ -28,7 +28,7 @@ import config  # noqa: E402
 GEMINI_API_KEY = config.GEMINI_API_KEY
 HF_TOKEN = config.HF_TOKEN
 import database  # noqa: E402
-from requirement_verification import _parse_facts_from_text  # noqa: E402
+from requirement_verification import _name_from_filename, _parse_facts_from_text  # noqa: E402
 from rag_engine import RAGEngine  # noqa: E402
 from aws_kb_engine import AWS_KB_MODE_MSG, AWSKnowledgeBaseEngine  # noqa: E402
 from aws_storage_service import (  # noqa: E402
@@ -42,7 +42,7 @@ from image_extract import (  # noqa: E402
 )
 
 
-def _parse_upload_player_facts(raw: bytes, ext: str) -> dict[str, object | None]:
+def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict[str, object | None]:
     text = ""
     try:
         if ext in {".txt", ".csv", ".md"}:
@@ -66,12 +66,14 @@ def _parse_upload_player_facts(raw: bytes, ext: str) -> dict[str, object | None]
     except Exception:
         text = raw.decode("latin-1", errors="ignore")
     parsed = _parse_facts_from_text(text)
+    player_name = parsed.get("full_name") or _name_from_filename(filename)
     return {
-        "parsed_player_name": parsed.get("full_name"),
+        "parsed_player_name": player_name,
         "parsed_salary_eur": parsed.get("annual_salary_eur"),
         "parsed_relocation": parsed.get("relocation_north"),
         "parsed_availability": parsed.get("availability"),
         "parsed_position": parsed.get("position"),
+        "parsed_preferred_foot": parsed.get("dominant_foot"),
     }
 
 
@@ -710,6 +712,7 @@ def api_upload_session_document(session_id):
             raw, filename = aws_storage.normalise_json_to_txt(raw, filename)
 
         safe, _ = aws_storage.validate_upload(filename, len(raw))
+        aws_storage.validate_document_content(raw, ext)
         content_hash = hashlib.sha256(raw).hexdigest()
         duplicate = database.find_session_document_by_content_hash(session_id, content_hash)
         if duplicate:
@@ -739,7 +742,7 @@ def api_upload_session_document(session_id):
             category=category,
             content_type=f.content_type,
         )
-        parsed_facts = _parse_upload_player_facts(raw, ext)
+        parsed_facts = _parse_upload_player_facts(raw, ext, safe)
         doc = database.add_session_document(
             session_id,
             upload_result["key"],
@@ -751,6 +754,7 @@ def api_upload_session_document(session_id):
             parsed_relocation=parsed_facts.get("parsed_relocation"),
             parsed_availability=parsed_facts.get("parsed_availability"),
             parsed_position=parsed_facts.get("parsed_position"),
+            parsed_preferred_foot=parsed_facts.get("parsed_preferred_foot"),
         )
         ingestion = _sync_session_documents(session_id)
     except UploadValidationError as exc:

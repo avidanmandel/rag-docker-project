@@ -1,0 +1,10 @@
+PLAYER CV
+Full Name: Update Test Player
+Position: Forward
+Annual Salary Expectation: 40,000 EUR
+Relocation Willingness: YES
+Availability: Immediate
+Years of Professional Experience: 5
+Preferred Foot: Right
+Current Club: Validation FC
+Previous Clubs: Test United
