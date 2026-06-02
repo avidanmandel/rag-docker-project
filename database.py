@@ -368,7 +368,8 @@ def list_session_documents(session_id: str) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
         """
-        SELECT id, session_id, s3_key, display_name, category, uploaded_at
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash,
+               parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability
         FROM session_documents
         WHERE session_id = ?
         ORDER BY uploaded_at DESC, id DESC
