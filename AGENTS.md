@@ -7,7 +7,7 @@ Session-scoped RAG football recruitment assistant. Production runs on EC2 with D
 ## Branch and release
 
 - **Branch:** `feature/session-scoped-documents`
-- **Production image:** `scoutmatch-ai:baseline-club-v12` (rollback: `session-docs-v11`)
+- **Production image:** `scoutmatch-ai:baseline-club-v13` (rollback: `baseline-club-v12`)
 - **Public URL:** http://3.239.47.249/
 - **EC2 release folder:** `/home/ubuntu/scoutmatch-ai-session-docs-release`
 - **Runtime mount:** `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime`

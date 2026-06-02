@@ -1,5 +1,20 @@
 # ScoutMatch AI — Final QA Report
 
+## v13 Hebrew completion (2026-06-02)
+
+| Item | Value |
+|------|-------|
+| Release commit | `533726c` |
+| Production image | `scoutmatch-ai:baseline-club-v13` |
+| Rollback | `scoutmatch-ai:baseline-club-v12` |
+| Unit tests | **269 passed** |
+| Hebrew gate (loopback + public) | **BLOCKERS 0** |
+| Baseline gate (loopback) | **BLOCKERS 0** |
+
+**Verification note:** Prior public QA used **מי הבלם הימני הזול ביותר?** (centre back). Canonical Right Back phrasing is **מי המגן הימני הזול ביותר?** — v13 passes all canonical and variant Right Back phrases; explicit בלם ימני returns insufficient-information.
+
+---
+
 **Audit date:** 2026-06-02 (UTC)  
 **Branch:** `feature/session-scoped-documents`  
 **Release commit:** `f91dd19c09e128cea181365796d438768d801920`  

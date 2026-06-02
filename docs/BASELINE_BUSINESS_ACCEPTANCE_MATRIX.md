@@ -1,7 +1,9 @@
 # Baseline Business Acceptance Matrix (v12)
 
-Target image: `scoutmatch-ai:baseline-club-v12`  
-Rollback: `scoutmatch-ai:session-docs-v11`
+Target image: `scoutmatch-ai:baseline-club-v13`  
+Rollback: `scoutmatch-ai:baseline-club-v12`
+
+Hebrew-focused gate: `bash scripts/run_hebrew_business_gate.sh`
 
 ## Runner
 

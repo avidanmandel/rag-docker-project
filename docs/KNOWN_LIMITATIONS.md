@@ -22,6 +22,15 @@ Salary totals, relocation lists, defender comparisons, and availability aggregat
 
 Hebrew answers depend on the configured Bedrock model. Grounding and refusals are enforced; fluency may vary.
 
+Deterministic Hebrew routing covers reusable intents (urgent positions, immediate-availability rationale, cheapest Right Back, combined-budget checks) via synonym patterns — not exact question strings.
+
+## מגן ימני vs בלם ימני
+
+- **מגן ימני** = Right Back (fullback).
+- **בלם ימני** = right-sided centre back.
+
+An explicit בלם ימני cheapest-player question does **not** map to Right Back candidates. If no centre-back is documented, the app returns an insufficient-information answer instead of substituting a Right Back.
+
 ## Session-scoped retrieval only
 
 Each conversation sees only its own uploaded documents. There is no cross-session or global knowledge base beyond what was uploaded in that session.

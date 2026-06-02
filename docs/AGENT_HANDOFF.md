@@ -7,37 +7,44 @@ Last updated: 2026-06-02
 | Item | Value |
 |------|-------|
 | Branch | `feature/session-scoped-documents` |
-| Production image | `scoutmatch-ai:baseline-club-v12` |
-| Rollback | `scoutmatch-ai:session-docs-v11` |
+| Release commit | `533726c` |
+| Production image | `scoutmatch-ai:baseline-club-v13` |
+| Rollback | `scoutmatch-ai:baseline-club-v12` |
+| Hebrew gate | **BLOCKERS 0** (loopback + public) |
 | Baseline gate | **BLOCKERS 0** |
 | EC2 | `ubuntu@3.239.47.249` |
 | Checkout | `/home/ubuntu/scoutmatch-ai-session-docs-release` |
 
-## v12 highlights
+## v13 highlights (Hebrew business-intent)
 
-- Read-only **baseline club knowledge** in every conversation (`AWS_BASELINE_SET_ID=production`).
-- Session-scoped **candidate uploads** unchanged from v11.
-- Combined Bedrock retrieval filter: baseline OR active session.
-- Deterministic multi-source answers (budget combo, below-striker, RB update lifecycle).
-- UI sidebar: Club Knowledge (read-only) + Uploaded Candidate Documents.
+- Reusable Hebrew intent classification (`classify_baseline_question_intent`) for baseline-only questions.
+- Early deterministic routing in `aws_kb_engine.answer()` before Bedrock retrieval (baseline + registry).
+- Hebrew domain allow-list for structured recruitment intents.
+- **מגן ימני** (Right Back) vs **בלם ימני** (centre back) semantic distinction.
+- Focused gate: `bash scripts/run_hebrew_business_gate.sh`
 
 ## Validation
 
 ```bash
-bash scripts/run_baseline_business_gate.sh   # loopback candidate
-bash scripts/run_business_acceptance_gate.sh # v11 regression (baseline disabled)
+bash scripts/run_hebrew_business_gate.sh      # Hebrew canonical + variants
+bash scripts/run_baseline_business_gate.sh      # full baseline + demo gate
 python -m pytest tests/test_baseline_club_knowledge.py tests/test_scoutmatch.py -q
 ```
 
-## Seed production baseline (after cutover)
+## Rollback
 
 ```bash
-sudo docker exec scoutmatch-ai python scripts/seed_baseline_club_knowledge.py --apply --baseline-set-id production
-python scripts/audit_baseline_club_knowledge.py --dry-run
+sudo docker stop scoutmatch-ai && sudo docker rm scoutmatch-ai
+sudo docker run -d --name scoutmatch-ai -p 0.0.0.0:80:5000 --restart unless-stopped \
+  --env-file /home/ubuntu/scoutmatch-ai-session-docs-release/.env \
+  -v /home/ubuntu/scoutmatch-ai-runtime:/app/runtime \
+  -e DATABASE_PATH=/app/runtime/chat.db \
+  -e BASELINE_KNOWLEDGE_ENABLED=true -e AWS_BASELINE_SET_ID=production \
+  scoutmatch-ai:baseline-club-v12
 ```
 
 ## Do not
 
-- Run `aws_cleanup --apply` without explicit approval
-- Modify screenshot PNG files via automation
-- Delete Bedrock KB or terminate EC2 without approval
+- Run AWS cleanup `--apply` without explicit approval.
+- Modify screenshot PNG files or run screenshot automation.
+- Delete production user sessions/documents during verification.

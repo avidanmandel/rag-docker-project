@@ -3,23 +3,22 @@
 | Field | Value |
 |-------|-------|
 | **Branch** | `feature/session-scoped-documents` |
-| **Release commit** | `0a7be41` |
-| **Production image** | `scoutmatch-ai:baseline-club-v12` |
-| **Image ID** | `915ec8bc45c4` |
-| **Rollback image** | `scoutmatch-ai:session-docs-v11` |
+| **Release commit** | `533726c` |
+| **Production image** | `scoutmatch-ai:baseline-club-v13` |
+| **Rollback image** | `scoutmatch-ai:baseline-club-v12` |
 | **Public URL** | http://3.239.47.249/ |
 | **Baseline set (production)** | `production` (10 managed documents) |
 | **Last QA** | 2026-06-02 (UTC) |
 
-## v12 baseline club knowledge
+## v13 Hebrew business-intent completion
 
 | Check | Result |
 |-------|--------|
-| Baseline business gate (loopback) | **BLOCKERS 0** (`/tmp/baseline_gate_v12_final.log`) |
-| v11 business gate (prior release) | **BLOCKERS 0** |
-| Unit tests | **262 passed** |
+| Unit tests (`test_scoutmatch` + `test_baseline_club_knowledge`) | **269 passed** |
+| Hebrew business gate (loopback candidate) | **BLOCKERS 0** |
+| Baseline business gate (loopback candidate) | **BLOCKERS 0** |
+| Public Hebrew verification (post-cutover) | **BLOCKERS 0** |
 | Production `baseline_ready` | **true** |
-| Runtime checksum vs checkout | **5/5 match** |
 
 ## Knowledge scopes
 
@@ -28,6 +27,8 @@
 
 ## Notes
 
-- Screenshot PNG files unchanged (manual capture deferred).
+- Hebrew synonym routing is deterministic for baseline-only and registry-backed candidate intents.
+- **מגן ימני** (Right Back) is distinct from **בלם ימני** (right-sided centre back); the latter returns insufficient-information, not a Right Back mapping.
+- Screenshot PNG files unchanged (no screenshot automation).
 - AWS cleanup `--apply` not executed.
 - EC2 and Bedrock KB remain active.
