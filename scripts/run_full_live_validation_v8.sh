@@ -77,7 +77,7 @@ done
 LEFT_TOTAL=0
 for sid in "${SESSION_A}" "${SESSION_B}" "${SESSION_C}"; do
   [ -z "${sid}" ] && continue
-  COUNT=$(aws s3 ls "s3://${BUCKET}/scoutmatch/knowledge-base/sessions/${sid}/" 2>/dev/null | wc -l || echo 0)
+  COUNT=$(aws s3 ls "s3://${BUCKET}/scoutmatch/knowledge-base/sessions/${sid}/" 2>/dev/null | wc -l | tr -d ' ')
   echo "leftover_${sid}=${COUNT}"
   LEFT_TOTAL=$((LEFT_TOTAL + COUNT))
 done

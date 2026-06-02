@@ -764,6 +764,9 @@ def _is_question_in_scoutmatch_domain(question: str, history: list | None = None
         if entity in q:
             return False
 
+    if _is_aggregate_question(question):
+        return True
+
     if _is_follow_up_question(question):
         if re.search(
             r"\b(cohen|levi|azulay|silva|daniel|yossi|omer|marco)\b",
@@ -1650,14 +1653,26 @@ class AWSKnowledgeBaseEngine:
 
         profile_player = _extract_named_player_from_profile_question(question)
         retrieval_queries = _build_retrieval_queries(question, profile_player)
+        aggregate_question = _is_aggregate_question(question)
 
         try:
             retrieve_candidates = (
                 config.AWS_KB_AGGREGATE_CANDIDATES
-                if _is_aggregate_question(question)
+                if aggregate_question
                 else config.AWS_KB_RETRIEVE_CANDIDATES
             )
-            if len(retrieval_queries) <= 1:
+            if aggregate_question:
+                broad_queries = [
+                    question,
+                    "player CV full name annual salary expectation relocation willingness availability",
+                    "forward defender midfielder goalkeeper uploaded player profile",
+                ]
+                retrieved = self._retrieve_merged(
+                    broad_queries,
+                    session_id=app_session_id,
+                    candidates=retrieve_candidates,
+                )
+            elif len(retrieval_queries) <= 1:
                 retrieved = self.retrieve(
                     retrieval_queries[0] if retrieval_queries else question,
                     candidates=retrieve_candidates,
@@ -1719,7 +1734,7 @@ class AWSKnowledgeBaseEngine:
                 )
 
         player_facts = extract_verified_player_facts(
-            filtered_results if _is_aggregate_question(question) else validated
+            filtered_results if aggregate_question else validated
         )
         aggregate_answer = build_deterministic_aggregate_answer(
             question,

@@ -855,6 +855,14 @@ class DomainAndDiversityTests(unittest.TestCase):
         self.assertTrue(result["refused"])
         self.assertEqual(result["reason"], "out_of_domain")
 
+    def test_aggregate_relocation_allowed_without_history(self):
+        self.assertTrue(
+            _is_question_in_scoutmatch_domain(
+                "Show all candidates willing to relocate",
+                history=[],
+            )
+        )
+
     def test_diverse_retrieval_includes_multiple_goalkeeper_files(self):
         uri_base = f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}"
         results = [
