@@ -161,6 +161,8 @@ def update_session_title(session_id: str, title: str) -> None:
 def delete_session(session_id: str) -> None:
     conn = get_connection()
     with conn:
+        conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM session_documents WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
 

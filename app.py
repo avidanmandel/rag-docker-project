@@ -83,6 +83,19 @@ def _require_admin_token():
     return None
 
 
+def _try_sync_knowledge_base_after_delete(delete_result: dict) -> tuple[dict, str | None]:
+    """Best-effort Bedrock sync after S3 deletes; never blocks conversation removal."""
+    if not _is_aws_kb_mode():
+        return {}, None
+    if int(delete_result.get("deleted") or 0) <= 0:
+        return {}, None
+    try:
+        return aws_storage.sync_knowledge_base(), None
+    except RuntimeError as exc:
+        traceback.print_exc()
+        return {"status": "PENDING"}, str(exc)
+
+
 def _ingestion_after_object_delete(delete_result: dict) -> dict:
     """Start Bedrock ingestion only when S3 objects were actually removed."""
     if not _is_aws_kb_mode():
@@ -1112,6 +1125,9 @@ def api_delete_session(session_id):
     payload = _parse_json_request()
     delete_documents = bool(payload.get("delete_documents"))
     delete_result = {"deleted": 0}
+    ingestion: dict = {}
+    sync_note = ""
+
     if delete_documents:
         docs = database.list_session_documents(session_id)
         try:
@@ -1121,19 +1137,27 @@ def api_delete_session(session_id):
                 else:
                     delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
                 database.clear_session_documents(session_id)
-            ingestion = _ingestion_after_object_delete(delete_result)
-            if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
-                threading.Thread(
-                    target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
-                ).start()
         except RuntimeError as exc:
             traceback.print_exc()
             return jsonify({"error": str(exc)}), 503
-    else:
-        ingestion = {}
+
     database.delete_session(session_id)
+
+    if delete_documents and delete_result.get("deleted", 0) > 0:
+        ingestion, sync_error = _try_sync_knowledge_base_after_delete(delete_result)
+        if sync_error:
+            sync_note = (
+                "Conversation deleted. The ScoutMatch knowledge base is still updating."
+            )
+        if not _is_aws_kb_mode():
+            threading.Thread(
+                target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
+            ).start()
+
+    message = sync_note or "Conversation deleted."
     return jsonify({
         "ok": True,
+        "message": message,
         "documents_deleted": delete_documents,
         "deleted_objects": delete_result.get("deleted", 0),
         "ingestion_job_id": ingestion.get("ingestion_job_id"),

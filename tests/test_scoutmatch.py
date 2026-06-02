@@ -1969,6 +1969,47 @@ class SessionDocumentApiTests(unittest.TestCase):
         self.svc._s3.delete_objects.assert_not_called()
         self.assertEqual(len(database.list_session_documents(session["id"])), 1)
 
+    @patch("aws_storage_service.time.sleep")
+    def test_delete_conversation_succeeds_when_sync_fails(self, _sleep):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        self.svc.sync_knowledge_base = MagicMock(
+            side_effect=RuntimeError(config.INGESTION_TIMEOUT_USER_MESSAGE)
+        )
+        resp = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertIsNone(database.get_session(session["id"]))
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertIn("still updating", body.get("message", "").lower())
+        self.assertNotIn("ConflictException", body.get("message", ""))
+        self.svc._s3.delete_objects.assert_called_once()
+
+    @patch("aws_storage_service.time.sleep")
+    def test_delete_conversation_sync_conflict_retries_and_succeeds(self, _sleep):
+        session = self._create_session()
+        database.add_session_document(
+            session["id"],
+            f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt",
+            "a.txt",
+            "TXT",
+        )
+        resp = self.client.delete(
+            f"/api/sessions/{session['id']}",
+            json={"delete_documents": True},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        self.assertIsNone(database.get_session(session["id"]))
+        self.assertNotIn("ConflictException", str(resp.get_json()))
+
     def test_delete_conversation_leaves_remaining_session_selectable(self):
         s1 = self._create_session()
         s2 = self._create_session()
@@ -2028,6 +2069,13 @@ class UISmokeTests(unittest.TestCase):
         self.assertIn("messages--has-chat", js)
         self.assertNotIn("X-ScoutMatch-Admin-Token", js)
         self.assertNotIn("Admin token required", js)
+        self.assertIn("deleteDocuments: true", js)
+        self.assertIn("await loadSessions()", js)
+        self.assertIn(
+            "Delete this conversation and its uploaded documents?",
+            js,
+        )
+        self.assertIn("finally", js[js.find("async function deleteActiveSession"):js.find("async function clearActiveDocuments")])
         self.assertIn("home-dashboard-art.png", html)
         self.assertIn("hero-right", html)
         self.assertIn("dashboard-stage__panel-img", html)

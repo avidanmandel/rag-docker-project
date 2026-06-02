@@ -527,7 +527,7 @@ async function renameActiveSession() {
 
 async function deleteActiveSession() {
     if (!state.activeSessionId) return;
-    if (state.kbOperationInProgress || state.kbSyncInProgress) return;
+    if (state.kbOperationInProgress) return;
     if (
         !confirm(
             "Delete this conversation and its uploaded documents?\nThis action cannot be undone."
@@ -536,16 +536,16 @@ async function deleteActiveSession() {
         return;
     }
     const id = state.activeSessionId;
-    beginKbUpdate("Updating the ScoutMatch knowledge base...");
+    state.kbSyncInProgress = false;
+    beginKbUpdate("Deleting conversation...");
     try {
         const result = await API.deleteSession(id, { deleteDocuments: true });
         state.sessions = state.sessions.filter(s => s.id !== id);
-        if (state.awsMode && result.ingestion_job_id) {
-            endKbUpdate();
-            pollIngestion(result.ingestion_job_id);
-        }
+        await loadSessions();
         if (state.sessions.length > 0) {
-            await selectSession(state.sessions[0].id);
+            const nextId =
+                state.sessions.find(s => s.id !== id)?.id || state.sessions[0].id;
+            await selectSession(nextId);
         } else {
             state.activeSessionId = null;
             state.messages = [];
@@ -557,10 +557,14 @@ async function deleteActiveSession() {
             await refreshKbDocuments();
             await newSession({ select: true });
         }
-        toast("Conversation deleted");
+        toast(result.message || "Conversation deleted");
+        if (state.awsMode && result.ingestion_job_id) {
+            pollIngestion(result.ingestion_job_id);
+        }
     } catch (err) {
-        endKbUpdate();
         toast(sanitizeUserError(err.message) || "Could not delete conversation", { error: true });
+    } finally {
+        endKbUpdate();
     }
 }
 
