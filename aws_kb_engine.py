@@ -1791,6 +1791,11 @@ class AWSKnowledgeBaseEngine:
         if not _is_question_in_scoutmatch_domain(question, history):
             return _strict_refusal_response(refusal, reason="out_of_domain")
 
+        if config.BASELINE_KNOWLEDGE_ENABLED and re.search(
+            r"\bunknown\s+player\b", question or "", re.IGNORECASE
+        ):
+            return _strict_refusal_response(refusal, reason="unknown_player")
+
         profile_player = _extract_named_player_from_profile_question(question)
         if (
             config.BASELINE_KNOWLEDGE_ENABLED
