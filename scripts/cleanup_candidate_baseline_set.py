@@ -86,11 +86,35 @@ def delete_baseline_set(baseline_set_id: str) -> dict:
         raise RuntimeError("Refusing to delete production baseline set.")
     if not DISPOSABLE_BASELINE_RE.match(baseline_set_id):
         raise RuntimeError(f"Refusing to delete unrecognized baseline set: {baseline_set_id}")
-    keys = list_baseline_keys(baseline_set_id)
+    keys = [k for k in list_baseline_keys(baseline_set_id) if not k.endswith(".metadata.json")]
     if not keys:
-        return {"baseline_set_id": baseline_set_id, "deleted": 0}
-    result = aws_storage.delete_baseline_managed_objects(keys, baseline_set_id=baseline_set_id)
-    return {"baseline_set_id": baseline_set_id, **result}
+        return {"baseline_set_id": baseline_set_id, "deleted": 0, "errors": []}
+
+    missing = config.validate_aws_config()
+    if missing:
+        raise RuntimeError("Missing AWS configuration: " + ", ".join(missing))
+    aws_storage._ensure_clients()
+    bucket = config.AWS_S3_BUCKET.strip()
+    allowed_prefix = config.baseline_s3_prefix(baseline_set_id).lower()
+    objects: list[dict[str, str]] = []
+    for key in keys:
+        normalized = str(key or "")
+        if not normalized.lower().startswith(allowed_prefix):
+            raise RuntimeError("Refusing to delete object outside managed baseline prefix.")
+        objects.append({"Key": normalized})
+        objects.append({"Key": aws_storage.metadata_sidecar_key(normalized)})
+
+    response = aws_storage._s3.delete_objects(
+        Bucket=bucket,
+        Delete={"Objects": objects, "Quiet": False},
+    )
+    errors = response.get("Errors") or []
+    deleted = len(response.get("Deleted") or [])
+    return {
+        "baseline_set_id": baseline_set_id,
+        "deleted": deleted,
+        "errors": errors,
+    }
 
 
 def main() -> None:

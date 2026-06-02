@@ -122,11 +122,18 @@ class CleanupCandidateBaselineTests(unittest.TestCase):
         import scripts.cleanup_candidate_baseline_set as cleanup
 
         with mock.patch.object(cleanup, "list_baseline_keys", return_value=["k/a.txt"]), mock.patch.object(
-            cleanup.aws_storage, "delete_baseline_managed_objects", return_value={"deleted": 2}
-        ) as delete:
+            cleanup.aws_storage, "_ensure_clients"
+        ), mock.patch.object(
+            cleanup.aws_storage, "_s3"
+        ) as s3, mock.patch.object(
+            cleanup.aws_storage, "metadata_sidecar_key", return_value="k/a.txt.metadata.json"
+        ), mock.patch.object(
+            cleanup.config, "baseline_s3_prefix", return_value="k/"
+        ):
+            s3.delete_objects.return_value = {"Deleted": [{"Key": "k/a.txt"}], "Errors": []}
             result = cleanup.delete_baseline_set("candidate-soak-20260101120000")
-        self.assertEqual(result["deleted"], 2)
-        delete.assert_called_once()
+        self.assertEqual(result["deleted"], 1)
+        s3.delete_objects.assert_called_once()
 
     def test_auto_lists_candidate_sets_not_production(self):
         import scripts.cleanup_candidate_baseline_set as cleanup
