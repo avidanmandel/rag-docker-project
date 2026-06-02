@@ -1629,6 +1629,7 @@ class AWSKnowledgeBaseEngine:
         k: int | None = None,
         app_session_id: str | None = None,
         bedrock_session_id: str | None = None,
+        session_document_names: list[str] | None = None,
     ) -> dict:
         if not question or not question.strip():
             return {
@@ -1667,6 +1668,12 @@ class AWSKnowledgeBaseEngine:
                     "player CV full name annual salary expectation relocation willingness availability",
                     "forward defender midfielder goalkeeper uploaded player profile",
                 ]
+                for name in (session_document_names or [])[:20]:
+                    stem = Path(name).stem.replace("_", " ")
+                    if stem and stem not in {Path(q).stem for q in broad_queries}:
+                        broad_queries.append(
+                            f"{stem} player profile salary relocation availability"
+                        )
                 retrieved = self._retrieve_merged(
                     broad_queries,
                     session_id=app_session_id,

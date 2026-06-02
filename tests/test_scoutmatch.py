@@ -3275,6 +3275,14 @@ class AggregateAnswerTests(unittest.TestCase):
         self.assertEqual(facts.get("annual_salary_eur"), 58000)
         self.assertEqual(facts.get("relocation_north"), "YES")
 
+    def test_inline_salary_facts_parsed(self):
+        text = (
+            "Daniel Cohen Position: Goalkeeper Annual Salary Expectation: 75,000 EUR "
+            "Relocation Willingness: YES Availability: immediate"
+        )
+        facts = _parse_facts_from_text(text)
+        self.assertEqual(facts.get("annual_salary_eur"), 75000)
+
     def test_salary_total_aggregate_answer(self):
         players = [
             {"full_name": "Or David", "annual_salary_eur": 58000},

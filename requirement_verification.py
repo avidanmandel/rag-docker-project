@@ -19,7 +19,7 @@ _EXPERIENCE_RE = re.compile(
     re.IGNORECASE,
 )
 _SALARY_RE = re.compile(
-    r"Annual Salary Expectation:\s*([\d,]+)\s*EUR",
+    r"Annual Salary Expectation[:\s,]*([\d,]+)\s*EUR",
     re.IGNORECASE,
 )
 _RELOCATION_RE = re.compile(

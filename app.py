@@ -1273,6 +1273,10 @@ def api_send_message(session_id):
     if _is_aws_kb_mode():
         answer_kwargs["app_session_id"] = session_id
         answer_kwargs["bedrock_session_id"] = session.get("bedrock_session_id")
+        answer_kwargs["session_document_names"] = [
+            doc["display_name"]
+            for doc in database.list_session_documents(session_id)
+        ]
 
     try:
         result = engine.answer(**answer_kwargs)
