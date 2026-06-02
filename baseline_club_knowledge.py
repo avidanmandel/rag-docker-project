@@ -190,32 +190,80 @@ def parse_demo_candidate_content(text: str, filename: str) -> dict[str, Any]:
     return parsed
 
 
+_POSITION_LABEL_HE = {
+    "Right Back": "מגן ימני",
+    "Attacking Midfielder": "קשר התקפי",
+    "Forward": "חלוץ",
+}
+
+_BASELINE_INTENT_SOURCES = {
+    "season_goal": ["club_profile.txt", "winter_window_overview.pdf"],
+    "urgent_positions": ["squad_depth_chart.csv", "winter_window_priorities.txt"],
+    "immediate_availability": ["fixture_congestion_note.txt", "upcoming_fixtures.csv"],
+    "transfer_budget": ["transfer_budget.txt", "winter_window_overview.pdf"],
+}
+
+
+def classify_baseline_question_intent(question: str) -> str | None:
+    """Reusable baseline-only intent labels (English + Hebrew synonyms)."""
+    q = question or ""
+    ql = q.lower()
+    he = _HEBREW_RE.search(q) is not None
+
+    if any(p in ql for p in ("main goal", "season goal")) or "מטרה מרכזית" in q:
+        return "season_goal"
+
+    urgent_en = any(p in ql for p in ("urgently need", "need reinforcement", "urgent position"))
+    urgent_he = he and any(
+        marker in q
+        for marker in (
+            "חיזוק דחוף",
+            "לחזק בדחיפות",
+            "צריך לחזק",
+            "עמדות דחופות",
+            "דחופות לחיזוק",
+            "דורשות חיזוק",
+            "דורש חיזוק",
+            "צריכה חיזוק",
+        )
+    ) and any(token in q for token in ("עמדות", "עמדה", "מיקומים", "מיקום"))
+    if urgent_en or urgent_he:
+        return "urgent_positions"
+
+    avail_en = "immediate availability" in ql or "why is immediate availability" in ql
+    avail_he = he and any(
+        marker in q
+        for marker in (
+            "זמינות מיידית",
+            "זמין מיד",
+            "זמין מיידית",
+            "להצטרף מיד",
+            "יכול להצטרף",
+            "מדוע זמינות",
+            "למה זמינות",
+            "למה חשוב שהשחקן",
+            "למה צריך שחקן",
+        )
+    )
+    if avail_en or avail_he:
+        return "immediate_availability"
+
+    budget_en = any(p in ql for p in ("transfer budget", "combined annual salary budget", "maximum combined"))
+    budget_he = he and any(marker in q for marker in ("תקציב השכר", "תקציב כולל", "תקציב להחתמות"))
+    if budget_en or budget_he:
+        return "transfer_budget"
+
+    return None
+
+
+def baseline_document_names_for_intent(intent: str | None) -> list[str]:
+    if not intent:
+        return []
+    return list(_BASELINE_INTENT_SOURCES.get(intent, []))
+
+
 def is_baseline_club_question(question: str) -> bool:
-    q = (question or "").lower()
-    he = _HEBREW_RE.search(question or "") is not None
-    patterns_en = (
-        "club's main goal",
-        "club main goal",
-        "season goal",
-        "urgently need reinforcement",
-        "positions urgently",
-        "need reinforcement",
-        "immediate availability important",
-        "why is immediate availability",
-        "combined annual salary budget",
-        "transfer budget",
-        "club's transfer budget",
-        "maximum combined",
-    )
-    patterns_he = (
-        "מטרה מרכזית",
-        "חיזוק דחוף",
-        "זמינות מיידית חשובה",
-        "תקציב השכר",
-    )
-    if he and any(p in question for p in patterns_he):
-        return True
-    return any(p in q for p in patterns_en)
+    return classify_baseline_question_intent(question) is not None
 
 
 def is_baseline_only_question(question: str) -> bool:
@@ -228,13 +276,37 @@ def is_baseline_only_question(question: str) -> bool:
     return False
 
 
+def _budget_combo_player_names(question: str) -> tuple[bool, bool]:
+    q = question or ""
+    ql = q.lower()
+    ron = "ron ben ari" in ql or "רון בן ארי" in q or "רון" in q
+    tal = "tal raz" in ql or "טל רז" in q or "טל" in q
+    return ron, tal
+
+
 def is_budget_combination_question(question: str) -> bool:
     q = (question or "").lower()
+    text = question or ""
     if "afford both" in q or "can the club afford" in q:
         return True
-    if "האם הקבוצה יכולה להרשות" in (question or ""):
+    ron, tal = _budget_combo_player_names(text)
+    if not (ron and tal):
+        return False
+    if "afford" in q or "budget" in q:
         return True
-    if "ron ben ari" in q and "tal raz" in q and ("afford" in q or "budget" in q or "שכר" in question):
+    combo_markers_he = (
+        "יכול להרשות",
+        "יכולה להרשות",
+        "התקציב מספיק",
+        "אפשר להחתים",
+        "אפשר לצרף",
+        "במסגרת התקציב",
+        "גם את",
+        "וגם",
+    )
+    if any(marker in text for marker in combo_markers_he):
+        return True
+    if "האם" in text and ("תקציב" in text or "שכר" in text):
         return True
     return False
 
@@ -283,38 +355,42 @@ def is_immediate_right_backs_filter_question(question: str) -> bool:
 
 
 def build_baseline_club_answer(question: str, club_facts: dict[str, Any]) -> str | None:
-    q = (question or "").lower()
     he = _HEBREW_RE.search(question or "") is not None
+    intent = classify_baseline_question_intent(question)
 
-    if any(p in q for p in ("main goal", "season goal")) or "מטרה מרכזית" in (question or ""):
+    if intent == "season_goal":
         goal = club_facts.get("season_goal_short") or club_facts.get("season_goal") or "finish in the top four"
         if he:
             return f"המטרה המרכזית של הקבוצה העונה היא {goal}."
         return f"The club's main goal this season is to {goal}."
 
-    if any(p in q for p in ("urgently need", "need reinforcement", "urgent")) or "חיזוק דחוף" in (question or ""):
+    if intent == "urgent_positions":
         positions = club_facts.get("urgent_positions") or club_facts.get("recruitment_priorities") or [
             "Right Back", "Attacking Midfielder", "Forward"
         ]
-        lines = "\n".join(f"- {pos}" for pos in positions)
         if he:
+            lines = "\n".join(
+                f"- {_POSITION_LABEL_HE.get(pos, pos)}" for pos in positions
+            )
             return f"העמדות שדורשות חיזוק דחוף:\n{lines}"
+        lines = "\n".join(f"- {pos}" for pos in positions)
         return f"Positions that urgently need reinforcement:\n{lines}"
 
-    if "immediate availability" in q or "זמינות מיידית" in (question or ""):
+    if intent == "immediate_availability":
         matches = club_facts.get("fixture_congestion_matches", 5)
         days = club_facts.get("fixture_congestion_days", 18)
         if he:
             return (
                 f"זמינות מיידית חשובה כי ל-ScoutMatch FC יש {matches} משחקים ב-{days} יום. "
-                "הקבוצה צריכה שחקנים שיכולים להצטרף לאימונים מיד."
+                "חיזוק מיידי שימושי במהלך לוח הזמנים הצפוף, והקבוצה צריכה שחקנים שיכולים להצטרף לאימונים מיד."
             )
         return (
             f"Immediate availability is important because ScoutMatch FC has {matches} matches "
-            f"in {days} days. The club needs players who can join training immediately."
+            f"in {days} days. Immediate reinforcement is useful during the congested schedule, "
+            "and the club needs players who can join training immediately."
         )
 
-    if "budget" in q or "תקציב" in (question or ""):
+    if intent == "transfer_budget":
         total = club_facts.get("combined_budget_eur", 100000)
         formatted = _format_eur(int(total))
         if he:

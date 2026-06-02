@@ -16,8 +16,10 @@ import boto3
 
 import config
 from baseline_club_knowledge import (
+    baseline_document_names_for_intent,
     build_baseline_club_answer,
     build_baseline_demo_answer,
+    classify_baseline_question_intent,
     is_baseline_only_question,
     source_scope_label,
 )
@@ -1553,6 +1555,47 @@ def _build_explicit_generation_system_prompt(question: str) -> str:
     return f"{lang}\n\n{EXPLICIT_GENERATION_PROMPT}"
 
 
+def _baseline_source_cards(
+    baseline_document_names: list[str] | None,
+    intent: str | None,
+) -> list[dict]:
+    names = list(baseline_document_names or [])
+    preferred = [n for n in baseline_document_names_for_intent(intent) if n in names]
+    chosen = preferred or baseline_document_names_for_intent(intent) or names[:5]
+    if not chosen:
+        return [{"source": "club baseline", "scope_label": "Club Knowledge"}]
+    return [
+        {"source": name, "display_name": name, "scope_label": "Club Knowledge"}
+        for name in chosen
+    ]
+
+
+def _demo_deterministic_source_cards(
+    validated: list[dict],
+    baseline_document_names: list[str] | None,
+    session_document_names: list[str] | None,
+) -> list[dict]:
+    if validated:
+        sources = chunks_to_source_cards(validated)
+        for src in sources:
+            if "scope_label" not in src:
+                src["scope_label"] = source_scope_label(
+                    src.get("s3_uri") or src.get("source"),
+                    src.get("display_name"),
+                )
+        return sources
+    cards: list[dict] = []
+    for name in (session_document_names or [])[:5]:
+        cards.append({
+            "source": name,
+            "display_name": name,
+            "scope_label": "Uploaded Candidate Document",
+        })
+    if not cards:
+        cards = _baseline_source_cards(baseline_document_names, None)
+    return cards
+
+
 def _strict_refusal_response(
     refusal: str,
     *,
@@ -1810,6 +1853,65 @@ class AWSKnowledgeBaseEngine:
 
         retrieval_queries = _build_retrieval_queries(question, profile_player)
         aggregate_question = _is_aggregate_question(question)
+        club_facts = baseline_club_facts or {}
+
+        if config.BASELINE_KNOWLEDGE_ENABLED and is_baseline_only_question(question):
+            baseline_answer = build_baseline_club_answer(question, club_facts)
+            if baseline_answer:
+                intent = classify_baseline_question_intent(question)
+                sources = _baseline_source_cards(baseline_document_names, intent)
+                return {
+                    "answer": baseline_answer,
+                    "context": sources,
+                    "main_source": sources[0] if sources else None,
+                    "refused": False,
+                    "reason": None,
+                    "generation_mode": "aws_kb_baseline",
+                    "bedrock_session_id": bedrock_session_id,
+                }
+
+        registry_facts = session_player_facts or []
+        if config.BASELINE_KNOWLEDGE_ENABLED and registry_facts:
+            registry_aggregate = build_deterministic_aggregate_answer(question, registry_facts)
+            if registry_aggregate:
+                sources = _demo_deterministic_source_cards(
+                    [],
+                    baseline_document_names,
+                    session_document_names,
+                )
+                return {
+                    "answer": registry_aggregate,
+                    "context": sources,
+                    "main_source": select_main_source(
+                        sources,
+                        answer=registry_aggregate,
+                        question=question,
+                    ),
+                    "refused": False,
+                    "reason": None,
+                    "generation_mode": "aws_kb_aggregate",
+                    "bedrock_session_id": bedrock_session_id,
+                }
+            demo_answer = build_baseline_demo_answer(question, registry_facts, club_facts)
+            if demo_answer:
+                sources = _demo_deterministic_source_cards(
+                    [],
+                    baseline_document_names,
+                    session_document_names,
+                )
+                return {
+                    "answer": demo_answer,
+                    "context": sources,
+                    "main_source": select_main_source(
+                        sources,
+                        answer=demo_answer,
+                        question=question,
+                    ),
+                    "refused": False,
+                    "reason": None,
+                    "generation_mode": "aws_kb_baseline_demo",
+                    "bedrock_session_id": bedrock_session_id,
+                }
 
         try:
             retrieve_candidates = (
@@ -1898,6 +2000,31 @@ class AWSKnowledgeBaseEngine:
         )
 
         if not validated:
+            if config.BASELINE_KNOWLEDGE_ENABLED and session_player_facts:
+                demo_answer = build_baseline_demo_answer(
+                    question,
+                    session_player_facts,
+                    club_facts,
+                )
+                if demo_answer:
+                    sources = _demo_deterministic_source_cards(
+                        [],
+                        baseline_document_names,
+                        session_document_names,
+                    )
+                    return {
+                        "answer": demo_answer,
+                        "context": sources,
+                        "main_source": select_main_source(
+                            sources,
+                            answer=demo_answer,
+                            question=question,
+                        ),
+                        "refused": False,
+                        "reason": None,
+                        "generation_mode": "aws_kb_baseline_demo",
+                        "bedrock_session_id": bedrock_session_id,
+                    }
             return _strict_refusal_response(
                 refusal,
                 reason="no_scoutmatch_sources",

@@ -14,6 +14,9 @@ from baseline_club_knowledge import (
     build_budget_combination_answer,
     build_below_striker_recommendation_answer,
     build_immediate_right_back_answer,
+    classify_baseline_question_intent,
+    is_baseline_club_question,
+    is_budget_combination_question,
     parse_baseline_file_content,
     parse_demo_candidate_content,
     is_baseline_only_question,
@@ -63,6 +66,51 @@ class BaselineAnswerTests(unittest.TestCase):
     def test_hebrew_budget_question_is_baseline_only(self):
         self.assertTrue(is_baseline_only_question("מהו תקציב השכר הכולל להחתמות חדשות?"))
 
+    def test_hebrew_urgent_positions_canonical(self):
+        self.assertEqual(
+            classify_baseline_question_intent("אילו עמדות דורשות חיזוק דחוף?"),
+            "urgent_positions",
+        )
+        answer = build_baseline_club_answer(
+            "אילו עמדות דורשות חיזוק דחוף?",
+            self.club_facts,
+        )
+        self.assertIn("מגן ימני", answer or "")
+        self.assertIn("קשר התקפי", answer or "")
+        self.assertIn("חלוץ", answer or "")
+
+    def test_hebrew_urgent_positions_variants(self):
+        variants = [
+            "איזה עמדות צריך לחזק בדחיפות?",
+            "באילו עמדות הקבוצה צריכה חיזוק?",
+            "מהן העמדות הדחופות לחיזוק?",
+        ]
+        for question in variants:
+            with self.subTest(question=question):
+                self.assertEqual(classify_baseline_question_intent(question), "urgent_positions")
+                answer = build_baseline_club_answer(question, self.club_facts)
+                self.assertIn("מגן ימני", answer or "")
+
+    def test_hebrew_immediate_availability_canonical(self):
+        self.assertEqual(
+            classify_baseline_question_intent("למה זמינות מיידית חשובה?"),
+            "immediate_availability",
+        )
+        answer = build_baseline_club_answer("למה זמינות מיידית חשובה?", self.club_facts)
+        self.assertIn("5", answer or "")
+        self.assertIn("18", answer or "")
+
+    def test_hebrew_immediate_availability_variants(self):
+        for question in (
+            "מדוע זמינות מיידית חשובה?",
+            "למה חשוב שהשחקן יהיה זמין מיד?",
+            "למה צריך שחקן שיכול להצטרף מיד?",
+        ):
+            with self.subTest(question=question):
+                self.assertEqual(classify_baseline_question_intent(question), "immediate_availability")
+                answer = build_baseline_club_answer(question, self.club_facts)
+                self.assertIn("5", answer or "")
+
     def test_budget_combination_ron_and_tal(self):
         players = [
             {"full_name": "Ron Ben Ari", "annual_salary_eur": 43000},
@@ -75,6 +123,25 @@ class BaselineAnswerTests(unittest.TestCase):
         )
         self.assertIn("93,000 EUR", answer or "")
         self.assertIn("100,000 EUR", answer or "")
+
+    def test_hebrew_budget_combination_variants(self):
+        players = [
+            {"full_name": "Ron Ben Ari", "annual_salary_eur": 43000},
+            {"full_name": "Tal Raz", "annual_salary_eur": 50000},
+        ]
+        variants = [
+            "האם המועדון יכול להרשות לעצמו גם את רון בן ארי וגם את טל רז?",
+            "האם הקבוצה יכולה להרשות לעצמה להחתים את רון בן ארי ואת טל רז?",
+            "האם התקציב מספיק לרון בן ארי ולטל רז?",
+            "האם אפשר להחתים יחד את רון בן ארי ואת טל רז?",
+            "האם אפשר לצרף את רון בן ארי ואת טל רז במסגרת התקציב?",
+        ]
+        for question in variants:
+            with self.subTest(question=question):
+                self.assertTrue(is_budget_combination_question(question))
+                answer = build_budget_combination_answer(question, players, self.club_facts)
+                self.assertIn("93,000 EUR", answer or "")
+                self.assertIn("100,000 EUR", answer or "")
 
     def test_below_striker_recommendation_tal_raz(self):
         players = [

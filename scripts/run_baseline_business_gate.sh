@@ -4,9 +4,9 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/scoutmatch-ai-session-docs-release}"
 ENV_FILE="${APP_DIR}/.env"
-IMAGE_TAG="${IMAGE_TAG:-scoutmatch-ai:baseline-club-v12}"
-CANDIDATE="${CANDIDATE:-scoutmatch-ai-baseline-v12-candidate}"
-RUNTIME="${RUNTIME:-/home/ubuntu/scoutmatch-ai-baseline-v12-runtime}"
+IMAGE_TAG="${IMAGE_TAG:-scoutmatch-ai:baseline-club-v13}"
+CANDIDATE="${CANDIDATE:-scoutmatch-ai-baseline-v13-candidate}"
+RUNTIME="${RUNTIME:-/home/ubuntu/scoutmatch-ai-baseline-v13-runtime}"
 BASE="http://127.0.0.1:5001"
 PROD_CONTAINER="scoutmatch-ai"
 BUCKET=$(grep '^AWS_S3_BUCKET=' "${ENV_FILE}" | cut -d= -f2-)

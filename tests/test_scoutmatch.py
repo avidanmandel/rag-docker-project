@@ -3497,6 +3497,33 @@ class AggregateAnswerTests(unittest.TestCase):
         self.assertIn("Ron Ben Ari", answer or "")
         self.assertIn("43,000 EUR", answer or "")
 
+    def test_hebrew_cheapest_right_back_variants(self):
+        players = [
+            {"full_name": "Ron Ben Ari", "position": "Right Back", "annual_salary_eur": 43000},
+            {"full_name": "Dor Levi", "position": "Right Back", "annual_salary_eur": 47000},
+        ]
+        for question in (
+            "מי המגן הימני הכי זול?",
+            "איזה מגן ימני הוא הזול ביותר?",
+            "מהו המגן הימני הזול ביותר?",
+        ):
+            with self.subTest(question=question):
+                answer = build_deterministic_aggregate_answer(question, players)
+                self.assertIn("Ron Ben Ari", answer or "")
+                self.assertIn("43,000 EUR", answer or "")
+
+    def test_hebrew_right_sided_center_back_not_mapped_to_fullback(self):
+        from requirement_verification import is_cheapest_right_back_question
+
+        players = [
+            {"full_name": "Ron Ben Ari", "position": "Right Back", "annual_salary_eur": 43000},
+        ]
+        question = "מי הבלם הימני הזול ביותר?"
+        self.assertFalse(is_cheapest_right_back_question(question))
+        answer = build_deterministic_aggregate_answer(question, players)
+        self.assertIn("בלם ימני", answer or "")
+        self.assertNotIn("43,000 EUR", answer or "")
+
     def test_validate_document_content_rejects_corrupt_pdf(self):
         svc = AWSStorageService()
         with self.assertRaises(UploadValidationError):

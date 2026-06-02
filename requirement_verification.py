@@ -592,7 +592,23 @@ def is_goalkeeper_budget_immediate_question(question: str) -> bool:
     return goalkeeper and immediate and budget
 
 
+def is_right_sided_center_back_cheapest_question(question: str) -> bool:
+    """Explicit בלם ימני (right-sided center back) — not fullback מגן ימני."""
+    q = question or ""
+    if "בלם" not in q:
+        return False
+    if any(token in q for token in ("מגן ימני", "מגן הימני", "המגן הימני")):
+        return False
+    cheapest = any(
+        token in q.lower() or token in q
+        for token in ("cheapest", "הזול", "זול ביותר", "הכי זול")
+    )
+    return cheapest
+
+
 def is_cheapest_right_back_question(question: str) -> bool:
+    if is_right_sided_center_back_cheapest_question(question):
+        return False
     q = question or ""
     lowered = q.lower()
     right_back = any(
@@ -613,6 +629,7 @@ def is_cheapest_right_back_question(question: str) -> bool:
             "lowest cost",
             "הזול",
             "זול ביותר",
+            "הכי זול",
         )
     )
     return right_back and cheapest
@@ -699,6 +716,22 @@ def build_goalkeeper_budget_immediate_answer(
     return header + "\n" + "\n".join(lines)
 
 
+def build_insufficient_right_sided_center_back_answer(question: str) -> str | None:
+    if not is_right_sided_center_back_cheapest_question(question):
+        return None
+    if _HEBREW_RE.search(question or ""):
+        return (
+            "אין במסמכים מועמד מסומן במפורש כבלם ימני (Centre Back). "
+            "המסמכים כוללים מגנים ימניים (Right Back) בלבד, ולכן אין מספיק מידע "
+            "לענות על בלם ימני."
+        )
+    return (
+        "The uploaded documents do not include an explicit right-sided centre back (בלם ימני). "
+        "They only include right backs (מגן ימני), so there is insufficient information "
+        "to answer for a right-sided centre back."
+    )
+
+
 def build_cheapest_right_back_answer(
     player_facts: list[dict[str, Any]],
     question: str,
@@ -772,6 +805,9 @@ def build_deterministic_aggregate_answer(
         return build_defender_relocation_filter_answer(player_facts, question)
     if is_goalkeeper_budget_immediate_question(question):
         return build_goalkeeper_budget_immediate_answer(player_facts, question)
+    center_back = build_insufficient_right_sided_center_back_answer(question)
+    if center_back:
+        return center_back
     if is_cheapest_right_back_question(question):
         return build_cheapest_right_back_answer(player_facts, question)
     if is_cheapest_player_question(question):
