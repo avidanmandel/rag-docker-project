@@ -28,6 +28,7 @@ import config  # noqa: E402
 GEMINI_API_KEY = config.GEMINI_API_KEY
 HF_TOKEN = config.HF_TOKEN
 import database  # noqa: E402
+from requirement_verification import _parse_facts_from_text  # noqa: E402
 from rag_engine import RAGEngine  # noqa: E402
 from aws_kb_engine import AWS_KB_MODE_MSG, AWSKnowledgeBaseEngine  # noqa: E402
 from aws_storage_service import (  # noqa: E402
@@ -39,6 +40,20 @@ from image_extract import (  # noqa: E402
     GeminiVisionError,
     is_quota_exhausted,
 )
+
+
+def _parse_upload_player_facts(raw: bytes, ext: str) -> dict[str, object | None]:
+    if ext in {".txt", ".csv", ".md"}:
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = raw.decode("latin-1", errors="ignore")
+    parsed = _parse_facts_from_text(text)
+    return {
+        "parsed_player_name": parsed.get("full_name"),
+        "parsed_salary_eur": parsed.get("annual_salary_eur"),
+        "parsed_relocation": parsed.get("relocation_north"),
+        "parsed_availability": parsed.get("availability"),
+    }
 
 
 def _is_aws_kb_mode() -> bool:
@@ -705,12 +720,17 @@ def api_upload_session_document(session_id):
             category=category,
             content_type=f.content_type,
         )
+        parsed_facts = _parse_upload_player_facts(raw, ext)
         doc = database.add_session_document(
             session_id,
             upload_result["key"],
             upload_result["display_name"],
             upload_result["category"],
             content_hash=content_hash,
+            parsed_player_name=parsed_facts.get("parsed_player_name"),
+            parsed_salary_eur=parsed_facts.get("parsed_salary_eur"),
+            parsed_relocation=parsed_facts.get("parsed_relocation"),
+            parsed_availability=parsed_facts.get("parsed_availability"),
         )
         ingestion = _sync_session_documents(session_id)
     except UploadValidationError as exc:
@@ -1277,6 +1297,7 @@ def api_send_message(session_id):
             doc["display_name"]
             for doc in database.list_session_documents(session_id)
         ]
+        answer_kwargs["session_player_facts"] = database.list_session_player_facts(session_id)
 
     try:
         result = engine.answer(**answer_kwargs)

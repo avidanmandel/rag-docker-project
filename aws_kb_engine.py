@@ -1632,6 +1632,7 @@ class AWSKnowledgeBaseEngine:
         app_session_id: str | None = None,
         bedrock_session_id: str | None = None,
         session_document_names: list[str] | None = None,
+        session_player_facts: list[dict] | None = None,
     ) -> dict:
         if not question or not question.strip():
             return {
@@ -1755,25 +1756,28 @@ class AWSKnowledgeBaseEngine:
             fact_source if aggregate_question else validated
         )
         if aggregate_question and is_salary_total_question(question):
-            salary_chunks: list[dict] = list(fact_source)
-            for name in (session_document_names or []):
-                lower = name.lower()
-                if not any(lower.startswith(prefix) for prefix in _POSITION_PREFIXES):
-                    continue
-                if any(token in lower for token in ("_report", "titanic", "prompt_injection")):
-                    continue
-                stem = Path(name).stem.replace("_", " ")
-                salary_chunks.extend(
-                    self.retrieve(
-                        f"{stem} annual salary expectation player CV",
-                        session_id=app_session_id,
-                        candidates=3,
+            registry_facts = session_player_facts or []
+            salary_facts = registry_facts if registry_facts else player_facts
+            if not registry_facts:
+                salary_chunks: list[dict] = list(fact_source)
+                for name in (session_document_names or []):
+                    lower = name.lower()
+                    if not any(lower.startswith(prefix) for prefix in _POSITION_PREFIXES):
+                        continue
+                    if any(token in lower for token in ("_report", "titanic", "prompt_injection")):
+                        continue
+                    stem = Path(name).stem.replace("_", " ")
+                    salary_chunks.extend(
+                        self.retrieve(
+                            f"{stem} annual salary expectation player CV",
+                            session_id=app_session_id,
+                            candidates=3,
+                        )
                     )
+                salary_facts = extract_verified_player_facts(
+                    _dedupe_retrieved_chunks(salary_chunks)
                 )
-            player_facts = extract_verified_player_facts(
-                _dedupe_retrieved_chunks(salary_chunks)
-            )
-            salary_answer = build_salary_total_answer(player_facts, question)
+            salary_answer = build_salary_total_answer(salary_facts, question)
             if salary_answer:
                 sources = chunks_to_source_cards(validated)
                 if not sources:

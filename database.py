@@ -114,6 +114,14 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE session_documents ADD COLUMN content_hash TEXT"
             )
+        for column, ddl in (
+            ("parsed_player_name", "ALTER TABLE session_documents ADD COLUMN parsed_player_name TEXT"),
+            ("parsed_salary_eur", "ALTER TABLE session_documents ADD COLUMN parsed_salary_eur INTEGER"),
+            ("parsed_relocation", "ALTER TABLE session_documents ADD COLUMN parsed_relocation TEXT"),
+            ("parsed_availability", "ALTER TABLE session_documents ADD COLUMN parsed_availability TEXT"),
+        ):
+            if not _column_exists(conn, "session_documents", column):
+                conn.execute(ddl)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_session_documents_content_hash "
             "ON session_documents(session_id, content_hash)"
@@ -260,6 +268,10 @@ def add_session_document(
     category: str | None = None,
     *,
     content_hash: str | None = None,
+    parsed_player_name: str | None = None,
+    parsed_salary_eur: int | None = None,
+    parsed_relocation: str | None = None,
+    parsed_availability: str | None = None,
 ) -> dict:
     now = _utcnow_iso()
     conn = get_connection()
@@ -267,10 +279,14 @@ def add_session_document(
         cur = conn.execute(
             """
             INSERT INTO session_documents
-                (session_id, s3_key, display_name, category, uploaded_at, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (session_id, s3_key, display_name, category, uploaded_at, content_hash,
+                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (session_id, s3_key, display_name, category, now, content_hash),
+            (
+                session_id, s3_key, display_name, category, now, content_hash,
+                parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
+            ),
         )
     return {
         "id": cur.lastrowid,
@@ -280,7 +296,36 @@ def add_session_document(
         "category": category,
         "uploaded_at": now,
         "content_hash": content_hash,
+        "parsed_player_name": parsed_player_name,
+        "parsed_salary_eur": parsed_salary_eur,
+        "parsed_relocation": parsed_relocation,
+        "parsed_availability": parsed_availability,
     }
+
+
+def list_session_player_facts(session_id: str) -> list[dict]:
+    """Return upload-time parsed player facts for aggregate queries."""
+    docs = list_session_documents(session_id)
+    facts: list[dict] = []
+    seen: set[str] = set()
+    for doc in docs:
+        name = (doc.get("parsed_player_name") or "").strip()
+        salary = doc.get("parsed_salary_eur")
+        if not name or salary is None:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        facts.append({
+            "full_name": name,
+            "annual_salary_eur": int(salary),
+            "relocation_north": doc.get("parsed_relocation"),
+            "availability": doc.get("parsed_availability"),
+            "source_filenames": [doc.get("display_name") or ""],
+        })
+    facts.sort(key=lambda row: (row.get("full_name") or "").lower())
+    return facts
 
 
 def find_session_document_by_content_hash(
