@@ -13,7 +13,9 @@ import urllib.request
 import zipfile
 from typing import Any
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:5001"
+STRICT = "--strict" in sys.argv
+_args = [a for a in sys.argv[1:] if a != "--strict"]
+BASE = _args[0] if _args else "http://127.0.0.1:5001"
 TIMEOUT = 180
 BLOCKERS: list[str] = []
 WARNINGS: list[str] = []
@@ -362,12 +364,18 @@ def main() -> int:
     found_reloc = names_in_answer(en_reloc_text, relocate_players)
     missing_reloc = names_missing(en_reloc_text, relocate_players)
     excluded_wrong = names_in_answer(en_reloc_text, exclude_reloc)
+    reloc_ok = (
+        not en_reloc.get("refused")
+        and not excluded_wrong
+        and not any("titanic" in s for s in en_reloc_sources)
+    )
+    if STRICT:
+        reloc_ok = reloc_ok and len(found_reloc) == len(relocate_players) and not missing_reloc
+    else:
+        reloc_ok = reloc_ok and len(found_reloc) >= 5
     record(
         "english_relocation_aggregate",
-        not en_reloc.get("refused")
-        and len(found_reloc) >= 5
-        and not excluded_wrong
-        and not any("titanic" in s for s in en_reloc_sources),
+        reloc_ok,
         f"refused={en_reloc.get('refused')} found={found_reloc} missing={missing_reloc} excluded={excluded_wrong} sources={len(en_reloc_sources)}",
     )
 
@@ -384,10 +392,12 @@ def main() -> int:
     en_def = ask(sid_a, "Compare all defenders")
     en_def_text = answer_text(en_def)
     found_def = names_in_answer(en_def_text, defenders)
+    missing_def = names_missing(en_def_text, defenders)
+    def_ok = not en_def.get("refused") and (len(found_def) == len(defenders) if STRICT else len(found_def) >= 2)
     record(
         "defender_comparison",
-        not en_def.get("refused") and len(found_def) >= 2,
-        f"refused={en_def.get('refused')} found={found_def}",
+        def_ok,
+        f"refused={en_def.get('refused')} found={found_def} missing={missing_def}",
     )
 
     immediate_players = [
@@ -396,19 +406,30 @@ def main() -> int:
     en_imm = ask(sid_a, "Which players are available immediately?")
     en_imm_text = answer_text(en_imm)
     found_imm = names_in_answer(en_imm_text, immediate_players)
+    missing_imm = names_missing(en_imm_text, immediate_players)
+    imm_ok = not en_imm.get("refused") and (
+        len(found_imm) == len(immediate_players) if STRICT else len(found_imm) >= 4
+    )
     record(
         "immediate_availability_aggregate",
-        not en_imm.get("refused") and len(found_imm) >= 4,
-        f"refused={en_imm.get('refused')} found={found_imm}",
+        imm_ok,
+        f"refused={en_imm.get('refused')} found={found_imm} missing={missing_imm}",
     )
 
     print("=== PHASE 5: HEBREW AGGREGATES ===")
     he_reloc = ask(sid_a, "הצג את כל השחקנים שמוכנים לעבור קבוצה")
     he_reloc_text = answer_text(he_reloc)
+    he_found_reloc = names_in_answer(he_reloc_text, relocate_players)
+    he_missing_reloc = names_missing(he_reloc_text, relocate_players)
+    he_reloc_ok = not he_reloc.get("refused") and has_hebrew(he_reloc_text)
+    if STRICT:
+        he_reloc_ok = he_reloc_ok and len(he_found_reloc) == len(relocate_players)
+    else:
+        he_reloc_ok = he_reloc_ok and len(he_found_reloc) >= 4
     record(
         "hebrew_relocation_aggregate",
-        not he_reloc.get("refused") and has_hebrew(he_reloc_text) and len(names_in_answer(he_reloc_text, relocate_players)) >= 4,
-        f"refused={he_reloc.get('refused')} hebrew={has_hebrew(he_reloc_text)}",
+        he_reloc_ok,
+        f"refused={he_reloc.get('refused')} hebrew={has_hebrew(he_reloc_text)} found={he_found_reloc} missing={he_missing_reloc}",
     )
 
     he_salary = ask(sid_a, "מהי המשכורת הכוללת של כל השחקנים?")
@@ -552,6 +573,8 @@ def main() -> int:
         record("delete_during_sync_removed", exc.code == 404, str(exc.code))
 
     print("=== SUMMARY OUTPUT ===")
+    if STRICT:
+        print("STRICT_MODE=true")
     for key, value in RESULTS.items():
         print(f"RESULT {key}={value}")
     print("BLOCKERS", len(BLOCKERS))

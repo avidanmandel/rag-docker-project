@@ -48,10 +48,14 @@ Thumbs.db
 # Project-local data
 *.db
 chat.db
+runtime/
 index_cache/
 generated/
 uploads/
 data/uploads/
+
+# Local audit artifacts (never commit raw logs)
+artifacts/logs/
 
 # Temporary files
 *.tmp

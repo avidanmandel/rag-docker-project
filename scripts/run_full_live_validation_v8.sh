@@ -10,6 +10,8 @@ BASE="http://127.0.0.1:5001"
 PROD_CONTAINER="scoutmatch-ai"
 BUCKET=$(grep '^AWS_S3_BUCKET=' "${ENV_FILE}" | cut -d= -f2-)
 
+LOG_FILE="${LOG_FILE:-/tmp/full_live_validation_v8.log}"
+
 cd "${APP_DIR}"
 git fetch origin feature/session-scoped-documents
 git checkout feature/session-scoped-documents
@@ -35,8 +37,22 @@ for i in $(seq 1 24); do
   sleep 5
 done
 
-python3 "${APP_DIR}/scripts/full_live_validation_matrix.py" "${BASE}" | tee /tmp/full_live_validation_v8.log || true
-VALIDATION_EXIT=${PIPESTATUS[0]:-0}
+VALIDATION_ARGS=("${BASE}")
+if [ "${STRICT_AUDIT:-0}" = "1" ]; then
+  VALIDATION_ARGS=(--strict "${BASE}")
+fi
+
+set +e
+python3 "${APP_DIR}/scripts/full_live_validation_matrix.py" "${VALIDATION_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
+VALIDATION_EXIT=${PIPESTATUS[0]}
+set -e
+
+echo "=== VALIDATION SUMMARY ==="
+grep '^STRICT_MODE=' "${LOG_FILE}" 2>/dev/null || true
+grep '^BLOCKERS ' "${LOG_FILE}" || echo "BLOCKERS (missing from log)"
+grep '^BLOCKER ' "${LOG_FILE}" || true
+grep '^RESULT ' "${LOG_FILE}" | grep 'FAIL' || echo "No FAIL results in log"
+echo "validation_exit=${VALIDATION_EXIT}"
 
 SESSION_B=$(grep '^SESSION_B ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)
 SESSION_A=$(grep '^SESSION_A ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)

@@ -21,15 +21,18 @@ sudo docker build -t "${IMAGE_TAG}" .
 
 IMAGE_TAG="${IMAGE_TAG}" CANDIDATE="scoutmatch-ai-v9-full-validation-candidate" \
   RUNTIME="/home/ubuntu/scoutmatch-ai-v9-full-validation-runtime" \
+  LOG_FILE="/tmp/full_live_validation_v8.log" \
   bash scripts/run_full_live_validation_v8.sh
-
-if [ "${PIPESTATUS[0]:-1}" -ne 0 ] && [ ! -f /tmp/full_live_validation_v8.log ]; then
+VALIDATION_EXIT=$?
+if [ "${VALIDATION_EXIT}" -ne 0 ]; then
+  echo "CANDIDATE_VALIDATION_FAILED exit=${VALIDATION_EXIT}"
   exit 1
 fi
-if grep -q "^BLOCKERS [1-9]" /tmp/full_live_validation_v8.log; then
-  echo "CANDIDATE_VALIDATION_FAILED"
+if grep -qE '^BLOCKERS [1-9]' /tmp/full_live_validation_v8.log; then
+  echo "CANDIDATE_VALIDATION_BLOCKERS"
   exit 1
 fi
+echo "CANDIDATE_VALIDATION_PASSED"
 
 PROD_IMAGE=$(sudo docker inspect -f '{{.Config.Image}}' "${PROD_CONTAINER}")
 sudo docker rm -f "${PROD_CONTAINER}" >/dev/null 2>&1 || true

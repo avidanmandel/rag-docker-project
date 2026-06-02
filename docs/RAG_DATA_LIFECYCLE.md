@@ -19,7 +19,28 @@ Historical assistant messages remain visible but are marked stale in the UI when
 
 ---
 
+## Session isolation
+
+Each conversation has a unique `session_id`. S3 keys, metadata sidecars, SQLite `session_documents` rows, and Bedrock retrieval filters all include that ID. Session A cannot list, retrieve, or answer from Session B uploads. Cross-session leakage is blocked at the storage registry and retrieval filter layers.
+
+---
+
+## Stale historical answers
+
+When the document set changes (upload, delete one, clear):
+
+1. `document_revision` increments.
+2. New questions wait for sync (`synced_revision == document_revision`) before grounded retrieval.
+3. Existing assistant messages keep their original text but store `document_revision_at_answer`.
+4. If `document_revision_at_answer < document_revision`, the UI shows a stale badge — the answer may not reflect the current documents.
+
+Deleting one document removes its S3 source and sidecar; remaining documents stay searchable. Clearing documents removes all sources but retains the conversation messages.
+
+---
+
 ## Upload flow
+
+Each successful upload increments `document_revision` and triggers Bedrock sync. `synced_revision` advances only after ingestion succeeds.
 
 ```
 Browser file input
