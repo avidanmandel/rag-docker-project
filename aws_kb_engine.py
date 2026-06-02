@@ -876,6 +876,26 @@ _NAMED_PLAYER_PROFILE_INSTRUCTION = (
 )
 
 
+def _player_in_session_scope(
+    player_name: str,
+    session_player_facts: list[dict] | None,
+    session_document_names: list[str] | None,
+) -> bool:
+    from requirement_verification import _name_from_filename
+
+    key = (player_name or "").strip().lower()
+    if not key:
+        return False
+    for fact in session_player_facts or []:
+        if (fact.get("full_name") or "").strip().lower() == key:
+            return True
+    for fn in session_document_names or []:
+        derived = _name_from_filename(fn)
+        if derived and derived.strip().lower() == key:
+            return True
+    return False
+
+
 def _is_question_in_scoutmatch_domain(question: str, history: list | None = None) -> bool:
     q = (question or "").strip().lower()
     if not q:
@@ -1772,6 +1792,17 @@ class AWSKnowledgeBaseEngine:
             return _strict_refusal_response(refusal, reason="out_of_domain")
 
         profile_player = _extract_named_player_from_profile_question(question)
+        if (
+            config.BASELINE_KNOWLEDGE_ENABLED
+            and profile_player
+            and not _player_in_session_scope(
+                _english_player_name(profile_player),
+                session_player_facts,
+                session_document_names,
+            )
+        ):
+            return _strict_refusal_response(refusal, reason="unknown_player")
+
         retrieval_queries = _build_retrieval_queries(question, profile_player)
         aggregate_question = _is_aggregate_question(question)
 
