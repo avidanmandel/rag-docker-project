@@ -12,7 +12,7 @@ PROD_CONTAINER="scoutmatch-ai"
 BUCKET=$(grep '^AWS_S3_BUCKET=' "${ENV_FILE}" | cut -d= -f2-)
 LOG_DIR="${APP_DIR}/artifacts/logs"
 LOG_FILE="${LOG_FILE:-${LOG_DIR}/baseline_business_gate_$(date +%Y%m%d_%H%M%S).log}"
-BASELINE_SET_ID="${BASELINE_SET_ID:-candidate-$(date +%Y%m%d%H%M%S)}"
+BASELINE_SET_ID="${BASELINE_SET_ID:-candidate-soak-$(date +%Y%m%d%H%M%S)}"
 
 mkdir -p "${LOG_DIR}"
 
@@ -52,7 +52,8 @@ done
 
 GATE_ARGS=(--strict "${BASE}" "${APP_DIR}")
 set +e
-python3 "${APP_DIR}/scripts/run_baseline_business_gate.py" "${GATE_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
+CANDIDATE="${CANDIDATE}" BASELINE_SET_ID="${BASELINE_SET_ID}" AWS_BASELINE_SET_ID="${BASELINE_SET_ID}" \
+  python3 "${APP_DIR}/scripts/run_baseline_business_gate.py" "${GATE_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
 GATE_EXIT=${PIPESTATUS[0]}
 set -e
 

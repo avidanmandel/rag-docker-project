@@ -34,6 +34,15 @@ def _file_bytes(name: str) -> bytes:
     return path.read_bytes()
 
 
+def _s3_object_digest(key: str) -> str | None:
+    """Return SHA-256 of the S3 object body, or None if missing/unreadable."""
+    try:
+        body = aws_storage.read_object_bytes(key)
+    except Exception:
+        return None
+    return hashlib.sha256(body).hexdigest()
+
+
 def seed(*, apply: bool, baseline_set_id: str | None, wait_sync: bool) -> dict:
     set_id = (baseline_set_id or config.AWS_BASELINE_SET_ID).strip()
     manifest = _load_manifest()
@@ -43,6 +52,7 @@ def seed(*, apply: bool, baseline_set_id: str | None, wait_sync: bool) -> dict:
         "uploaded": 0,
         "skipped": 0,
         "updated": 0,
+        "realigned": 0,
         "failed": 0,
     }
 
@@ -63,8 +73,16 @@ def seed(*, apply: bool, baseline_set_id: str | None, wait_sync: bool) -> dict:
         key = aws_storage.build_baseline_object_key(filename, baseline_set_id=set_id)
         prior = existing.get(key)
         if prior and prior.get("content_hash") == digest:
-            summary["skipped"] += 1
-            continue
+            if apply:
+                s3_digest = _s3_object_digest(key)
+                if s3_digest is not None and s3_digest != digest:
+                    summary["realigned"] += 1
+                else:
+                    summary["skipped"] += 1
+                    continue
+            else:
+                summary["skipped"] += 1
+                continue
         if not apply:
             summary["uploaded"] += 1
             continue
@@ -93,7 +111,7 @@ def seed(*, apply: bool, baseline_set_id: str | None, wait_sync: bool) -> dict:
         else:
             summary["uploaded"] += 1
 
-    if apply and wait_sync and (summary["uploaded"] or summary["updated"]):
+    if apply and wait_sync and (summary["uploaded"] or summary["updated"] or summary["realigned"]):
         database.set_baseline_sync_state(set_id, sync_state=config.BASELINE_SYNC_STATE_SYNCING)
         try:
             job = aws_storage.sync_knowledge_base()

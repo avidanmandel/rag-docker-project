@@ -20,13 +20,14 @@ BA_FIXTURES = ROOT / "tests" / "fixtures" / "business_acceptance"
 
 STRICT = "--strict" in sys.argv
 SKIP_UI = "--skip-ui" in sys.argv
-_args = [a for a in sys.argv[1:] if a not in ("--strict", "--skip-ui")]
+SKIP_SEED = "--skip-seed" in sys.argv
+_args = [a for a in sys.argv[1:] if a not in ("--strict", "--skip-ui", "--skip-seed")]
 BASE = _args[0] if _args else "http://127.0.0.1:5001"
 REPO_ROOT = Path(_args[1]) if len(_args) > 1 else ROOT
 BASELINE_SET_ID = (
     os.environ.get("BASELINE_SET_ID")
     or os.environ.get("AWS_BASELINE_SET_ID")
-    or f"candidate-{int(time.time())}"
+    or f"candidate-soak-{int(time.time())}"
 )
 TIMEOUT = 180
 BLOCKERS: list[str] = []
@@ -199,6 +200,11 @@ def ensure_baseline_fixtures() -> None:
 def seed_baseline_set() -> None:
     ensure_baseline_fixtures()
     candidate = os.environ.get("CANDIDATE", "").strip()
+    if not candidate and ":5001" in BASE:
+        raise RuntimeError(
+            "CANDIDATE container env is required to seed baseline on loopback :5001; "
+            "host Python lacks app dependencies and must not mutate production S3."
+        )
     if candidate:
         subprocess.check_call([
             "sudo", "docker", "exec",
@@ -596,8 +602,11 @@ def run_v11_regression_subset() -> None:
 def main() -> int:
     ensure_demo_fixtures()
 
-    print(f"=== SEED BASELINE SET {BASELINE_SET_ID} ===", flush=True)
-    seed_baseline_set()
+    if SKIP_SEED:
+        print(f"=== SKIP BASELINE SEED (pre-seeded {BASELINE_SET_ID}) ===", flush=True)
+    else:
+        print(f"=== SEED BASELINE SET {BASELINE_SET_ID} ===", flush=True)
+        seed_baseline_set()
 
     print("=== WAIT BASELINE READY ===", flush=True)
     baseline_status = wait_baseline_ready()
