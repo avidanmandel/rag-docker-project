@@ -31,6 +31,21 @@ for i in $(seq 1 24); do
   sleep 5
 done
 
+echo "=== SEED PRODUCTION BASELINE (candidate runtime) ==="
+sudo docker exec \
+  -e DATABASE_PATH=/app/runtime/chat.db \
+  -e BASELINE_KNOWLEDGE_ENABLED=true \
+  -e AWS_BASELINE_SET_ID=production \
+  "${CANDIDATE}" \
+  python scripts/seed_baseline_club_knowledge.py --apply --baseline-set-id production
+
+for i in $(seq 1 60); do
+  READY=$(curl -fsS "${BASE}/api/status" | python3 -c "import sys,json; s=json.load(sys.stdin); print('yes' if s.get('baseline_ready') else 'no')" 2>/dev/null || echo "no")
+  echo "baseline_ready_poll_${i}=${READY}"
+  [ "${READY}" = "yes" ] && break
+  sleep 5
+done
+
 set +e
 python3 "${APP_DIR}/scripts/run_hebrew_business_gate.py" --strict "${BASE}" 2>&1 | tee "${LOG_FILE}"
 EXIT=${PIPESTATUS[0]}

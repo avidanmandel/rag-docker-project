@@ -20,7 +20,9 @@ from baseline_club_knowledge import (
     build_baseline_club_answer,
     build_baseline_demo_answer,
     classify_baseline_question_intent,
+    is_baseline_club_question,
     is_baseline_only_question,
+    is_budget_combination_question,
     source_scope_label,
 )
 from requirement_verification import (
@@ -37,6 +39,7 @@ from requirement_verification import (
     is_cheapest_player_question,
     is_cheapest_right_back_question,
     is_defender_relocation_filter_question,
+    is_right_sided_center_back_cheapest_question,
     is_goalkeeper_budget_immediate_question,
     is_left_foot_preference_question,
     is_salary_total_question,
@@ -902,6 +905,14 @@ def _is_question_in_scoutmatch_domain(question: str, history: list | None = None
     q = (question or "").strip().lower()
     if not q:
         return False
+
+    if (
+        is_baseline_club_question(question)
+        or is_budget_combination_question(question)
+        or is_cheapest_right_back_question(question)
+        or is_right_sided_center_back_cheapest_question(question)
+    ):
+        return True
 
     for entity in _OUT_OF_DOMAIN_ENTITIES:
         if entity in q:

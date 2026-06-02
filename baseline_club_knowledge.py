@@ -297,6 +297,8 @@ def is_budget_combination_question(question: str) -> bool:
     combo_markers_he = (
         "יכול להרשות",
         "יכולה להרשות",
+        "המועדון יכול",
+        "הקבוצה יכולה",
         "התקציב מספיק",
         "אפשר להחתים",
         "אפשר לצרף",
