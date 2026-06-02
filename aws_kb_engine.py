@@ -1755,9 +1755,11 @@ class AWSKnowledgeBaseEngine:
         player_facts = extract_verified_player_facts(
             fact_source if aggregate_question else validated
         )
+        registry_facts = session_player_facts or []
+        aggregate_facts = registry_facts if (aggregate_question and registry_facts) else player_facts
+
         if aggregate_question and is_salary_total_question(question):
-            registry_facts = session_player_facts or []
-            salary_facts = registry_facts if registry_facts else player_facts
+            salary_facts = aggregate_facts
             if not registry_facts:
                 salary_chunks: list[dict] = list(fact_source)
                 for name in (session_document_names or []):
@@ -1801,7 +1803,7 @@ class AWSKnowledgeBaseEngine:
 
         aggregate_answer = build_deterministic_aggregate_answer(
             question,
-            player_facts,
+            aggregate_facts if aggregate_question else player_facts,
         )
         if aggregate_answer:
             sources = chunks_to_source_cards(validated)

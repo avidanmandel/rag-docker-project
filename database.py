@@ -119,6 +119,7 @@ def init_db() -> None:
             ("parsed_salary_eur", "ALTER TABLE session_documents ADD COLUMN parsed_salary_eur INTEGER"),
             ("parsed_relocation", "ALTER TABLE session_documents ADD COLUMN parsed_relocation TEXT"),
             ("parsed_availability", "ALTER TABLE session_documents ADD COLUMN parsed_availability TEXT"),
+            ("parsed_position", "ALTER TABLE session_documents ADD COLUMN parsed_position TEXT"),
         ):
             if not _column_exists(conn, "session_documents", column):
                 conn.execute(ddl)
@@ -272,6 +273,7 @@ def add_session_document(
     parsed_salary_eur: int | None = None,
     parsed_relocation: str | None = None,
     parsed_availability: str | None = None,
+    parsed_position: str | None = None,
 ) -> dict:
     now = _utcnow_iso()
     conn = get_connection()
@@ -280,12 +282,14 @@ def add_session_document(
             """
             INSERT INTO session_documents
                 (session_id, s3_key, display_name, category, uploaded_at, content_hash,
-                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
+                 parsed_position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id, s3_key, display_name, category, now, content_hash,
                 parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
+                parsed_position,
             ),
         )
     return {
@@ -300,6 +304,7 @@ def add_session_document(
         "parsed_salary_eur": parsed_salary_eur,
         "parsed_relocation": parsed_relocation,
         "parsed_availability": parsed_availability,
+        "parsed_position": parsed_position,
     }
 
 
@@ -310,20 +315,29 @@ def list_session_player_facts(session_id: str) -> list[dict]:
     seen: set[str] = set()
     for doc in docs:
         name = (doc.get("parsed_player_name") or "").strip()
+        if not name:
+            continue
         salary = doc.get("parsed_salary_eur")
-        if not name or salary is None:
+        relocation = doc.get("parsed_relocation")
+        position = (doc.get("parsed_position") or "").strip()
+        availability = doc.get("parsed_availability")
+        if salary is None and not relocation and not position:
             continue
         key = name.lower()
         if key in seen:
             continue
         seen.add(key)
-        facts.append({
+        row: dict = {
             "full_name": name,
-            "annual_salary_eur": int(salary),
-            "relocation_north": doc.get("parsed_relocation"),
-            "availability": doc.get("parsed_availability"),
+            "relocation_north": relocation,
+            "availability": availability,
             "source_filenames": [doc.get("display_name") or ""],
-        })
+        }
+        if salary is not None:
+            row["annual_salary_eur"] = int(salary)
+        if position:
+            row["position"] = position
+        facts.append(row)
     facts.sort(key=lambda row: (row.get("full_name") or "").lower())
     return facts
 
@@ -369,7 +383,8 @@ def list_session_documents(session_id: str) -> list[dict]:
     rows = conn.execute(
         """
         SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash,
-               parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability
+               parsed_player_name, parsed_salary_eur, parsed_relocation, parsed_availability,
+               parsed_position
         FROM session_documents
         WHERE session_id = ?
         ORDER BY uploaded_at DESC, id DESC

@@ -5,14 +5,20 @@
 | **Project name** | ScoutMatch AI |
 | **Branch** | `feature/session-scoped-documents` |
 | **Release commit** | `a587cf4e64a7bf17094271071ca72a941c475427` |
-| **Production image** | `scoutmatch-ai:session-docs-v9` |
-| **Image ID** | `fe16ae277316` |
+| **Production image** | `scoutmatch-ai:session-docs-v10` |
+| **Image ID** | *(set after EC2 build)* |
 | **Container name** | `scoutmatch-ai` |
 | **Public URL** | http://3.239.47.249/ |
 | **Runtime mount** | `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime` |
 | **DB path** | `DATABASE_PATH=/app/runtime/chat.db` |
-| **Rollback image** | `scoutmatch-ai:session-docs-v8` |
-| **Last QA timestamp** | 2026-06-02T10:40Z (UTC) |
+| **Rollback image** | `scoutmatch-ai:session-docs-v9` |
+| **Last QA timestamp** | 2026-06-02 (UTC) |
+
+## v10 changes
+
+- Upload-time `session_player_facts` used for all deterministic aggregates (relocation, defenders, availability, salary).
+- `parsed_position` stored at upload for CSV/PDF/DOCX/TXT.
+- Audit runner reads session IDs from `${LOG_FILE}`; persistence phase tolerant to missing sessions.
 
 ## Release verification (2026-06-02)
 

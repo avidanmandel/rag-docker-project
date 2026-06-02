@@ -3299,6 +3299,7 @@ class AggregateAnswerTests(unittest.TestCase):
     def test_relocation_aggregate_answer(self):
         players = [
             {"full_name": "Or David", "relocation_north": "YES"},
+            {"full_name": "Amit Levy", "relocation_north": "YES", "position": "Defender"},
             {"full_name": "Noam David", "relocation_north": "NO"},
         ]
         answer = build_deterministic_aggregate_answer(
@@ -3306,7 +3307,55 @@ class AggregateAnswerTests(unittest.TestCase):
             players,
         )
         self.assertIn("Or David", answer or "")
+        self.assertIn("Amit Levy", answer or "")
         self.assertNotIn("Noam David", answer or "")
+
+    def test_defender_aggregate_answer(self):
+        players = [
+            {"full_name": "Amit Levy", "position": "Defender", "annual_salary_eur": 58000, "relocation_north": "YES"},
+            {"full_name": "Luca Romano", "position": "Defender", "annual_salary_eur": 55000},
+            {"full_name": "Noam David", "position": "Defender", "annual_salary_eur": 52000},
+        ]
+        answer = build_deterministic_aggregate_answer(
+            "Compare all defenders",
+            players,
+        )
+        self.assertIn("Amit Levy", answer or "")
+        self.assertIn("Luca Romano", answer or "")
+        self.assertIn("Noam David", answer or "")
+
+    def test_list_session_player_facts_includes_csv_position(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        orig_db = database.DB_PATH
+        try:
+            database.DB_PATH = tmp.name
+            database._local.conn = None
+            database.init_db()
+            session = database.create_session("facts test")
+            database.add_session_document(
+                session["id"],
+                "scoutmatch/knowledge-base/sessions/x/defender_amit_levy.csv",
+                "defender_amit_levy.csv",
+                "Player CV",
+                parsed_player_name="Amit Levy",
+                parsed_salary_eur=58000,
+                parsed_relocation="YES",
+                parsed_availability="July 2025",
+                parsed_position="Defender",
+            )
+            facts = database.list_session_player_facts(session["id"])
+            self.assertEqual(len(facts), 1)
+            self.assertEqual(facts[0]["full_name"], "Amit Levy")
+            self.assertEqual(facts[0]["position"], "Defender")
+            self.assertEqual(facts[0]["relocation_north"], "YES")
+        finally:
+            conn = getattr(database._local, "conn", None)
+            if conn is not None:
+                conn.close()
+                database._local.conn = None
+            database.DB_PATH = orig_db
+            os.unlink(tmp.name)
 
 
 class MessageApiSyncGuardTests(unittest.TestCase):

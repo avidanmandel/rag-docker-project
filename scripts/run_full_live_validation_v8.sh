@@ -54,15 +54,21 @@ grep '^BLOCKER ' "${LOG_FILE}" || true
 grep '^RESULT ' "${LOG_FILE}" | grep 'FAIL' || echo "No FAIL results in log"
 echo "validation_exit=${VALIDATION_EXIT}"
 
-SESSION_B=$(grep '^SESSION_B ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)
-SESSION_A=$(grep '^SESSION_A ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)
-SESSION_C=$(grep '^SESSION_C ' /tmp/full_live_validation_v8.log | awk '{print $2}' || true)
+SESSION_A=$(grep '^SESSION_A ' "${LOG_FILE}" | tail -1 | awk '{print $2}' || true)
+SESSION_B=$(grep '^SESSION_B ' "${LOG_FILE}" | tail -1 | awk '{print $2}' || true)
+SESSION_C=$(grep '^SESSION_C ' "${LOG_FILE}" | tail -1 | awk '{print $2}' || true)
+PERSIST_SESSION="${SESSION_B:-${SESSION_A}}"
 
 echo "=== PHASE 11: PERSISTENCE RESTART ==="
 sudo docker restart "${CANDIDATE}" >/dev/null
 sleep 12
-if [ -n "${SESSION_B}" ]; then
-  curl -fsS "${BASE}/api/sessions/${SESSION_B}" | python3 -c 'import sys,json; s=json.load(sys.stdin); print("restart_persist", s.get("id"), s.get("sync_state"), s.get("document_revision"))'
+if [ -n "${PERSIST_SESSION}" ]; then
+  HTTP_CODE=$(curl -sS -o /tmp/persist_session.json -w '%{http_code}' "${BASE}/api/sessions/${PERSIST_SESSION}" || echo "000")
+  if [ "${HTTP_CODE}" = "200" ]; then
+    python3 -c 'import sys,json; s=json.load(open("/tmp/persist_session.json")); print("restart_persist", s.get("id"), s.get("sync_state"), s.get("document_revision"))'
+  else
+    echo "restart_persist_skip http=${HTTP_CODE} session=${PERSIST_SESSION}"
+  fi
 fi
 
 echo "=== PHASE 11B: REMOVE/RECREATE WITH SAME MOUNT ==="
@@ -75,8 +81,13 @@ sudo docker run -d \
   -e DATABASE_PATH=/app/runtime/chat.db \
   "${IMAGE_TAG}"
 sleep 12
-if [ -n "${SESSION_B}" ]; then
-  curl -fsS "${BASE}/api/sessions/${SESSION_B}" | python3 -c 'import sys,json; s=json.load(sys.stdin); print("recreate_persist", s.get("id"), s.get("sync_state"), s.get("document_revision"))'
+if [ -n "${PERSIST_SESSION}" ]; then
+  HTTP_CODE=$(curl -sS -o /tmp/persist_session.json -w '%{http_code}' "${BASE}/api/sessions/${PERSIST_SESSION}" || echo "000")
+  if [ "${HTTP_CODE}" = "200" ]; then
+    python3 -c 'import sys,json; s=json.load(open("/tmp/persist_session.json")); print("recreate_persist", s.get("id"), s.get("sync_state"), s.get("document_revision"))'
+  else
+    echo "recreate_persist_skip http=${HTTP_CODE} session=${PERSIST_SESSION}"
+  fi
 fi
 
 echo "=== PHASE 12: RECONCILE ==="

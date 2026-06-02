@@ -71,6 +71,7 @@ def _parse_upload_player_facts(raw: bytes, ext: str) -> dict[str, object | None]
         "parsed_salary_eur": parsed.get("annual_salary_eur"),
         "parsed_relocation": parsed.get("relocation_north"),
         "parsed_availability": parsed.get("availability"),
+        "parsed_position": parsed.get("position"),
     }
 
 
@@ -749,6 +750,7 @@ def api_upload_session_document(session_id):
             parsed_salary_eur=parsed_facts.get("parsed_salary_eur"),
             parsed_relocation=parsed_facts.get("parsed_relocation"),
             parsed_availability=parsed_facts.get("parsed_availability"),
+            parsed_position=parsed_facts.get("parsed_position"),
         )
         ingestion = _sync_session_documents(session_id)
     except UploadValidationError as exc:
