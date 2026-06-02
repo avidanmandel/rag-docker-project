@@ -7,6 +7,7 @@ Local FAISS mode remains available for development (RAG_BACKEND=local).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -96,18 +97,50 @@ def _try_sync_knowledge_base_after_delete(delete_result: dict) -> tuple[dict, st
         return {"status": "PENDING"}, str(exc)
 
 
-def _ingestion_after_object_delete(delete_result: dict) -> dict:
+def _ingestion_after_object_delete(session_id: str, delete_result: dict) -> dict:
     """Start Bedrock ingestion only when S3 objects were actually removed."""
     if not _is_aws_kb_mode():
         return {}
     if int(delete_result.get("deleted") or 0) <= 0:
         return {}
-    return aws_storage.sync_knowledge_base()
+    return _sync_session_documents(session_id)
+
+
+def _sync_session_documents(session_id: str) -> dict:
+    """Bump document revision and wait for Bedrock sync after document-set changes."""
+    if not _is_aws_kb_mode():
+        return {}
+    database.bump_document_revision(session_id)
+    try:
+        result = aws_storage.sync_knowledge_base()
+        database.mark_sync_success(session_id)
+        return result
+    except RuntimeError:
+        database.mark_sync_error(session_id)
+        raise
 
 
 def _sync_knowledge_base_after_change() -> dict:
-    """Run Bedrock ingestion sync after session-scoped S3 changes."""
+    """Deprecated alias — callers must pass session_id via _sync_session_documents."""
     return aws_storage.sync_knowledge_base()
+
+
+def _finalize_assistant_result(result: dict) -> dict:
+    """Ensure refused answers never expose source cards."""
+    if result.get("refused"):
+        result["context"] = []
+        result["main_source"] = None
+    return result
+
+
+def _is_hebrew_text(text: str) -> bool:
+    return bool(re.search(r"[\u0590-\u05FF]", text or ""))
+
+
+def _syncing_retrieval_message(question: str) -> str:
+    if _is_hebrew_text(question):
+        return config.SYNCING_RETRIEVAL_TEXT_HE
+    return config.SYNCING_RETRIEVAL_TEXT_EN
 
 
 app = Flask(__name__)
@@ -643,6 +676,24 @@ def api_upload_session_document(session_id):
             raw, filename = aws_storage.normalise_json_to_txt(raw, filename)
 
         safe, _ = aws_storage.validate_upload(filename, len(raw))
+        content_hash = hashlib.sha256(raw).hexdigest()
+        duplicate = database.find_session_document_by_content_hash(session_id, content_hash)
+        if duplicate:
+            return jsonify({
+                "ok": True,
+                "duplicate": True,
+                "document": _session_document_payload(duplicate),
+                "message": "This document is already uploaded for this conversation.",
+            }), 200
+
+        existing_name = database.find_session_document_by_display_name(session_id, safe)
+        if existing_name:
+            if _is_aws_kb_mode():
+                aws_storage.delete_recorded_session_objects([existing_name])
+            else:
+                _delete_local_session_docs(session_id, [existing_name])
+            database.delete_session_document(session_id, existing_name["id"])
+
         category = aws_storage._category_label(
             safe,
             Path(safe).suffix.lower().lstrip("."),
@@ -659,8 +710,9 @@ def api_upload_session_document(session_id):
             upload_result["key"],
             upload_result["display_name"],
             upload_result["category"],
+            content_hash=content_hash,
         )
-        ingestion = _sync_knowledge_base_after_change()
+        ingestion = _sync_session_documents(session_id)
     except UploadValidationError as exc:
         return jsonify({"error": str(exc)}), 400
     except RuntimeError as exc:
@@ -699,7 +751,7 @@ def api_delete_session_document(session_id, document_id):
         else:
             delete_result = {"deleted": _delete_local_session_docs(session_id, [doc])}
         database.delete_session_document(session_id, document_id)
-        ingestion = _ingestion_after_object_delete(delete_result)
+        ingestion = _ingestion_after_object_delete(session_id, delete_result)
         if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
@@ -731,7 +783,7 @@ def api_clear_session_documents(session_id):
             else:
                 delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
             database.clear_session_documents(session_id)
-        ingestion = _ingestion_after_object_delete(delete_result)
+        ingestion = _ingestion_after_object_delete(session_id, delete_result)
         if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-clear-reindex"
@@ -1194,6 +1246,29 @@ def api_send_message(session_id):
     history = database.get_history_for_llm(session_id, limit=20)
     user_msg = database.add_message(session_id, "user", question)
 
+    if _is_aws_kb_mode() and not database.is_retrieval_ready(session_id):
+        sync_msg = _syncing_retrieval_message(question)
+        assistant_msg = database.add_message(
+            session_id,
+            "assistant",
+            sync_msg,
+            context=[],
+            refused=True,
+            reason="documents_syncing",
+            generation_mode="aws_kb",
+            main_source=None,
+            document_revision_at_answer=int(session.get("document_revision") or 0),
+        )
+        return jsonify({
+            "user_message": user_msg,
+            "assistant_message": assistant_msg,
+            "refused": True,
+            "reason": "documents_syncing",
+            "sources": [],
+            "main_source": None,
+            "generation_mode": "aws_kb",
+        })
+
     answer_kwargs: dict = {"question": question, "history": history}
     if _is_aws_kb_mode():
         answer_kwargs["app_session_id"] = session_id
@@ -1201,6 +1276,7 @@ def api_send_message(session_id):
 
     try:
         result = engine.answer(**answer_kwargs)
+        result = _finalize_assistant_result(result)
     except Exception:
         traceback.print_exc()
         return jsonify({
@@ -1218,11 +1294,12 @@ def api_send_message(session_id):
         session_id,
         "assistant",
         result["answer"],
-        context=result["context"],
+        context=result.get("context") or [],
         refused=result.get("refused", False),
         reason=result.get("reason"),
         generation_mode=result.get("generation_mode"),
         main_source=result.get("main_source"),
+        document_revision_at_answer=int(session.get("document_revision") or 0),
     )
 
     if _is_aws_kb_mode() and result.get("bedrock_session_id"):

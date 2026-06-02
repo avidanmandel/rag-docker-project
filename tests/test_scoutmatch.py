@@ -45,7 +45,10 @@ from aws_kb_engine import (  # noqa: E402
     _filter_scoutmatch_results,
     _is_allowed_session_source,
     _is_allowed_scoutmatch_source,
-    _is_comparison_or_recommendation_question,
+    _is_aggregate_question,
+    _is_football_relevant_chunk,
+    _select_aggregate_context_chunks,
+    _strict_refusal_response,
     _is_named_player_profile_question,
     _is_question_in_scoutmatch_domain,
     _extract_named_player_from_profile_question,
@@ -3170,6 +3173,123 @@ class HebrewPlayerProfileTests(unittest.TestCase):
     def test_english_player_name_mapping(self):
         self.assertEqual(_english_player_name("אור דוד"), "Or David")
         self.assertEqual(_english_player_name("לוקה רומאנו"), "Luca Romano")
+
+
+class DocumentRevisionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self._orig = database.DB_PATH
+        database.DB_PATH = self.tmp.name
+        database._local.conn = None
+        database.init_db()
+
+    def tearDown(self):
+        conn = getattr(database._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            database._local.conn = None
+        database.DB_PATH = self._orig
+        Path(self.tmp.name).unlink(missing_ok=True)
+
+    def test_revision_blocks_retrieval_until_synced(self):
+        session = database.create_session()
+        self.assertTrue(database.is_retrieval_ready(session["id"]))
+        database.bump_document_revision(session["id"])
+        self.assertFalse(database.is_retrieval_ready(session["id"]))
+        database.mark_sync_success(session["id"])
+        self.assertTrue(database.is_retrieval_ready(session["id"]))
+
+    def test_duplicate_content_hash_detected(self):
+        session = database.create_session()
+        h = "abc123hash"
+        database.add_session_document(
+            session["id"], f"{SCOUT_PREFIX}sessions/{session['id']}/a.txt", "a.txt", "TXT", content_hash=h
+        )
+        found = database.find_session_document_by_content_hash(session["id"], h)
+        self.assertIsNotNone(found)
+        self.assertEqual(found["display_name"], "a.txt")
+
+
+class RefusalSanitizationTests(unittest.TestCase):
+    def test_strict_refusal_has_zero_sources(self):
+        result = _strict_refusal_response(
+            config.REFUSAL_TEXT_EN,
+            reason="out_of_domain",
+            context=[{"source": "titanic.csv", "text": "passenger"}],
+        )
+        self.assertTrue(result["refused"])
+        self.assertEqual(result["context"], [])
+        self.assertIsNone(result["main_source"])
+
+    def test_titanic_question_out_of_domain(self):
+        self.assertFalse(_is_question_in_scoutmatch_domain("What happened to the Titanic?"))
+
+
+class FootballRelevanceTests(unittest.TestCase):
+    def test_titanic_csv_chunk_excluded(self):
+        chunk = {
+            "text": "Passenger Name,Survived\nJohn,No\nTitanic manifest data",
+            "source": "titanic.csv",
+            "s3_uri": f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/titanic.csv",
+            "score": 0.99,
+        }
+        self.assertFalse(_is_football_relevant_chunk(chunk))
+
+    def test_player_cv_chunk_included(self):
+        chunk = {
+            "text": DANIEL_PROFILE,
+            "source": "goalkeeper_daniel_cohen.txt",
+            "s3_uri": SCOUT_GK_URI,
+            "score": 0.95,
+        }
+        self.assertTrue(_is_football_relevant_chunk(chunk))
+
+    def test_aggregate_question_detected(self):
+        self.assertTrue(_is_aggregate_question("Show all candidates willing to relocate"))
+        self.assertTrue(_is_aggregate_question("מהי המשכורת הכוללת של כל השחקנים?"))
+        self.assertFalse(_is_aggregate_question("Who is Daniel Cohen?"))
+
+
+class MessageApiSyncGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self._orig_db = database.DB_PATH
+        self._orig_rag = config.RAG_BACKEND
+        database.DB_PATH = self.tmp.name
+        database._local.conn = None
+        database.init_db()
+        config.RAG_BACKEND = "aws_kb"
+
+        import app as flask_app
+
+        self.client = flask_app.app.test_client()
+        flask_app.app.config["TESTING"] = True
+        flask_app.engine.ready = True
+
+    def tearDown(self):
+        conn = getattr(database._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            database._local.conn = None
+        database.DB_PATH = self._orig_db
+        config.RAG_BACKEND = self._orig_rag
+        Path(self.tmp.name).unlink(missing_ok=True)
+
+    def test_message_blocked_while_documents_syncing(self):
+        session = database.create_session()
+        database.bump_document_revision(session["id"])
+        resp = self.client.post(
+            f"/api/sessions/{session['id']}/messages",
+            json={"content": "Who is Daniel Cohen?"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body.get("refused"))
+        self.assertEqual(body.get("reason"), "documents_syncing")
+        self.assertEqual(body.get("sources"), [])
+        self.assertIsNone(body.get("main_source"))
 
 
 if __name__ == "__main__":

@@ -141,6 +141,8 @@ _OUT_OF_DOMAIN_ENTITIES = (
     "בירת ניו זילנד",
     "what is the capital",
     "מהי בירת",
+    "titanic",
+    "טיטאניק",
 )
 
 _SCOUTMATCH_DOMAIN_KEYWORDS = (
@@ -219,6 +221,70 @@ _FOOTBALL_HISTORY_MARKERS = (
     "גיוס",
     "משחק רגל",
     "football",
+)
+
+
+_IRRELEVANT_DOCUMENT_PATTERNS = (
+    r"\btitanic\b",
+    r"\biceberg\b",
+    r"passenger manifest",
+    r"ignore previous instructions",
+    r"ignore all prior instructions",
+    r"system prompt",
+    r"you are now",
+)
+
+_FOOTBALL_CONTENT_MARKERS = (
+    "player",
+    "goalkeeper",
+    "defender",
+    "midfielder",
+    "forward",
+    "position",
+    "club",
+    "salary",
+    "relocation",
+    "scouting",
+    "full name",
+    "professional experience",
+    "preferred foot",
+    "availability",
+    "annual salary",
+    "שוער",
+    "שחקן",
+    "מיקום",
+    "שכר",
+    "מועמד",
+    "קבוצה",
+    "ניסיון",
+)
+
+_AGGREGATE_QUESTION_PATTERNS = (
+    "all players",
+    "all candidates",
+    "every player",
+    "every candidate",
+    "total salary",
+    "total annual",
+    "compare all",
+    "show all",
+    "willing to relocate",
+    "available immediately",
+    "all defenders",
+    "all goalkeepers",
+    "all midfielders",
+    "all forwards",
+    "budget of",
+    "כל השחקנים",
+    "כל המועמדים",
+    "משכורת הכוללת",
+    "השווה בין כל",
+    "הצג את כל",
+    "מוכנים לעבור",
+    "זמינים מיידית",
+    "כל המגנים",
+    "כל השוערים",
+    "תקציב של",
 )
 
 
@@ -351,6 +417,8 @@ def _filter_scoutmatch_results(
         if min_score is not None:
             if score is None or float(score) < min_score:
                 continue
+        if not _is_football_relevant_chunk(item):
+            continue
         filtered.append(item)
     filtered.sort(key=lambda row: row.get("score") or 0.0, reverse=True)
     if top_k is not None:
@@ -368,6 +436,27 @@ def _chunk_source_filename(chunk: dict) -> str:
 def _canonical_source_key(filename: str) -> str:
     stem = Path(filename).stem.lower()
     return re.sub(r"_\d{8}_\d{6}$", "", stem)
+
+
+def _is_football_relevant_chunk(chunk: dict) -> bool:
+    text = (chunk.get("text") or "").lower()
+    filename = _chunk_source_filename(chunk)
+    for pattern in _IRRELEVANT_DOCUMENT_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            if not any(marker in text for marker in _FOOTBALL_CONTENT_MARKERS):
+                return False
+    if any(marker in text for marker in _FOOTBALL_CONTENT_MARKERS):
+        return True
+    if any(filename.startswith(prefix) for prefix in _POSITION_PREFIXES):
+        return True
+    if "_report" in filename or "team_requirement" in filename:
+        return True
+    return False
+
+
+def _is_aggregate_question(question: str) -> bool:
+    q = (question or "").lower()
+    return any(p in q for p in _AGGREGATE_QUESTION_PATTERNS)
 
 
 def _is_timestamped_source_filename(filename: str) -> bool:
@@ -845,6 +934,32 @@ def _select_complete_diverse_context_chunks(
     return selected[:max_total_chunks]
 
 
+def _select_aggregate_context_chunks(
+    results: list[dict],
+    *,
+    min_score: float | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
+    grouped = _group_validated_chunks_by_file(
+        results,
+        min_score=min_score,
+        session_id=session_id,
+    )
+    selected: list[dict] = []
+    max_per_source = config.AWS_KB_MAX_CHUNKS_PER_SOURCE
+    file_limit = config.AWS_KB_AGGREGATE_SOURCE_LIMIT
+    seen_files: set[str] = set()
+    for canonical, chunks in grouped.items():
+        if not chunks or not _is_football_relevant_chunk(chunks[0]):
+            continue
+        for candidate in chunks[:max_per_source]:
+            selected.append(candidate)
+        seen_files.add(canonical)
+        if len(seen_files) >= file_limit:
+            break
+    return selected[: file_limit * max_per_source]
+
+
 def _select_diverse_context_chunks(
     results: list[dict],
     question: str,
@@ -1287,7 +1402,8 @@ def _strict_refusal_response(
 ) -> dict:
     return {
         "answer": refusal,
-        "context": context or [],
+        "context": [],
+        "main_source": None,
         "refused": True,
         "reason": reason,
         "generation_mode": "aws_kb",
@@ -1395,12 +1511,14 @@ class AWSKnowledgeBaseEngine:
         queries: list[str],
         *,
         session_id: str,
+        candidates: int | None = None,
     ) -> list[dict]:
         merged: list[dict] = []
+        k = candidates if candidates is not None else config.AWS_KB_RETRIEVE_CANDIDATES
         for query in queries:
             batch = self.retrieve(
                 query,
-                candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
+                candidates=k,
                 session_id=session_id,
             )
             merged.extend(batch)
@@ -1518,16 +1636,22 @@ class AWSKnowledgeBaseEngine:
         retrieval_queries = _build_retrieval_queries(question, profile_player)
 
         try:
+            retrieve_candidates = (
+                config.AWS_KB_AGGREGATE_CANDIDATES
+                if _is_aggregate_question(question)
+                else config.AWS_KB_RETRIEVE_CANDIDATES
+            )
             if len(retrieval_queries) <= 1:
                 retrieved = self.retrieve(
                     retrieval_queries[0] if retrieval_queries else question,
-                    candidates=config.AWS_KB_RETRIEVE_CANDIDATES,
+                    candidates=retrieve_candidates,
                     session_id=app_session_id,
                 )
             else:
                 retrieved = self._retrieve_merged(
                     retrieval_queries,
                     session_id=app_session_id,
+                    candidates=retrieve_candidates,
                 )
         except Exception as exc:
             logger.error("Bedrock retrieve failed: %s", exc.__class__.__name__)
@@ -1542,11 +1666,19 @@ class AWSKnowledgeBaseEngine:
         if not retrieved:
             return _strict_refusal_response(refusal, reason="no_scoutmatch_sources")
 
-        validated = _select_complete_diverse_context_chunks(
-            retrieved,
-            question,
-            min_score=min_score,
-            session_id=app_session_id,
+        validated = (
+            _select_aggregate_context_chunks(
+                retrieved,
+                min_score=min_score,
+                session_id=app_session_id,
+            )
+            if _is_aggregate_question(question)
+            else _select_complete_diverse_context_chunks(
+                retrieved,
+                question,
+                min_score=min_score,
+                session_id=app_session_id,
+            )
         )
 
         if not validated:

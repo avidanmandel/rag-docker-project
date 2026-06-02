@@ -60,6 +60,18 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE sessions ADD COLUMN bedrock_session_id TEXT"
             )
+        if not _column_exists(conn, "sessions", "document_revision"):
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN document_revision INTEGER NOT NULL DEFAULT 0"
+            )
+        if not _column_exists(conn, "sessions", "synced_revision"):
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN synced_revision INTEGER NOT NULL DEFAULT 0"
+            )
+        if not _column_exists(conn, "sessions", "sync_state"):
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'READY'"
+            )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -98,6 +110,14 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_session_documents_s3_key "
             "ON session_documents(s3_key)"
         )
+        if not _column_exists(conn, "session_documents", "content_hash"):
+            conn.execute(
+                "ALTER TABLE session_documents ADD COLUMN content_hash TEXT"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_documents_content_hash "
+            "ON session_documents(session_id, content_hash)"
+        )
 
 
 # ---------- sessions ----------
@@ -121,11 +141,16 @@ def create_session(title: str = "New conversation") -> dict:
     }
 
 
+_SESSION_SELECT = (
+    "id, title, created_at, updated_at, bedrock_session_id, "
+    "document_revision, synced_revision, sync_state"
+)
+
+
 def list_sessions() -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, title, created_at, updated_at, bedrock_session_id "
-        "FROM sessions ORDER BY updated_at DESC"
+        f"SELECT {_SESSION_SELECT} FROM sessions ORDER BY updated_at DESC"
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -133,11 +158,58 @@ def list_sessions() -> list[dict]:
 def get_session(session_id: str) -> dict | None:
     conn = get_connection()
     row = conn.execute(
-        "SELECT id, title, created_at, updated_at, bedrock_session_id "
-        "FROM sessions WHERE id = ?",
+        f"SELECT {_SESSION_SELECT} FROM sessions WHERE id = ?",
         (session_id,),
     ).fetchone()
     return dict(row) if row else None
+
+
+def bump_document_revision(session_id: str) -> int:
+    """Increment revision and mark session as syncing."""
+    conn = get_connection()
+    with conn:
+        row = conn.execute(
+            "SELECT document_revision FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("Session not found")
+        new_rev = int(row["document_revision"] or 0) + 1
+        conn.execute(
+            "UPDATE sessions SET document_revision = ?, sync_state = ?, updated_at = ? "
+            "WHERE id = ?",
+            (new_rev, config.SYNC_STATE_SYNCING, _utcnow_iso(), session_id),
+        )
+    return new_rev
+
+
+def mark_sync_success(session_id: str) -> None:
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "UPDATE sessions SET synced_revision = document_revision, "
+            "sync_state = ?, updated_at = ? WHERE id = ?",
+            (config.SYNC_STATE_READY, _utcnow_iso(), session_id),
+        )
+
+
+def mark_sync_error(session_id: str) -> None:
+    conn = get_connection()
+    with conn:
+        conn.execute(
+            "UPDATE sessions SET sync_state = ?, updated_at = ? WHERE id = ?",
+            (config.SYNC_STATE_ERROR, _utcnow_iso(), session_id),
+        )
+
+
+def is_retrieval_ready(session_id: str) -> bool:
+    session = get_session(session_id)
+    if not session:
+        return False
+    revision = int(session.get("document_revision") or 0)
+    synced = int(session.get("synced_revision") or 0)
+    state = session.get("sync_state") or config.SYNC_STATE_READY
+    return state == config.SYNC_STATE_READY and revision == synced
 
 
 def update_bedrock_session_id(session_id: str, bedrock_session_id: str | None) -> None:
@@ -186,6 +258,8 @@ def add_session_document(
     s3_key: str,
     display_name: str,
     category: str | None = None,
+    *,
+    content_hash: str | None = None,
 ) -> dict:
     now = _utcnow_iso()
     conn = get_connection()
@@ -193,10 +267,10 @@ def add_session_document(
         cur = conn.execute(
             """
             INSERT INTO session_documents
-                (session_id, s3_key, display_name, category, uploaded_at)
-            VALUES (?, ?, ?, ?, ?)
+                (session_id, s3_key, display_name, category, uploaded_at, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (session_id, s3_key, display_name, category, now),
+            (session_id, s3_key, display_name, category, now, content_hash),
         )
     return {
         "id": cur.lastrowid,
@@ -205,7 +279,44 @@ def add_session_document(
         "display_name": display_name,
         "category": category,
         "uploaded_at": now,
+        "content_hash": content_hash,
     }
+
+
+def find_session_document_by_content_hash(
+    session_id: str,
+    content_hash: str,
+) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        """
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash
+        FROM session_documents
+        WHERE session_id = ? AND content_hash = ?
+        ORDER BY uploaded_at DESC, id DESC
+        LIMIT 1
+        """,
+        (session_id, content_hash),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def find_session_document_by_display_name(
+    session_id: str,
+    display_name: str,
+) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        """
+        SELECT id, session_id, s3_key, display_name, category, uploaded_at, content_hash
+        FROM session_documents
+        WHERE session_id = ? AND display_name = ?
+        ORDER BY uploaded_at DESC, id DESC
+        LIMIT 1
+        """,
+        (session_id, display_name),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def list_session_documents(session_id: str) -> list[dict]:
@@ -285,6 +396,7 @@ def add_message(
     reason: str | None = None,
     generation_mode: str | None = None,
     main_source: dict | None = None,
+    document_revision_at_answer: int | None = None,
 ) -> dict:
     if role not in ("user", "assistant"):
         raise ValueError(f"Invalid role: {role}")
@@ -296,6 +408,7 @@ def add_message(
         "reason": reason,
         "generation_mode": generation_mode,
         "main_source": main_source,
+        "document_revision_at_answer": document_revision_at_answer,
     }
     context_json = json.dumps(meta) if any(v is not None for v in meta.values()) else None
 
@@ -321,6 +434,7 @@ def add_message(
         "reason": reason,
         "generation_mode": generation_mode,
         "main_source": main_source,
+        "document_revision_at_answer": document_revision_at_answer,
         "created_at": now,
     }
 
@@ -348,6 +462,9 @@ def get_messages(session_id: str) -> list[dict]:
                 item["reason"] = parsed.get("reason")
                 item["generation_mode"] = parsed.get("generation_mode")
                 item["main_source"] = parsed.get("main_source")
+                item["document_revision_at_answer"] = parsed.get(
+                    "document_revision_at_answer"
+                )
             elif isinstance(parsed, list):
                 item["context"] = parsed
             else:

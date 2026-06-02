@@ -101,6 +101,7 @@ const state = {
     awsMode: false,
     kbSyncInProgress: false,
     kbOperationInProgress: false,
+    sessionDocumentRevision: 0,
     ingestionJobId: null,
 };
 
@@ -356,6 +357,14 @@ async function pollIngestion(jobId) {
                 toast("Knowledge base sync complete.");
                 state.kbSyncInProgress = false;
                 updateComposerState();
+                if (state.activeSessionId) {
+                    try {
+                        const sessionData = await API.getSession(state.activeSessionId);
+                        state.sessionDocumentRevision = sessionData.document_revision ?? 0;
+                    } catch {
+                        /* ignore */
+                    }
+                }
                 await refreshKbDocuments();
                 setTimeout(() => setSyncStatus("", ""), 8000);
                 return;
@@ -478,6 +487,7 @@ async function selectSession(id) {
     state.activeSessionId = id;
     const data = await API.getSession(id);
     state.messages = data.messages || [];
+    state.sessionDocumentRevision = data.document_revision ?? 0;
     els.conversationTitle.textContent = data.title || "Conversation";
     els.conversationMeta.textContent =
         state.messages.length > 0
@@ -681,7 +691,29 @@ function renderMessage(msg) {
     body.appendChild(role);
     body.appendChild(content);
 
-    if (msg.role === "assistant" && Array.isArray(msg.context) && msg.context.length > 0) {
+    const isRefused =
+        msg.role === "assistant" &&
+        (msg.refused || isRefusalMessage(msg.content));
+    if (
+        msg.role === "assistant" &&
+        !isRefused &&
+        msg.document_revision_at_answer != null &&
+        state.sessionDocumentRevision > msg.document_revision_at_answer
+    ) {
+        const stale = document.createElement("div");
+        stale.className = "message__stale";
+        stale.textContent = /[\u0590-\u05FF]/.test(msg.content || "")
+            ? "תשובה זו נוצרה לפני שינוי המסמכים המצורפים לשיחה."
+            : "This answer was generated before the uploaded documents changed.";
+        body.appendChild(stale);
+    }
+
+    if (
+        msg.role === "assistant" &&
+        !isRefused &&
+        Array.isArray(msg.context) &&
+        msg.context.length > 0
+    ) {
         body.appendChild(renderContext(msg.context, msg.main_source));
     }
 

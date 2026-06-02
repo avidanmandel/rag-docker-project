@@ -682,6 +682,12 @@ kbd {
 }
 
 .message--refused .message__content { color: var(--warning); }
+.message__stale {
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-style: italic;
+}
 
 /* Retrieved context */
 .context {

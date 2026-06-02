@@ -144,6 +144,28 @@ INGESTION_TIMEOUT_USER_MESSAGE = (
     "The knowledge base is still updating. Please try again shortly."
 )
 
+# --- Document revision / sync state ---------------------------------------
+SYNC_STATE_READY = "READY"
+SYNC_STATE_SYNCING = "SYNCING"
+SYNC_STATE_ERROR = "ERROR"
+
+SYNCING_RETRIEVAL_TEXT_EN = (
+    "The ScoutMatch knowledge base is still updating for this conversation. "
+    "Please wait a moment and try again."
+)
+SYNCING_RETRIEVAL_TEXT_HE = (
+    "בסיס הידע של ScoutMatch עדיין מתעדכן עבור השיחה הזו. נסה שוב בעוד רגע."
+)
+STALE_ANSWER_TEXT_EN = (
+    "This answer was generated before the uploaded documents changed."
+)
+STALE_ANSWER_TEXT_HE = (
+    "תשובה זו נוצרה לפני שינוי המסמכים המצורפים לשיחה."
+)
+
+AWS_KB_AGGREGATE_CANDIDATES = int(os.getenv("AWS_KB_AGGREGATE_CANDIDATES", "50"))
+AWS_KB_AGGREGATE_SOURCE_LIMIT = int(os.getenv("AWS_KB_AGGREGATE_SOURCE_LIMIT", "20"))
+
 
 # --- Upload allowlist (ScoutMatch documents) ------------------------------
 DOC_UPLOAD_EXTENSIONS = frozenset({
