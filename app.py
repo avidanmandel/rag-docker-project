@@ -43,9 +43,27 @@ from image_extract import (  # noqa: E402
 
 
 def _parse_upload_player_facts(raw: bytes, ext: str) -> dict[str, object | None]:
-    if ext in {".txt", ".csv", ".md"}:
-        text = raw.decode("utf-8", errors="replace")
-    else:
+    text = ""
+    try:
+        if ext in {".txt", ".csv", ".md"}:
+            text = raw.decode("utf-8", errors="replace")
+        elif ext == ".docx":
+            import io
+            import zipfile
+
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                text = archive.read("word/document.xml").decode("utf-8", errors="ignore")
+            text = re.sub(r"<[^>]+>", " ", text)
+        elif ext == ".pdf":
+            import io
+
+            from pypdf import PdfReader
+
+            reader = PdfReader(io.BytesIO(raw))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        else:
+            text = raw.decode("latin-1", errors="ignore")
+    except Exception:
         text = raw.decode("latin-1", errors="ignore")
     parsed = _parse_facts_from_text(text)
     return {
