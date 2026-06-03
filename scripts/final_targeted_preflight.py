@@ -150,6 +150,16 @@ def doc_by_filename(session_id: str, filename: str) -> dict | None:
     return None
 
 
+def wait_for_syncing(session_id: str, timeout: float = 45.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        state = http_json("GET", f"/api/sessions/{session_id}").get("sync_state")
+        if state == "SYNCING":
+            return True
+        time.sleep(0.25)
+    return False
+
+
 def delete_document(session_id: str, doc_id: int, *, async_delete: bool = False) -> dict | threading.Thread:
     if not async_delete:
         return http_json("DELETE", f"/api/sessions/{session_id}/documents/{doc_id}")
@@ -168,12 +178,22 @@ def delete_document(session_id: str, doc_id: int, *, async_delete: bool = False)
     return thread
 
 
-def during_sync_ok(resp: dict, question_text: str) -> bool:
+def during_sync_ok(
+    resp: dict,
+    question_text: str = "",
+    *,
+    stale_tokens: list[str] | None = None,
+) -> bool:
     text = answer_text(resp).lower()
     reason = resp.get("reason") or (resp.get("assistant_message") or {}).get("reason")
-    stale = "45000" in text.replace(",", "") or "45,000" in answer_text(resp)
-    if "eyal" not in question_text.lower():
-        stale = False
+    tokens = list(stale_tokens or [])
+    if "eyal" in question_text.lower():
+        tokens.extend(["45000", "45,000"])
+    stale = any(
+        token.replace(",", "") in text.replace(",", "")
+        for token in tokens
+        if token
+    )
     syncing = (
         reason == "documents_syncing"
         or "sync" in text
@@ -224,6 +244,7 @@ def run_eyal_csv_delete() -> None:
         return
 
     thread = delete_document(sid, int(doc["id"]), async_delete=True)
+    wait_for_syncing(sid)
     during = ask(sid, q, timeout=45)
     record("eyal_during_sync", during_sync_ok(during, q), f"reason={during.get('reason')} text={answer_text(during)[:100]}")
     if isinstance(thread, threading.Thread):
@@ -301,11 +322,10 @@ def format_delete_lifecycle(
         return
 
     thread = delete_document(sid, int(doc["id"]), async_delete=True)
+    wait_for_syncing(sid)
     during = ask(sid, question, timeout=45)
-    during_text = answer_text(during).lower()
-    during_ok = refusal_ok(during) or expect_in_answer.lower() not in during_text
-    if salary_check:
-        during_ok = during_ok and salary_check.replace(",", "") not in during_text.replace(",", "")
+    tokens = [salary_check] if salary_check else [expect_in_answer]
+    during_ok = during_sync_ok(during, question, stale_tokens=tokens)
     record(f"fmt_{ext}_during", during_ok, f"text={answer_text(during)[:80]}")
     if isinstance(thread, threading.Thread):
         thread.join(timeout=READY_TIMEOUT)
@@ -503,7 +523,9 @@ def main() -> int:
     print(f"\nBLOCKERS={len(BLOCKERS)}", flush=True)
     for item in BLOCKERS:
         print(f"  {item}", flush=True)
-    out = ROOT / "runtime" / "final_targeted_preflight_results.json"
+    out = Path("/tmp/final_targeted_preflight_results.json")
+    if not str(out).startswith("/tmp"):
+        out = ROOT / "runtime" / "final_targeted_preflight_results.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"blockers": BLOCKERS, "results": RESULTS}, indent=2), encoding="utf-8")
     return 1 if BLOCKERS else 0
