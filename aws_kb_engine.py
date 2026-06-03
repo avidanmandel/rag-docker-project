@@ -466,6 +466,30 @@ def _is_allowed_session_source(uri: str | None, session_id: str | None) -> bool:
     return str(uri).strip().lower().startswith(_session_allowed_uri_prefix(session_id))
 
 
+def _filter_chunks_to_active_session_documents(
+    chunks: list[dict],
+    session_document_names: list[str] | None,
+    session_id: str | None,
+) -> list[dict]:
+    """Drop session-scoped chunks whose source file is no longer in the active upload set."""
+    if session_document_names is None:
+        return chunks
+    allowed = {
+        Path(name).name.lower()
+        for name in (session_document_names or [])
+        if name
+    }
+    filtered: list[dict] = []
+    for chunk in chunks:
+        uri = chunk.get("s3_uri") or ""
+        if session_id and _is_allowed_session_source(uri, session_id):
+            filename = Path(_chunk_source_filename(chunk)).name.lower()
+            if filename not in allowed:
+                continue
+        filtered.append(chunk)
+    return filtered
+
+
 def _filter_scoutmatch_results(
     results: list[dict],
     *,
@@ -712,11 +736,20 @@ _NAMED_PLAYER_PROFILE_PATTERNS = (
     re.compile(
         r"^\s*באיזו\s+קבוצה\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")\s+משחק\s*[?.!]?\s*$",
     ),
+    re.compile(
+        r"^\s*what\s+is\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")(?:'s|s)?\s+annual\s+salary\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*what\s+is\s+(?P<name>" + _PLAYER_NAME_CAPTURE + r")(?:'s|s)?\s+.*\b(?:salary|relocate|relocation)\b",
+        re.IGNORECASE,
+    ),
 )
 
 
 def _clean_profile_name(raw: str) -> str:
     name = (raw or "").strip().strip("?.!").strip()
+    name = re.sub(r"(?:'s|s)$", "", name, flags=re.IGNORECASE).strip()
     name = re.sub(
         r"^(the|player|candidate|שחקן|מועמד)\s+",
         "",
@@ -1968,6 +2001,12 @@ class AWSKnowledgeBaseEngine:
                 "reason": "retrieve_error",
                 "generation_mode": "aws_kb",
             }
+
+        retrieved = _filter_chunks_to_active_session_documents(
+            retrieved,
+            session_document_names,
+            app_session_id,
+        )
 
         if not retrieved:
             club_facts = baseline_club_facts or {}

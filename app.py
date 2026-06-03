@@ -139,20 +139,28 @@ def _try_sync_knowledge_base_after_delete(delete_result: dict) -> tuple[dict, st
         return {"status": "PENDING"}, str(exc)
 
 
-def _ingestion_after_object_delete(session_id: str, delete_result: dict) -> dict:
+def _ingestion_after_object_delete(
+    session_id: str,
+    delete_result: dict,
+    *,
+    bump: bool = True,
+) -> dict:
     """Start Bedrock ingestion only when S3 objects were actually removed."""
     if not _is_aws_kb_mode():
         return {}
     if int(delete_result.get("deleted") or 0) <= 0:
+        if not bump:
+            database.mark_sync_success(session_id)
         return {}
-    return _sync_session_documents(session_id)
+    return _sync_session_documents(session_id, bump=bump)
 
 
-def _sync_session_documents(session_id: str) -> dict:
+def _sync_session_documents(session_id: str, *, bump: bool = True) -> dict:
     """Bump document revision and wait for Bedrock sync after document-set changes."""
     if not _is_aws_kb_mode():
         return {}
-    database.bump_document_revision(session_id)
+    if bump:
+        database.bump_document_revision(session_id)
     try:
         result = aws_storage.sync_knowledge_base()
         database.mark_sync_success(session_id)
@@ -863,11 +871,13 @@ def api_delete_session_document(session_id, document_id):
         return jsonify({"error": "Document not found"}), 404
     try:
         if _is_aws_kb_mode():
+            database.bump_document_revision(session_id)
+        if _is_aws_kb_mode():
             delete_result = aws_storage.delete_recorded_session_objects([doc])
         else:
             delete_result = {"deleted": _delete_local_session_docs(session_id, [doc])}
         database.delete_session_document(session_id, document_id)
-        ingestion = _ingestion_after_object_delete(session_id, delete_result)
+        ingestion = _ingestion_after_object_delete(session_id, delete_result, bump=False)
         if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-delete-reindex"
@@ -895,11 +905,13 @@ def api_clear_session_documents(session_id):
     try:
         if docs:
             if _is_aws_kb_mode():
+                database.bump_document_revision(session_id)
+            if _is_aws_kb_mode():
                 delete_result = aws_storage.delete_recorded_session_objects(docs)
             else:
                 delete_result = {"deleted": _delete_local_session_docs(session_id, docs)}
             database.clear_session_documents(session_id)
-        ingestion = _ingestion_after_object_delete(session_id, delete_result)
+        ingestion = _ingestion_after_object_delete(session_id, delete_result, bump=False)
         if not _is_aws_kb_mode() and delete_result.get("deleted", 0) > 0:
             threading.Thread(
                 target=_reindex_engine_background, daemon=True, name="rag-session-clear-reindex"

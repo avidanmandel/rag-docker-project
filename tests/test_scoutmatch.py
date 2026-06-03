@@ -42,7 +42,9 @@ from aws_kb_engine import (  # noqa: E402
     _build_generation_user_message,
     _chunks_are_near_duplicate,
     _canonical_source_key,
+    _filter_chunks_to_active_session_documents,
     _filter_scoutmatch_results,
+    _player_in_session_scope,
     _is_allowed_session_source,
     _is_allowed_scoutmatch_source,
     _is_aggregate_question,
@@ -3209,6 +3211,60 @@ class HebrewPlayerProfileTests(unittest.TestCase):
     def test_english_player_name_mapping(self):
         self.assertEqual(_english_player_name("אור דוד"), "Or David")
         self.assertEqual(_english_player_name("לוקה רומאנו"), "Luca Romano")
+
+
+class SessionDocumentLifecycleTests(unittest.TestCase):
+    def test_filter_drops_stale_session_chunks_after_delete(self):
+        uri = (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/eyal_mor_cv.csv"
+        )
+        chunks = [
+            {
+                "text": "Eyal Mor annual salary 45000",
+                "source": "eyal_mor_cv.csv",
+                "s3_uri": uri,
+                "score": 0.95,
+            },
+            {
+                "text": "Club profile",
+                "source": "club_profile.txt",
+                "s3_uri": f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}baseline/production/club_profile.txt",
+                "score": 0.5,
+            },
+        ]
+        filtered = _filter_chunks_to_active_session_documents(
+            chunks,
+            [],
+            TEST_SESSION_ID,
+        )
+        names = [Path(c["source"]).name for c in filtered]
+        self.assertNotIn("eyal_mor_cv.csv", names)
+        self.assertIn("club_profile.txt", names)
+
+    def test_filter_keeps_active_session_upload(self):
+        uri = (
+            f"s3://{SCOUT_BUCKET}/{SCOUT_PREFIX}sessions/{TEST_SESSION_ID}/ron_ben_ari_cv.pdf"
+        )
+        chunks = [{"text": "Ron", "source": "ron_ben_ari_cv.pdf", "s3_uri": uri, "score": 0.9}]
+        filtered = _filter_chunks_to_active_session_documents(
+            chunks,
+            ["ron_ben_ari_cv.pdf"],
+            TEST_SESSION_ID,
+        )
+        self.assertEqual(len(filtered), 1)
+
+    def test_named_player_salary_question_extracts_player(self):
+        q = "What is Eyal Mor's annual salary and is he willing to relocate?"
+        self.assertEqual(_extract_named_player_from_profile_question(q), "Eyal Mor")
+
+    def test_player_out_of_scope_after_document_removed(self):
+        self.assertFalse(
+            _player_in_session_scope(
+                "Eyal Mor",
+                [],
+                [],
+            )
+        )
 
 
 class DocumentRevisionTests(unittest.TestCase):
