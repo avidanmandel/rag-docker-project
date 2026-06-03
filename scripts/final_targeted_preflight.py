@@ -139,7 +139,10 @@ def refusal_ok(resp: dict) -> bool:
 
 
 def list_documents(session_id: str) -> list[dict]:
-    return http_json("GET", f"/api/sessions/{session_id}/documents").get("documents") or []
+    payload = http_json("GET", f"/api/sessions/{session_id}/documents")
+    if "candidate_documents" in payload:
+        return payload.get("candidate_documents") or []
+    return payload.get("documents") or []
 
 
 def doc_by_filename(session_id: str, filename: str) -> dict | None:
@@ -438,9 +441,21 @@ def run_lifecycle() -> None:
         wait_ready(sid2, "two_del_tal")
     combo2 = ask(sid2, combo_q)
     combo2_text = answer_text(combo2)
+    combo2_lower = combo2_text.lower()
+    stale_combo = (
+        "93,000" in combo2_text
+        or "93000" in combo2_text.replace(",", "")
+        or ("7,000" in combo2_text and "remaining" in combo2_lower)
+        or (
+            "afford both" in combo2_lower
+            and "ron ben ari" in combo2_lower
+            and "tal raz" in combo2_lower
+            and "50,000" in combo2_text
+        )
+    )
     record(
         "lifecycle_two_combo_after",
-        "93,000" not in combo2_text and "93000" not in combo2_text.replace(",", ""),
+        not stale_combo,
         combo2_text[:160],
     )
     ron = ask(sid2, "Who is Ron Ben Ari?")

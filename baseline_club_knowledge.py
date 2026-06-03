@@ -414,6 +414,18 @@ def build_budget_combination_answer(
     ron = by_name.get("ron ben ari")
     tal = by_name.get("tal raz")
     if not ron or not tal:
+        ql = (question or "").lower()
+        if "ron ben ari" in ql and "tal raz" in ql:
+            missing = []
+            if not ron:
+                missing.append("Ron Ben Ari")
+            if not tal:
+                missing.append("Tal Raz")
+            return (
+                "Cannot evaluate the combined signing budget because the following "
+                f"player(s) are not in the current uploaded documents: "
+                f"{', '.join(missing)}."
+            )
         return None
     ron_sal = int(ron.get("annual_salary_eur") or 0)
     tal_sal = int(tal.get("annual_salary_eur") or 0)
