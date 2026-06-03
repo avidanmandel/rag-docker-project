@@ -7,7 +7,7 @@ Session-scoped RAG football recruitment assistant. Production runs on EC2 with D
 ## Branch and release
 
 - **Branch:** `feature/session-scoped-documents`
-- **Production image:** `scoutmatch-ai:baseline-club-v13` (rollback: `baseline-club-v12`)
+- **Production image:** `scoutmatch-ai:baseline-club-v14` (rollback: `baseline-club-v13`)
 - **Public URL:** http://3.239.47.249/
 - **EC2 release folder:** `/home/ubuntu/scoutmatch-ai-session-docs-release`
 - **Runtime mount:** `/home/ubuntu/scoutmatch-ai-runtime:/app/runtime`
@@ -22,7 +22,8 @@ Session-scoped RAG football recruitment assistant. Production runs on EC2 with D
 | `database.py` | SQLite sessions, documents, parsed upload facts |
 | `requirement_verification.py` | Deterministic fact parsing and aggregate builders |
 | `scripts/full_live_validation_matrix.py` | Strict live validation (use `--strict`) |
-| `scripts/run_baseline_business_gate.sh` | v12 baseline + demo candidate gate |
+| `scripts/deploy_baseline_club_v14.sh` | EC2 deploy and cutover for v14 |
+| `scripts/final_targeted_preflight.py` | Focused v14 public/candidate validation |
 | `scripts/seed_baseline_club_knowledge.py` | Seed read-only club knowledge to S3 |
 
 ## Rules for agents
@@ -43,12 +44,12 @@ python scripts/validate_release_fixtures.py
 bash scripts/run_edge_case_release_matrix.sh
 
 # EC2 loopback candidate (no production impact)
-bash scripts/run_strict_release_audit_v10.sh
+bash scripts/run_edge_case_release_matrix.sh
 
 # Full deploy + cutover
-bash scripts/deploy_session_docs_v10.sh
+bash scripts/deploy_baseline_club_v14.sh
 ```
 
 ## Documentation
 
-See `docs/PROJECT_STATE.md`, `docs/DEPLOYMENT_RUNBOOK.md`, `docs/FINAL_QA_REPORT.md`, and `docs/AGENT_HANDOFF.md`.
+See `docs/PROJECT_STATE.md`, `docs/DEPLOYMENT_RUNBOOK.md`, and `docs/FINAL_QA_REPORT.md`.

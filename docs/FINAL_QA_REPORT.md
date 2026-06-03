@@ -1,74 +1,58 @@
 # ScoutMatch AI — Final QA Report
 
-## v13 Hebrew completion (2026-06-02)
-
-| Item | Value |
-|------|-------|
-| Release commit | `533726c` |
-| Production image | `scoutmatch-ai:baseline-club-v13` |
-| Rollback | `scoutmatch-ai:baseline-club-v12` |
-| Unit tests | **269 passed** |
-| Hebrew gate (loopback + public) | **BLOCKERS 0** |
-| Baseline gate (loopback) | **BLOCKERS 0** |
-
-**Verification note:** Prior public QA used **מי הבלם הימני הזול ביותר?** (centre back). Canonical Right Back phrasing is **מי המגן הימני הזול ביותר?** — v13 passes all canonical and variant Right Back phrases; explicit בלם ימני returns insufficient-information.
-
----
-
-**Audit date:** 2026-06-02 (UTC)  
+**Audit date:** 2026-06-03 (UTC)  
 **Branch:** `feature/session-scoped-documents`  
-**Release commit:** `f91dd19c09e128cea181365796d438768d801920`  
-**Production image:** `scoutmatch-ai:session-docs-v11`  
-**Rollback image:** `scoutmatch-ai:session-docs-v10`
+**Release commit:** `1978bb30eb340c77262784d2781516862148b2e4`  
+**Production image:** `scoutmatch-ai:baseline-club-v14`  
+**Rollback image:** `scoutmatch-ai:baseline-club-v13`  
+**Public URL:** http://3.239.47.249/
 
-## v11 fix summary
+## v14 fix summary
 
-- **Salary aggregate 471,000 EUR** — Quoted CSV values (`"58,000 EUR"`) now parse; Amit Levy salary included in registry totals.
-- **CV + scouting report merge** — Two-pass registry: CVs seed facts; scouting reports enrich without erasing structured CV fields or creating duplicate players.
-- **Deterministic filters** — Left foot, defender relocation (EN/HE), GK immediate + salary ceiling, cheapest right back (EN/HE) use upload-time registry facts.
-- **Invalid document validation** — Corrupt PDF/DOCX, malformed CSV, empty files, exe, path traversal, oversize rejected with HTTP 400; no S3/DB/revision side effects.
+- **Document delete lifecycle** — Early revision bump on delete/clear prevents stale registry answers while KB sync is in flight.
+- **Retrieved chunk filtering** — Session answers filter KB chunks to active `session_document_names` only.
+- **Named-player salary/relocation** — Named-player questions use session-scope refusal when documents are removed.
+- **Partial budget combo** — After deleting one of two budget players, combo questions refuse instead of falling through to stale KB chunks.
+- **Clear-documents API** — Listing no longer counts baseline files in session document responses.
 
-## Business acceptance gate (v11 loopback)
+## Strict validation (v14 candidate + public)
 
-**Result:** **PASS — BLOCKERS 0**  
-**Log:** `/tmp/business_gate_v11_iter3.log` on EC2
+**Result:** **PASS — BLOCKERS 0**
 
-| Mandatory test | Expected | Result |
-|----------------|----------|--------|
-| BA-AGG-salary | 471,000 EUR | PASS |
-| BA-FLT-left-foot | Pedro Silva + Luca Romano | PASS |
-| BA-FLT-defender-reloc | Amit Levy + Luca Romano only | PASS |
-| BA-FLT-he-def | Amit Levy + Luca Romano (Hebrew) | PASS |
-| BA-FLT-goalkeeper | Marco Silva only (≤70k immediate) | PASS |
-| BA-FLT-cheapest-rb | Ron Ben Ari, 43,000 EUR | PASS |
-| BA-FLT-he-rb | Ron Ben Ari, 43,000 EUR (Hebrew) | PASS |
-| BA-INV corrupt/malformed | HTTP 4xx | PASS |
-| Persistence restart + recreate | HTTP 200 | PASS |
-| Reconcile dry-run | complete | PASS |
-| Final disposable S3 keys | 0 | PASS |
+| Test area | Result |
+|-----------|--------|
+| Eyal Mor CSV upload → salary/relocation → delete → refusal | PASS |
+| Format delete (PDF/DOCX/TXT/CSV) lifecycle | PASS |
+| Clear documents (two files → refusal) | PASS |
+| Delete one of two budget players → combo refusal | PASS |
+| Session isolation / delete conversation | PASS |
+| Public `/`, `/api/health`, `/api/status` | PASS |
+| Bedrock ingestion after targeted warning cleanup | COMPLETE, 0 failed, 0 warnings |
 
 ## Unit tests
 
 ```
-python -m pytest tests/test_scoutmatch.py -q --tb=no
-250 passed, 4 warnings, 0 failures, ~8s
+python -m pytest tests/test_scoutmatch.py tests/test_baseline_club_knowledge.py -q --tb=no
+273 passed
 ```
 
 ## Production cutover
 
-- Cutover from `session-docs-v10` → `session-docs-v11` after business gate BLOCKERS 0.
+- Cutover from `baseline-club-v13` → `baseline-club-v14` after candidate BLOCKERS 0.
 - Production DB backed up under `/home/ubuntu/scoutmatch-ai-runtime/rollback/` before cutover.
-- Public endpoints HTTP 200; `ready=true`.
+- Container `scoutmatch-ai` on image `scoutmatch-ai:baseline-club-v14`, port 80→5000, restart unless-stopped.
 
 ## Verdict
 
 | Criterion | Status |
 |-----------|--------|
 | **release_ready** | **yes** |
-| **baseline_club_knowledge** | **not started** |
+| **baseline_club_knowledge** | **enabled** |
+| **submission_evidence** | **11 PNGs in `submission_evidence/final_v14/`** |
 
 ## Artifacts
 
-- Business gate runner: `scripts/run_business_acceptance_gate.py` + `.sh`
-- Fixtures: `tests/fixtures/business_acceptance/` (35 files)
-- AWS cleanup dry-run: `scripts/aws_cleanup_dry_run.sh` (no deletions)
+- Deploy script: `scripts/deploy_baseline_club_v14.sh`
+- Targeted preflight: `scripts/final_targeted_preflight.py`
+- Submission screenshots: `submission_evidence/final_v14/`
+- AWS cleanup dry-run only (`scripts/aws_cleanup_dry_run.sh`) — no deletions applied

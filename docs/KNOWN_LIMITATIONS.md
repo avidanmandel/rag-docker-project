@@ -1,6 +1,6 @@
 # ScoutMatch AI — Known Limitations
 
-Only limitations verified during release QA (2026-06-02).
+Only limitations verified during release QA (2026-06-03).
 
 ## Bedrock ingestion latency
 
@@ -31,13 +31,18 @@ Deterministic Hebrew routing covers reusable intents (urgent positions, immediat
 
 An explicit בלם ימני cheapest-player question does **not** map to Right Back candidates. If no centre-back is documented, the app returns an insufficient-information answer instead of substituting a Right Back.
 
-## Session-scoped retrieval only
+## Knowledge scopes (baseline + session uploads)
 
-Each conversation sees only its own uploaded documents. There is no cross-session or global knowledge base beyond what was uploaded in that session.
+ScoutMatch uses two document layers:
 
-## No admin token / shared corpus
+- **Baseline club documents** — shared, read-only, and available in **all** conversations (budget, tactics, squad depth, fixtures, recruitment policy). These live under `scoutmatch/knowledge-base/baseline/production/` and do not require per-session upload.
+- **Uploaded candidate documents** — **session-scoped** and isolated per conversation. Each chat session sees only its own uploads under `scoutmatch/knowledge-base/sessions/<session_id>/`.
 
-The production session-scoped build does not expose admin tokens or a shared global document corpus. All grounding is per-session.
+**Session isolation:** documents uploaded in Session A must never appear in Session B answers or source lists. Cross-session leakage is blocked by session-scoped S3 prefixes, registry filtering, and retrieval validation.
+
+## No admin token / shared candidate corpus
+
+The production build does not expose admin tokens or a shared global **candidate** upload corpus. Candidate uploads remain per-session; baseline club documents are the only shared read-only layer.
 
 ## EC2 single-host deployment
 

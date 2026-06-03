@@ -6,31 +6,66 @@ ScoutMatch AI helps football club managers, coaches, and scouts find the right p
 
 ---
 
-## Project topic and document set
+## Project topic
 
-**Topic:** AI-powered football recruitment assistant with strict session-scoped RAG.
+**Chosen topic:** Football recruitment assistant based on uploaded player CVs, scouting reports, and club documents.
 
-**Chosen document set (demo / sample):**
+## Main project flow
 
-| Category | Location | Examples |
-|----------|----------|----------|
-| Player CVs | `sample_scout_data/player_cvs/` | TXT, CSV, PDF, DOCX formats |
-| Scouting reports | `sample_scout_data/scouting_reports/` | Per-player reports |
-| Team requirements | `sample_scout_data/team_requirements.txt` | Squad needs |
-| Live demo upload | `sample_scout_data/demo_upload_later/` | Optional extra CV |
+```
+Documents
+    → Amazon S3
+    → Amazon Bedrock Knowledge Base
+    → Flask application (boto3)
+    → Docker container
+    → Amazon EC2
+    → public browser access
+```
 
-Production stores uploaded session documents under `s3://<bucket>/scoutmatch/knowledge-base/sessions/<session_id>/`.
+## Current production release
 
----
-
-## Public test URL
-
-**Live deployment:** http://3.239.47.249/
+| Item | Value |
+|------|-------|
+| Docker image | `scoutmatch-ai:baseline-club-v14` |
+| Public test URL | http://3.239.47.249/ |
+| Production container | `scoutmatch-ai` |
 
 Verify:
 
 - http://3.239.47.249/api/health
-- http://3.239.47.249/api/status → `ready: true`, `rag_backend: aws_kb`
+- http://3.239.47.249/api/status → `ready: true`, `baseline_ready: true`, `rag_backend: aws_kb`
+
+## Main features
+
+- Grounded answers from uploaded documents only (strict RAG)
+- Source attribution cards for every grounded answer
+- Read-only baseline club documents (budget, tactics, squad depth, fixtures)
+- Session-scoped candidate uploads (each conversation has its own document set)
+- Supported upload formats: **TXT, PDF, DOCX, CSV** (plus MD, HTML, DOC, XLS, XLSX)
+- English and Hebrew questions
+- Delete single uploaded document (with stale-answer protection)
+- **CLEAR DOCUMENTS** (removes all session uploads)
+- Safe refusal for unsupported or out-of-scope questions
+
+---
+
+## Documents used
+
+### Baseline club documents (read-only, production)
+
+Ten managed files under `sample_scout_data/baseline/` seed the production baseline set (club profile, tactical model, squad depth chart, transfer budget, fixtures, recruitment priorities, policy, DOCX summary, PDF overview). These are indexed once in S3 under `scoutmatch/knowledge-base/baseline/production/` and available in every session without upload.
+
+### Candidate demo documents (session upload examples)
+
+| Category | Location | Purpose |
+|----------|----------|---------|
+| Player CVs | `sample_scout_data/player_cvs/` | TXT and CSV format examples |
+| Scouting reports | `sample_scout_data/scouting_reports/` | Per-player narrative reports |
+| Demo candidates | `sample_scout_data/demo_candidates/` | PDF, DOCX, CSV upload demos (Eyal Mor, Ron Ben Ari, Tal Raz, etc.) |
+| Team requirements | `sample_scout_data/team_requirements.txt` | Squad needs reference |
+| Live demo upload | `sample_scout_data/demo_upload_later/` | Optional extra CV for presentations |
+
+Production session uploads are stored under `s3://<bucket>/scoutmatch/knowledge-base/sessions/<session_id>/`.
 
 ---
 
@@ -220,9 +255,9 @@ Synthetic demo files are in `sample_scout_data/` (not auto-uploaded to AWS):
 # sample_scout_data/scouting_reports/*.txt
 ```
 
-Live demo upload: `sample_scout_data/demo_upload_later/goalkeeper_marco_silva.txt` (includes neutral `COMPACT FACT PROFILE SUMMARY` like other goalkeeper CVs; no predetermined recommendation language)
+Live demo upload: `sample_scout_data/demo_upload_later/goalkeeper_marco_silva.txt` (optional extra CV for presentations)
 
-See `SCOUTMATCH_DEMO_QUESTIONS.md` and `SCOUTMATCH_MANUAL_TESTS.md`.
+Included format examples in this package: TXT (`forward_or_david.txt`), PDF (`ron_ben_ari_cv.pdf`), DOCX (`dor_levi_cv.docx`), CSV (`eyal_mor_cv.csv`).
 
 ---
 
@@ -259,15 +294,14 @@ docker run -d --name scoutmatch --restart unless-stopped \
   -p 80:5000 --env-file .env scoutmatch-ai
 ```
 
-See `EC2_DEPLOYMENT_GUIDE.md` for full deployment steps.
+See `docs/DEPLOYMENT_RUNBOOK.md` for EC2 production layout and health checks.
 
 ---
 
 ## Testing
 
 ```powershell
-python tests/test_scoutmatch.py
-python test_aws_kb.py   # live AWS only, requires credentials
+python -m pytest tests/test_scoutmatch.py tests/test_baseline_club_knowledge.py -q --tb=no
 ```
 
 ---
@@ -304,29 +338,47 @@ Set `RAG_BACKEND=local` with `GEMINI_API_KEY` and `HF_TOKEN` to use the original
 
 ## Screenshots
 
-Submission evidence lives in `submission_evidence/`:
+Final submission screenshots are in **`submission_evidence/final_v14/`** (11 PNG files).
 
-- **Automated:** API JSON snapshots, endpoint results, QA summary (see `submission_evidence/README.md`)
-- **Manual browser:** `submission_evidence/MANUAL_BROWSER_SCREENSHOT_CHECKLIST.md` — home page, grounded answers, refusals, delete/clear confirmations
-- **AWS Console:** `submission_evidence/AWS_CONSOLE_SCREENSHOT_CHECKLIST.md` — Bedrock KB, data source, sync, EC2, security group
+| File | What it proves |
+|------|----------------|
+| `01_bedrock_knowledge_base.png` | Bedrock Knowledge Base exists and the ScoutMatch data source is attached |
+| `02_bedrock_data_source_sync_complete.png` | Active data source AVAILABLE; latest sync COMPLETE; failed files 0; warnings 0 |
+| `03_ec2_instance_running.png` | Production EC2 instance running |
+| `04_docker_container_running.png` | Container `scoutmatch-ai` on `baseline-club-v14`, port 80→5000 |
+| `05_public_scoutmatch_homepage.png` | Public homepage loads |
+| `06_grounded_budget_answer_with_sources.png` | Grounded aggregate answer with source cards |
+| `07_grounded_refusal_for_out_of_scope_questions.png` | Strict refusal with no sources |
+| `08_uploaded_candidate_answer_with_source.png` | Session-scoped answer from uploaded candidate |
+| `09_deleted_candidate_refusal.png` | After document delete, stale facts are refused |
+| `10a_before_clear_documents_two_files.png` | Two session documents visible before clear |
+| `10b_after_clear_documents_refusal.png` | After clear documents, session questions refused |
 
-Capture PNGs before final ZIP upload. Do not commit secrets in screenshots.
+See `submission_evidence/README.md` for the full proof table.
 
 ---
 
-## Cleanup (after screenshots and demo)
+## Cleanup (after ZIP review — pending user approval)
 
-**Run only after** you have captured all required screenshots and finished the live demo.
+**AWS resources have not been deleted.** Final AWS teardown must run **only after** the submission ZIP is reviewed and you explicitly approve cleanup.
 
-1. Delete disposable test sessions in the UI (or API with `delete_documents: true`).
-2. On EC2, run **dry-run first** (no deletions):
+**Deleted AWS resources after completion:** none yet (EC2, Bedrock KB, and S3 project prefixes remain active pending post-submission approval).
 
-   ```bash
-   bash scripts/aws_cleanup_dry_run.sh
-   ```
+### Pending teardown checklist
 
-3. Do **not** delete the Bedrock Knowledge Base, EC2 instance, or production runtime DB unless your course explicitly requires teardown.
-4. See `docs/SUBMISSION_CHECKLIST.md` and `docs/DEPLOYMENT_RUNBOOK.md`.
+- [ ] EC2 instance hosting ScoutMatch AI (`3.239.47.249`)
+- [ ] Disposable S3 session objects under `scoutmatch/knowledge-base/sessions/`
+- [ ] Temporary demo uploads created during validation
+- [ ] Optional temporary Bedrock resources (legacy data source on `data/` prefix) — only if approved and no longer needed
+- [ ] Optional unused IAM resources — only if approved and no longer needed
+
+Before any destructive step:
+
+1. Confirm the lecturer package ZIP is saved locally.
+2. Review `docs/SUBMISSION_CHECKLIST.md` and approve teardown phases explicitly.
+3. Do **not** delete the Bedrock Knowledge Base, EC2, or production runtime DB without explicit approval.
+
+See `docs/SUBMISSION_CHECKLIST.md` and `docs/DEPLOYMENT_RUNBOOK.md`.
 
 ---
 
@@ -340,9 +392,10 @@ See `docs/KNOWN_LIMITATIONS.md` — Bedrock ingestion latency, stale historical 
 
 | Doc | Purpose |
 |-----|---------|
-| `docs/PROJECT_STATE.md` | Release commit, image tag, URL |
+| `docs/PROJECT_STATE.md` | Release commit, image tag, public URL |
 | `docs/FINAL_QA_REPORT.md` | QA verdict and strict validation |
-| `docs/BUSINESS_ACCEPTANCE_MATRIX.md` | Business-logic acceptance gate (v11) |
-| `docs/DEPLOYMENT_RUNBOOK.md` | EC2 deploy and rollback |
-| `AGENTS.md` | Agent/developer guide |
-| `docs/AGENT_HANDOFF.md` | Handoff notes |
+| `docs/DEPLOYMENT_RUNBOOK.md` | EC2 production layout, health checks, rollback |
+| `docs/KNOWN_LIMITATIONS.md` | Verified limitations (baseline + session scopes) |
+| `docs/RAG_DATA_LIFECYCLE.md` | Upload, sync, delete, and clear lifecycle |
+| `docs/SUBMISSION_CHECKLIST.md` | Pre-submit verification checklist |
+| `submission_evidence/README.md` | Final screenshot proof table |
