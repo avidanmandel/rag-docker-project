@@ -31,6 +31,8 @@ sudo docker run -d \
   --env-file "${APP_DIR}/.env" \
   -v "${CAND_RUNTIME}:/app/runtime" \
   -e DATABASE_PATH=/app/runtime/chat.db \
+  -e BASELINE_KNOWLEDGE_ENABLED=true \
+  -e AWS_BASELINE_SET_ID=production \
   "${IMAGE_TAG}"
 
 for i in $(seq 1 40); do
@@ -45,7 +47,22 @@ sudo docker exec \
   -e DATABASE_PATH=/app/runtime/chat.db \
   "${CANDIDATE}" \
   python scripts/seed_baseline_club_knowledge.py --apply --baseline-set-id production
-curl -fsS http://127.0.0.1:5001/api/status | python3 -c 'import sys,json; s=json.load(sys.stdin); print("baseline_ready",s.get("baseline_ready"),"baseline_docs",s.get("baseline_document_count"))'
+for i in $(seq 1 60); do
+  READY=$(curl -fsS http://127.0.0.1:5001/api/status | python3 -c 'import sys,json; s=json.load(sys.stdin); print("1" if s.get("baseline_ready") else "0")')
+  DOCS=$(curl -fsS http://127.0.0.1:5001/api/status | python3 -c 'import sys,json; print(json.load(sys.stdin).get("baseline_document_count") or 0)')
+  echo "baseline_poll_${i} ready=${READY} docs=${DOCS}"
+  if [ "${READY}" = "1" ] && [ "${DOCS}" -ge 10 ]; then
+    break
+  fi
+  sleep 5
+done
+curl -fsS http://127.0.0.1:5001/api/status | python3 -c 'import sys,json; s=json.load(sys.stdin); print("baseline_ready",s.get("baseline_ready"),"baseline_docs",s.get("baseline_document_count"),"baseline_sync",s.get("baseline_sync_state"))'
+if ! curl -fsS http://127.0.0.1:5001/api/status | python3 -c 'import sys,json; s=json.load(sys.stdin); import sys as _s; _s.exit(0 if s.get("baseline_ready") else 1)'; then
+  echo "BASELINE_SEED_NOT_READY"
+  sudo docker rm -f "${CANDIDATE}" >/dev/null 2>&1 || true
+  rm -rf "${CAND_RUNTIME}"
+  exit 1
+fi
 
 set +e
 python3 scripts/final_targeted_preflight.py http://127.0.0.1:5001 --skip-public 2>&1 | tee "${LOG}"
@@ -81,6 +98,8 @@ sudo docker run -d \
   --env-file "${APP_DIR}/.env" \
   -v "${RUNTIME_DIR}:/app/runtime" \
   -e DATABASE_PATH=/app/runtime/chat.db \
+  -e BASELINE_KNOWLEDGE_ENABLED=true \
+  -e AWS_BASELINE_SET_ID=production \
   "${IMAGE_TAG}"
 sleep 12
 echo "PROD_AFTER=$(sudo docker inspect -f '{{.Config.Image}}' ${PROD_CONTAINER})"
