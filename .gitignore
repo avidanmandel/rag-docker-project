@@ -8,6 +8,8 @@ env/
 .env.*
 !.env.example
 !.env.ec2.example
+!.env.agent.example
+.env.agent
 .aws/
 credentials
 config
@@ -56,6 +58,9 @@ data/uploads/
 
 # Local audit artifacts (never commit raw logs)
 artifacts/logs/
+
+# ScoutMatch Bedrock Agent/Flow extension local state
+infra/scoutmatch_agent_extension/.local/
 
 # Temporary files
 *.tmp

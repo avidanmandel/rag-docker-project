@@ -41,6 +41,7 @@ from image_extract import (  # noqa: E402
     GeminiVisionError,
     is_quota_exhausted,
 )
+from bedrock_flow_service import invoke_flow as invoke_recruitment_flow  # noqa: E402
 
 
 def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict[str, object | None]:
@@ -1484,6 +1485,25 @@ def api_send_message(session_id):
         "main_source": result.get("main_source"),
         "generation_mode": result.get("generation_mode"),
     })
+
+
+# ---------- optional Bedrock Flow extension (disabled by default) ----------
+
+
+@app.route("/api/recruitment-flow/chat", methods=["POST"])
+def api_recruitment_flow_chat():
+    """Optional ScoutMatch Bedrock Flow chat — does not use session RAG /api/chat."""
+    payload = _parse_json_request()
+    question = (payload.get("content") or payload.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "content is required"}), 400
+
+    session_id = (payload.get("session_id") or "").strip() or None
+    result = invoke_recruitment_flow(question, session_id=session_id)
+    status = 200 if result.get("enabled") and not result.get("refused") else 503
+    if not result.get("enabled"):
+        status = 503
+    return jsonify(result), status
 
 
 # ==========================================================

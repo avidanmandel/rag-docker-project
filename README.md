@@ -382,6 +382,36 @@ See `docs/SUBMISSION_CHECKLIST.md` and `docs/DEPLOYMENT_RUNBOOK.md`.
 
 ---
 
+## Optional ScoutMatch Bedrock Agent and Flow Extension
+
+ScoutMatch AI **v14 production RAG is unchanged** (same Flask session chat, EC2 Docker image, S3 baseline, and Knowledge Base).
+
+This repository adds an **optional**, isolated Bedrock extension under `infra/scoutmatch_agent_extension/`:
+
+- **Agent:** `scoutmatch-recruitment-agent-user5-avidan` with four Action Groups and four deterministic Lambdas
+- **Guardrail:** `scoutmatch-guardrail-user5-avidan` (agent-only; no account-level enforcement)
+- **Flow:** `scoutmatch-recruitment-flow-user5-avidan` (Input → Agent alias → Output)
+- **Optional Flask route:** `POST /api/recruitment-flow/chat` (disabled by default via `.env.agent.example`)
+
+Local tests:
+
+```bash
+python -m pytest infra/scoutmatch_agent_extension/tests -q
+```
+
+Safe deploy (plan is default):
+
+```bash
+python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --plan
+python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --apply
+```
+
+Documentation: `docs/SCOUTMATCH_AGENT_EXTENSION.md`, `docs/SCOUTMATCH_FLOW_EXTENSION.md`, `docs/SCOUTMATCH_AGENT_REQUIREMENTS_MATRIX.md`.  
+Screenshots: `infra/scoutmatch_agent_extension/evidence/SCREENSHOT_CHECKLIST.md`.  
+Production EC2 was **not** modified by this extension.
+
+---
+
 ## Known limitations
 
 See `docs/KNOWN_LIMITATIONS.md` — Bedrock ingestion latency, stale historical answers, session-scoped retrieval only, single-host deployment.
