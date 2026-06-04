@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScoutMatch Recruitment Advisor (Optional)</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .advisor-wrap { max-width: 960px; margin: 2rem auto; padding: 1rem; }
+        .advisor-meta { font-size: 0.85rem; color: #555; margin-top: 0.5rem; }
+        .advisor-disabled { background: #fff8e6; border: 1px solid #e6c200; padding: 1rem; border-radius: 8px; }
+        #advisor-messages { min-height: 240px; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+        .msg-user { text-align: right; margin: 0.5rem 0; }
+        .msg-assistant { text-align: left; margin: 0.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="advisor-wrap">
+        <h1>ScoutMatch Recruitment Advisor</h1>
+        <p>Optional Bedrock Agent mode. Production v14 chat is unchanged.</p>
+        <div id="advisor-disabled" class="advisor-disabled" hidden></div>
+        <div id="advisor-chat" hidden>
+            <div id="advisor-messages"></div>
+            <form id="advisor-form">
+                <textarea id="advisor-input" rows="3" placeholder="Ask a recruitment question..." required></textarea>
+                <button type="submit">Send</button>
+                <button type="button" id="advisor-new-session">New Conversation</button>
+            </form>
+        </div>
+    </div>
+    <script src="/static/js/recruitment_advisor.js"></script>
+</body>
+</html>

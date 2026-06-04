@@ -21,3 +21,16 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | 15_flow_three_nodes.png | Input → Agent → Output flow graph |
 | 16_flow_successful_invocation.png | Flow test invocation succeeded |
 | 17_existing_v14_flask_ui_unchanged.png | Production/local v14 UI unchanged |
+| 18_shortlist_action_group.png | ScoutMatchShortlistActionsAvidan on new agent |
+| 19_brief_action_group.png | ScoutMatchRecruitmentBriefActionsAvidan |
+| 20_workflow_action_group.png | ScoutMatchRecruitmentWorkflowActionsAvidan |
+| 21_dynamodb_shortlist_table.png | ScoutMatchRecruitmentShortlistAvidan table |
+| 22_dynamodb_reviews_table.png | ScoutMatchRecruitmentReviewsAvidan table |
+| 23_step_functions_graph.png | ScoutMatchCandidateReviewWorkflowAvidan graph |
+| 24_step_functions_success.png | Successful Standard workflow execution |
+| 25_chat_shortlist_confirmation.png | Shortlist write confirmation in advisor chat |
+| 26_chat_shortlist_saved.png | Shortlist saved result in chat |
+| 27_chat_budget_followup_same_session.png | Budget follow-up in same advisor session |
+| 28_chat_workflow_result.png | Full review workflow result in chat |
+| 29_chat_recruitment_brief.png | Generated recruitment brief in chat |
+| 30_four_football_action_groups.png | Existing four deterministic Action Groups still attached |

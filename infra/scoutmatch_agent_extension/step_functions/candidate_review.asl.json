@@ -1,0 +1,107 @@
+{
+  "Comment": "ScoutMatchCandidateReviewWorkflowAvidan — plan-only ASL (apply stage)",
+  "StartAt": "ValidateInput",
+  "States": {
+    "ValidateInput": {
+      "Type": "Pass",
+      "Next": "CalculateBudgetImpact"
+    },
+    "CalculateBudgetImpact": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ScoutMatchBudgetImpactAvidan",
+        "Payload": {
+          "actionGroup": "ScoutMatchBudgetActionsAvidan",
+          "function": "CalculateBudgetImpact",
+          "parameters.$": "$.budgetParameters"
+        }
+      },
+      "ResultPath": "$.budgetResult",
+      "Next": "SelectRole"
+    },
+    "SelectRole": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.target_role",
+          "StringMatches": "*right*back*",
+          "Next": "EvaluateRightBackFit"
+        },
+        {
+          "Variable": "$.target_role",
+          "StringMatches": "*striker*",
+          "Next": "EvaluateBelowStrikerFit"
+        },
+        {
+          "Variable": "$.target_role",
+          "StringMatches": "*forward*",
+          "Next": "EvaluateForwardFit"
+        }
+      ],
+      "Default": "RejectUnknownRole"
+    },
+    "EvaluateRightBackFit": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ScoutMatchRightBackFitAvidan",
+        "Payload.$": "$.rightBackPayload"
+      },
+      "ResultPath": "$.tacticalResult",
+      "Next": "SaveReviewResult"
+    },
+    "EvaluateBelowStrikerFit": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ScoutMatchBelowStrikerFitAvidan",
+        "Payload.$": "$.belowStrikerPayload"
+      },
+      "ResultPath": "$.tacticalResult",
+      "Next": "SaveReviewResult"
+    },
+    "EvaluateForwardFit": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ScoutMatchForwardFitAvidan",
+        "Payload.$": "$.forwardPayload"
+      },
+      "ResultPath": "$.tacticalResult",
+      "Next": "SaveReviewResult"
+    },
+    "RejectUnknownRole": {
+      "Type": "Fail",
+      "Error": "UnsupportedRole",
+      "Cause": "target_role is not supported by ScoutMatch workflow"
+    },
+    "SaveReviewResult": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "ScoutMatchRecruitmentReviewsAvidan",
+        "Item": {
+          "candidate_key": {"S.$": "$.candidate_key"},
+          "review_json": {"S.$": "$.sanitizedReview"}
+        }
+      },
+      "ResultPath": "$.saveResult",
+      "Next": "CreateRecruitmentBrief"
+    },
+    "CreateRecruitmentBrief": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ScoutMatchRecruitmentBriefAvidan",
+        "Payload.$": "$.briefPayload"
+      },
+      "ResultPath": "$.briefResult",
+      "Next": "ReturnResult"
+    },
+    "ReturnResult": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

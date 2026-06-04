@@ -41,6 +41,46 @@ FOUNDATION_MODEL = (
     "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0"
 )
 
+SHORTLIST_TABLE = "ScoutMatchRecruitmentShortlistAvidan"
+REVIEWS_TABLE = "ScoutMatchRecruitmentReviewsAvidan"
+BRIEF_S3_PREFIX = "scoutmatch/recruitment-advisor/briefs/"
+STATE_MACHINE_NAME = "ScoutMatchCandidateReviewWorkflowAvidan"
+WORKFLOW_ROLE_NAME = "ScoutMatchExtensionWorkflowRoleAvidan"
+
+NATIVE_LAMBDAS = {
+    "ScoutMatchShortlistManagerAvidan": {
+        "folder": "shortlist_manager",
+        "action_group": "ScoutMatchShortlistActionsAvidan",
+        "functions": [
+            "AddCandidateToShortlist",
+            "ListShortlistCandidates",
+            "UpdateCandidateShortlistStatus",
+            "RemoveCandidateFromShortlist",
+        ],
+        "description": "Manage the ScoutMatch recruitment shortlist in DynamoDB.",
+    },
+    "ScoutMatchRecruitmentBriefAvidan": {
+        "folder": "recruitment_brief",
+        "action_group": "ScoutMatchRecruitmentBriefActionsAvidan",
+        "functions": [
+            "CreateRecruitmentBrief",
+            "GetRecruitmentBrief",
+            "ListRecruitmentBriefs",
+        ],
+        "description": "Create and read sanitized recruitment briefs in S3.",
+    },
+    "ScoutMatchRecruitmentWorkflowAvidan": {
+        "folder": "recruitment_workflow",
+        "action_group": "ScoutMatchRecruitmentWorkflowActionsAvidan",
+        "functions": [
+            "StartCandidateReviewWorkflow",
+            "GetCandidateReviewWorkflowStatus",
+            "GetCandidateReviewResult",
+        ],
+        "description": "Run the ScoutMatch candidate review Step Functions workflow.",
+    },
+}
+
 LAMBDAS = {
     "ScoutMatchBudgetImpactAvidan": {
         "folder": "budget_impact",
@@ -91,6 +131,17 @@ AGENT_INSTRUCTION = (
     "Use the appropriate deterministic Action Group for budget calculations and tactical-fit evaluations."
 )
 
+AGENT_INSTRUCTION_NATIVE_ADDENDUM = (
+    " Behave only as a football recruitment advisor. Use shortlist tools only when the coach "
+    "asks to manage a shortlist and require explicit confirmation before any shortlist write. "
+    "Use StartCandidateReviewWorkflow only when the coach requests a full candidate review. "
+    "Create a recruitment brief only when the coach requests a staff-meeting summary or an "
+    "approved full review. Preserve context across follow-up questions and resolve pronouns "
+    "such as he, him, the candidate, that player, the right-back, and the previous salary. "
+    "Ask clarification questions when information is missing. Never invent salary values, "
+    "budget approval, or market data. Never use external APIs, scraping, or unrelated knowledge."
+)
+
 BLOCKED_MESSAGE = (
     "I cannot answer this request because it was blocked by the ScoutMatch safety policy."
 )
@@ -117,11 +168,12 @@ def _save_state(state: dict[str, Any]) -> None:
 
 def _zip_lambda(folder: str) -> bytes:
     base = EXT / "lambdas" / folder
-    common = EXT / "lambdas" / "common" / "bedrock_response.py"
+    common_dir = EXT / "lambdas" / "common"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(base / "lambda_function.py", "lambda_function.py")
-        zf.write(common, "bedrock_response.py")
+        for module in sorted(common_dir.glob("*.py")):
+            zf.write(module, module.name)
     return buf.getvalue()
 
 
@@ -229,6 +281,108 @@ def _schemas() -> dict[str, dict]:
             ],
         ),
     }
+
+
+def _native_schemas() -> dict[str, dict]:
+    base = _schemas()
+    base.update(
+        {
+            "AddCandidateToShortlist": _function_schema(
+                "AddCandidateToShortlist",
+                "Add a candidate to the recruitment shortlist.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "target_role": {"type": "string"},
+                    "status": {"type": "string"},
+                    "recruitment_note": {"type": "string"},
+                    "source_context": {"type": "string"},
+                },
+                ["candidate_name", "target_role", "status"],
+            ),
+            "ListShortlistCandidates": _function_schema(
+                "ListShortlistCandidates",
+                "List shortlist candidates.",
+                {"target_role": {"type": "string"}, "status": {"type": "string"}},
+                [],
+            ),
+            "UpdateCandidateShortlistStatus": _function_schema(
+                "UpdateCandidateShortlistStatus",
+                "Update shortlist status for a candidate.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "status": {"type": "string"},
+                    "recruitment_note": {"type": "string"},
+                },
+                ["candidate_name", "status"],
+            ),
+            "RemoveCandidateFromShortlist": _function_schema(
+                "RemoveCandidateFromShortlist",
+                "Remove one candidate from the shortlist.",
+                {"candidate_name": {"type": "string"}},
+                ["candidate_name"],
+            ),
+            "CreateRecruitmentBrief": _function_schema(
+                "CreateRecruitmentBrief",
+                "Create a sanitized recruitment brief.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "target_role": {"type": "string"},
+                    "tactical_decision": {"type": "string"},
+                    "budget_decision": {"type": "string"},
+                    "missing_information": {"type": "string"},
+                },
+                [
+                    "candidate_name",
+                    "target_role",
+                    "tactical_decision",
+                    "budget_decision",
+                ],
+            ),
+            "GetRecruitmentBrief": _function_schema(
+                "GetRecruitmentBrief",
+                "Get the latest recruitment brief for a candidate.",
+                {"candidate_name": {"type": "string"}},
+                ["candidate_name"],
+            ),
+            "ListRecruitmentBriefs": _function_schema(
+                "ListRecruitmentBriefs",
+                "List recruitment brief summaries.",
+                {"target_role": {"type": "string"}},
+                [],
+            ),
+            "StartCandidateReviewWorkflow": _function_schema(
+                "StartCandidateReviewWorkflow",
+                "Start the full candidate review workflow.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "target_role": {"type": "string"},
+                    "candidate_salary_eur": {"type": "integer"},
+                    "current_committed_salary_eur": {"type": "integer"},
+                    "immediate_starter": {"type": "boolean"},
+                },
+                [
+                    "candidate_name",
+                    "target_role",
+                    "candidate_salary_eur",
+                    "current_committed_salary_eur",
+                    "immediate_starter",
+                ],
+            ),
+            "GetCandidateReviewWorkflowStatus": _function_schema(
+                "GetCandidateReviewWorkflowStatus",
+                "Get sanitized workflow status.",
+                {"workflow_reference": {"type": "string"}},
+                ["workflow_reference"],
+            ),
+            "GetCandidateReviewResult": _function_schema(
+                "GetCandidateReviewResult",
+                "Get the latest stored review result.",
+                {"candidate_name": {"type": "string"}},
+                ["candidate_name"],
+            ),
+        }
+    )
+    return base
 
 
 class Deployer:
@@ -912,6 +1066,49 @@ class Deployer:
         self.state["flow_version"] = version
         return alias_id
 
+    def plan_aws_native_extension(self, agent_id: str, agent_arn: str) -> None:
+        """Plan DynamoDB, S3 prefix, Step Functions, native Lambdas, and agent updates."""
+        self.log("\n=== AWS-NATIVE EXTENSION PLAN ===")
+        self.plan.append(f"Create DynamoDB table (on-demand): {SHORTLIST_TABLE}")
+        self.plan.append(f"Create DynamoDB table (on-demand): {REVIEWS_TABLE}")
+        self.plan.append(
+            f"Use isolated S3 prefix {BRIEF_S3_PREFIX} in configured AWS_S3_BUCKET (read-only verify at apply)"
+        )
+        self.plan.append(f"Create Step Functions state machine: {STATE_MACHINE_NAME}")
+        self.plan.append(f"Create IAM role: {WORKFLOW_ROLE_NAME} (Step Functions + scoped Lambda/DynamoDB/S3)")
+        for name, meta in NATIVE_LAMBDAS.items():
+            self.plan.append(f"Create Lambda: {name}")
+            for fn in meta["functions"]:
+                self.plan.append(
+                    f"Attach Action Group {meta['action_group']} function {fn} to agent {AGENT_NAME} only"
+                )
+                self.plan.append(
+                    f"Add scoped lambda:InvokeFunction permission on {name} for bedrock.amazonaws.com "
+                    f"(SourceArn agent/{agent_id}, SourceAccount {self.account_id})"
+                )
+        self.plan.append(
+            "Update agent instruction on scoutmatch-recruitment-agent-user5-avidan (draft) with native addendum"
+        )
+        self.plan.append(
+            "Enable write confirmation via sessionAttributes.write_confirmed for shortlist, brief, and workflow writes"
+        )
+        self.plan.append(
+            "Step Functions invokes existing tactical Lambdas using Bedrock-shaped payloads (adapter documented; no change to Action Group handlers)"
+        )
+        if not self.apply:
+            plan_path = ROOT / "docs" / "SCOUTMATCH_AGENT_UPDATE_PLAN.md"
+            self.plan.append(f"Write sanitized agent update plan: {plan_path.relative_to(ROOT)}")
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text(
+                "# ScoutMatch Agent update plan (apply stage only)\n\n"
+                f"- Target agent: `{AGENT_NAME}`\n"
+                f"- Preserve existing four football Action Groups unchanged.\n"
+                f"- Add Action Groups: {', '.join(m['action_group'] for m in NATIVE_LAMBDAS.values())}.\n"
+                f"- Instruction addendum: see deploy script `AGENT_INSTRUCTION_NATIVE_ADDENDUM`.\n"
+                f"- Confirmation: set `sessionAttributes.write_confirmed=true` before write tools.\n",
+                encoding="utf-8",
+            )
+
     def run(self) -> int:
         self.log(f"Region: {REGION} | Mode: {'apply' if self.apply else 'plan'}")
         self.audit_existing()
@@ -972,6 +1169,8 @@ class Deployer:
         if flow_id and self.state.get("flow_alias_id"):
             self.sync_flow_agent_alias(flow_id, agent_alias_arn)
         flow_alias_id = self.finalize_flow(flow_id)
+
+        self.plan_aws_native_extension(agent_id, agent_arn)
 
         _save_state(self.state)
         self._report(alias_id=alias_id, flow_alias_id=flow_alias_id)

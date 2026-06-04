@@ -42,6 +42,11 @@ from image_extract import (  # noqa: E402
     is_quota_exhausted,
 )
 from bedrock_flow_service import invoke_flow as invoke_recruitment_flow  # noqa: E402
+from bedrock_agent_service import (  # noqa: E402
+    disabled_response as advisor_disabled_response,
+    invoke_agent as invoke_recruitment_advisor,
+    is_enabled as recruitment_advisor_enabled,
+)
 
 
 def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict[str, object | None]:
@@ -1488,6 +1493,35 @@ def api_send_message(session_id):
 
 
 # ---------- optional Bedrock Flow extension (disabled by default) ----------
+
+
+@app.route("/recruitment-advisor")
+def recruitment_advisor_page():
+    """Optional isolated Recruitment Advisor UI — does not replace v14 chat."""
+    return render_template("recruitment_advisor.html")
+
+
+@app.route("/api/recruitment-advisor/status", methods=["GET"])
+def api_recruitment_advisor_status():
+    if recruitment_advisor_enabled():
+        return jsonify({"enabled": True})
+    payload = advisor_disabled_response()
+    return jsonify({"enabled": False, "message": payload.get("message")})
+
+
+@app.route("/api/recruitment-advisor/chat", methods=["POST"])
+def api_recruitment_advisor_chat():
+    """Optional ScoutMatch Bedrock Agent advisor — session-scoped, not v14 /api/chat."""
+    payload = _parse_json_request()
+    question = (payload.get("content") or payload.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "content is required"}), 400
+    session_id = (payload.get("session_id") or "").strip() or None
+    result = invoke_recruitment_advisor(question, session_id=session_id)
+    status = 200 if result.get("enabled") and not result.get("refused") else 503
+    if not result.get("enabled"):
+        status = 503
+    return jsonify(result), status
 
 
 @app.route("/api/recruitment-flow/chat", methods=["POST"])
