@@ -31,14 +31,14 @@ def main() -> int:
 
     client = boto3.client("bedrock-agent-runtime", region_name=REGION)
     session_id = args.session_id or f"scoutmatch-{uuid.uuid4().hex[:16]}"
-    stream = client.invoke_agent(
+    response = client.invoke_agent(
         agentId=agent_id,
         agentAliasId=alias_id,
         sessionId=session_id,
         inputText=args.prompt,
     )
     text_parts = []
-    for event in stream.get("completion", []):
+    for event in response.get("completion", []):
         if "chunk" in event and "bytes" in event["chunk"]:
             text_parts.append(event["chunk"]["bytes"].decode("utf-8", errors="replace"))
     print("".join(text_parts))

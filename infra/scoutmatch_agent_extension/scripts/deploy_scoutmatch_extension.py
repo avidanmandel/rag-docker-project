@@ -497,7 +497,95 @@ class Deployer:
         return "", ""
 
     def ensure_agent_role(self, role_name: str) -> str:
-        return self.ensure_lambda_role(role_name)
+        resource_pattern = (
+            f"arn:aws:bedrock:{REGION}:{self.account_id}:flow/*"
+            if "Flow" in role_name
+            else f"arn:aws:bedrock:{REGION}:{self.account_id}:agent/*"
+        )
+        trust = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "bedrock.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {
+                        "StringEquals": {"aws:SourceAccount": self.account_id},
+                        "ArnLike": {"aws:SourceArn": resource_pattern},
+                    },
+                }
+            ],
+        }
+        try:
+            role_arn = self.iam.get_role(RoleName=role_name)["Role"]["Arn"]
+            self.present.append(f"IAM role exists: {role_name}")
+            if self.apply:
+                self.iam.update_assume_role_policy(
+                    RoleName=role_name,
+                    PolicyDocument=json.dumps(trust),
+                )
+            return role_arn
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "NoSuchEntity":
+                raise
+        self.plan.append(f"Create IAM role: {role_name}")
+        if not self.apply:
+            return f"arn:aws:iam::{self.account_id}:role/{role_name}"
+        role_arn = self.iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=json.dumps(trust),
+            Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
+        )["Role"]["Arn"]
+        if role_name == "ScoutMatchExtensionAgentRoleAvidan":
+            policy_doc = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+                        "Resource": [
+                            "arn:aws:bedrock:*::foundation-model/*",
+                            f"arn:aws:bedrock:*:*:inference-profile/*",
+                        ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["lambda:InvokeFunction"],
+                        "Resource": [f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan"],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["bedrock:Retrieve", "bedrock:GetKnowledgeBase"],
+                        "Resource": [
+                            f"arn:aws:bedrock:{REGION}:{self.account_id}:knowledge-base/*"
+                        ],
+                    },
+                ],
+            }
+            self.iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName="ScoutMatchExtensionAgentInline",
+                PolicyDocument=json.dumps(policy_doc),
+            )
+        if role_name == "ScoutMatchExtensionFlowRoleAvidan":
+            self.iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName="ScoutMatchExtensionFlowInline",
+                PolicyDocument=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["bedrock:InvokeFlow"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                ),
+            )
+        time.sleep(10)
+        return role_arn
 
     def _wait_agent_ready(self, agent_id: str, timeout: int = 180) -> None:
         deadline = time.time() + timeout
@@ -758,6 +846,49 @@ class Deployer:
                 return summary["id"]
         return None
 
+    def sync_flow_agent_alias(self, flow_id: str, agent_alias_arn: str) -> None:
+        """Point the flow Agent node at the current agent alias and roll the demo alias forward."""
+        self.plan.append("Sync flow Agent node to current agent alias")
+        if not self.apply or not flow_id or "agent-alias/" not in agent_alias_arn:
+            return
+        flow = self.agent.get_flow(flowIdentifier=flow_id)
+        definition = flow.get("definition") or {}
+        updated = False
+        for node in definition.get("nodes", []):
+            if node.get("type") == "Agent":
+                node.setdefault("configuration", {}).setdefault("agent", {})[
+                    "agentAliasArn"
+                ] = agent_alias_arn
+                updated = True
+        if not updated:
+            self.blockers.append("Flow definition has no Agent node to sync")
+            return
+        self.agent.update_flow(
+            flowIdentifier=flow_id,
+            name=flow["name"],
+            executionRoleArn=flow["executionRoleArn"],
+            definition=definition,
+        )
+        self.agent.validate_flow_definition(definition=definition)
+        self.agent.prepare_flow(flowIdentifier=flow_id)
+        version = self.agent.create_flow_version(flowIdentifier=flow_id)["version"]
+        alias_id = self.state.get("flow_alias_id") or ""
+        if alias_id:
+            alias_name = FLOW_ALIAS_NAME
+            for summary in self.agent.list_flow_aliases(flowIdentifier=flow_id).get(
+                "flowAliasSummaries", []
+            ):
+                if summary.get("id") == alias_id:
+                    alias_name = summary.get("name") or alias_name
+                    break
+            self.agent.update_flow_alias(
+                flowIdentifier=flow_id,
+                aliasIdentifier=alias_id,
+                name=alias_name,
+                routingConfiguration=[{"flowVersion": version}],
+            )
+        self.state["flow_version"] = version
+
     def finalize_flow(self, flow_id: str) -> str:
         if self.state.get("flow_alias_id"):
             return self.state["flow_alias_id"]
@@ -838,6 +969,8 @@ class Deployer:
         )
 
         flow_id = self.ensure_flow(agent_alias_arn, flow_role)
+        if flow_id and self.state.get("flow_alias_id"):
+            self.sync_flow_agent_alias(flow_id, agent_alias_arn)
         flow_alias_id = self.finalize_flow(flow_id)
 
         _save_state(self.state)
