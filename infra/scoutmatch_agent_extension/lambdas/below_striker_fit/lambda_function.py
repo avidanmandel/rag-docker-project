@@ -1,7 +1,5 @@
 """
 ScoutMatchBelowStrikerFitAvidan — EvaluateBelowStrikerFit
-
-Rules: coach_tactical_model.txt, winter_window_priorities.txt, transfer_budget.txt
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ from bedrock_response import (  # noqa: E402
     handle_action_errors,
     normalize_text,
     require_bool,
-    require_int,
     require_string,
 )
 
@@ -43,30 +40,37 @@ ALLOWED_POSITIONS = (
 )
 
 
+def _parse_scores(value: str) -> tuple[int, int, int]:
+    parts = [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 3:
+        raise ValueError("skill_scores must be vision,creativity,key_passing")
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
+
+def _parse_budget_info(value: str) -> tuple[int, int]:
+    parts = [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 2:
+        raise ValueError("budget_info must be annual_salary_eur,current_committed_salary_eur")
+    return int(parts[0]), int(parts[1])
+
+
 def _position_ok(position: str) -> bool:
     text = normalize_text(position)
-    if not text:
-        return False
     return any(token in text for token in ALLOWED_POSITIONS)
 
 
 def _evaluate(params: dict, event: dict) -> dict:
     candidate_name = require_string(params, "candidate_name")
     position = require_string(params, "position")
-    vision = require_int(params, "vision_score")
-    creativity = require_int(params, "creativity_score")
-    key_passing = require_int(params, "key_passing_score")
+    vision, creativity, key_passing = _parse_scores(require_string(params, "skill_scores"))
     available_immediately = require_bool(params, "available_immediately")
-    annual_salary = require_int(params, "annual_salary_eur")
-    committed = require_int(params, "current_committed_salary_eur")
+    annual_salary, committed = _parse_budget_info(require_string(params, "budget_info"))
 
     checks: dict[str, str] = {}
     reasons: list[str] = []
 
-    if _position_ok(position):
-        checks["position"] = "PASS"
-    else:
-        checks["position"] = "FAIL"
+    checks["position"] = "PASS" if _position_ok(position) else "FAIL"
+    if checks["position"] == "FAIL":
         reasons.append(
             "Position must be attacking midfielder or second striker for the role below the striker."
         )
@@ -76,10 +80,8 @@ def _evaluate(params: dict, event: dict) -> dict:
         ("creativity_score", creativity, "creativity_score"),
         ("key_passing_score", key_passing, "key_passing_score"),
     ):
-        if score >= MIN_SCORE:
-            checks[key] = "PASS"
-        else:
-            checks[key] = "FAIL"
+        checks[key] = "PASS" if score >= MIN_SCORE else "FAIL"
+        if score < MIN_SCORE:
             reasons.append(f"{label} must be at least {MIN_SCORE}.")
 
     checks["immediate_availability"] = "PASS" if available_immediately else "PARTIAL"
@@ -94,10 +96,7 @@ def _evaluate(params: dict, event: dict) -> dict:
     failed = [k for k, v in checks.items() if v == "FAIL"]
     partial = [k for k, v in checks.items() if v == "PARTIAL"]
 
-    if not position.strip():
-        decision = "UNKNOWN"
-        reasons.append("Position evidence is missing.")
-    elif failed:
+    if failed:
         decision = "FAIL"
     elif partial:
         decision = "PARTIAL_FIT"

@@ -33,12 +33,9 @@ def test_pass_tal_raz_profile():
     body = _invoke(
         candidate_name="Tal Raz",
         position="Attacking Midfielder",
-        vision_score=9,
-        creativity_score=8,
-        key_passing_score=8,
+        skill_scores="9,8,8",
         available_immediately=True,
-        annual_salary_eur=52000,
-        current_committed_salary_eur=30000,
+        budget_info="52000,30000",
     )
     assert body["decision"] == "PASS"
 
@@ -47,12 +44,9 @@ def test_fail_low_scores():
     body = _invoke(
         candidate_name="Low Scores",
         position="Second Striker",
-        vision_score=7,
-        creativity_score=8,
-        key_passing_score=8,
+        skill_scores="7,8,8",
         available_immediately=True,
-        annual_salary_eur=40000,
-        current_committed_salary_eur=20000,
+        budget_info="40000,20000",
     )
     assert body["decision"] == "FAIL"
 
@@ -61,12 +55,9 @@ def test_boundary_score_eight():
     body = _invoke(
         candidate_name="Boundary",
         position="Attacking midfielder",
-        vision_score=8,
-        creativity_score=8,
-        key_passing_score=8,
+        skill_scores="8,8,8",
         available_immediately=True,
-        annual_salary_eur=40000,
-        current_committed_salary_eur=20000,
+        budget_info="40000,20000",
     )
     assert body["decision"] == "PASS"
     assert body["checks"]["vision_score"] == "PASS"

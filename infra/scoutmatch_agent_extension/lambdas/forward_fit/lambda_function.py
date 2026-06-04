@@ -1,7 +1,5 @@
 """
 ScoutMatchForwardFitAvidan — EvaluateForwardFit
-
-Rules: coach_tactical_model.txt, winter_window_priorities.txt, transfer_budget.txt
 """
 
 from __future__ import annotations
@@ -37,8 +35,7 @@ FORWARD_SALARY_CAP_EUR = 50_000
 
 def _evaluate(params: dict, event: dict) -> dict:
     candidate_name = require_string(params, "candidate_name")
-    link_up = require_string(params, "link_up_play")
-    movement = require_string(params, "movement")
+    forward_profile = require_string(params, "forward_profile")
     annual_salary = require_int(params, "annual_salary_eur")
     committed = require_int(params, "current_committed_salary_eur")
     exception_approved = require_bool(params, "exception_approved")
@@ -46,22 +43,18 @@ def _evaluate(params: dict, event: dict) -> dict:
     checks: dict[str, str] = {}
     reasons: list[str] = []
 
-    for label, value, key in (
-        ("link_up_play", link_up, "link_up_play"),
-        ("movement", movement, "movement"),
-    ):
-        rating = qualitative_rating(value)
-        if rating == "POSITIVE":
-            checks[key] = "PASS"
-        elif rating == "NEGATIVE":
-            checks[key] = "FAIL"
-            reasons.append(f"{label.replace('_', ' ')} does not meet the documented forward requirement.")
-        elif rating == "NEUTRAL":
-            checks[key] = "PARTIAL"
-            reasons.append(f"{label.replace('_', ' ')} is only partially evidenced.")
-        else:
-            checks[key] = "UNKNOWN"
-            reasons.append(f"{label.replace('_', ' ')} evidence is missing.")
+    rating = qualitative_rating(forward_profile)
+    if rating == "POSITIVE":
+        checks["forward_profile"] = "PASS"
+    elif rating == "NEGATIVE":
+        checks["forward_profile"] = "FAIL"
+        reasons.append("Forward profile does not meet documented link-up and movement needs.")
+    elif rating == "NEUTRAL":
+        checks["forward_profile"] = "PARTIAL"
+        reasons.append("Forward profile is only partially evidenced.")
+    else:
+        checks["forward_profile"] = "UNKNOWN"
+        reasons.append("Forward profile evidence is missing.")
 
     combined_ok = (committed + annual_salary) <= MAX_COMBINED_EUR
     checks["combined_budget"] = "PASS" if combined_ok else "FAIL"
@@ -77,36 +70,25 @@ def _evaluate(params: dict, event: dict) -> dict:
         checks["forward_salary_cap"] = "PASS"
         salary_ok = True
         reasons.append("Forward salary exception is marked as approved.")
-    elif annual_salary > FORWARD_SALARY_CAP_EUR:
+    else:
         checks["forward_salary_cap"] = "NEEDS_EXCEPTION"
         salary_ok = False
         reasons.append(
             f"Forward salary {annual_salary:,} EUR exceeds the documented {FORWARD_SALARY_CAP_EUR:,} EUR cap "
             "unless an exception is approved."
         )
-    else:
-        checks["forward_salary_cap"] = "UNKNOWN"
-        salary_ok = False
 
-    unknowns = sum(1 for v in checks.values() if v == "UNKNOWN")
-    fails = sum(1 for v in checks.values() if v == "FAIL")
-
-    if unknowns >= 2:
+    if checks.get("forward_profile") == "UNKNOWN":
         decision = "UNKNOWN"
-    elif fails or not combined_ok:
+    elif checks.get("forward_profile") == "FAIL" or not combined_ok:
         decision = "FAIL"
     elif checks.get("forward_salary_cap") == "NEEDS_EXCEPTION":
         decision = "NEEDS_EXCEPTION"
-    elif any(v == "UNKNOWN" for v in checks.values()):
-        decision = "UNKNOWN"
-    elif any(v == "PARTIAL" for v in checks.values()):
+    elif checks.get("forward_profile") == "PARTIAL":
         decision = "PASS" if salary_ok and combined_ok else "NEEDS_EXCEPTION"
-        reasons.append("Some forward attributes are only partially evidenced.")
+        reasons.append("Forward profile is only partially evidenced.")
     else:
         decision = "PASS"
-        reasons.append("Candidate satisfies the documented forward recruitment policy.")
-
-    if decision == "PASS" and not reasons:
         reasons.append("Candidate satisfies the documented forward recruitment policy.")
 
     return build_function_response(

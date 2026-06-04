@@ -34,11 +34,8 @@ def test_preferred_fit():
         candidate_name="Ron Ben Ari",
         available_immediately=True,
         preferred_foot="Right",
-        build_up_ability="Good build-up",
-        crossing_quality="Accurate crossing",
-        overlap_runs="Strong overlapping runs",
-        annual_salary_eur=45000,
-        current_committed_salary_eur=30000,
+        tactical_summary="Good build-up, accurate crossing, strong overlapping runs",
+        budget_info="45000,30000",
     )
     assert body["decision"] == "PREFERRED_FIT"
 
@@ -48,11 +45,8 @@ def test_partial_fit_delayed_availability():
         candidate_name="Delayed RB",
         available_immediately=False,
         preferred_foot="Right",
-        build_up_ability="Good",
-        crossing_quality="Accurate",
-        overlap_runs="Strong",
-        annual_salary_eur=45000,
-        current_committed_salary_eur=30000,
+        tactical_summary="Good build-up, accurate crossing, strong overlap",
+        budget_info="45000,30000",
     )
     assert body["decision"] == "PARTIAL_FIT"
 
@@ -62,10 +56,7 @@ def test_unknown_missing_evidence():
         candidate_name="Unknown Player",
         available_immediately=True,
         preferred_foot="unknown",
-        build_up_ability="unknown",
-        crossing_quality="unknown",
-        overlap_runs="unknown",
-        annual_salary_eur=45000,
-        current_committed_salary_eur=30000,
+        tactical_summary="unknown",
+        budget_info="45000,30000",
     )
     assert body["decision"] == "UNKNOWN"

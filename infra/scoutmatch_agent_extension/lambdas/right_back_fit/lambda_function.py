@@ -20,7 +20,6 @@ from bedrock_response import (  # noqa: E402
     normalize_text,
     qualitative_rating,
     require_bool,
-    require_int,
     require_string,
 )
 
@@ -36,19 +35,19 @@ MAX_COMBINED_EUR = 100_000
 MAX_STANDARD_EUR = 60_000
 
 
-def _budget_fits(annual_salary: int, committed: int) -> bool:
-    return (committed + annual_salary) <= MAX_COMBINED_EUR and annual_salary <= MAX_STANDARD_EUR
+def _parse_budget_info(value: str) -> tuple[int, int]:
+    parts = [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 2:
+        raise ValueError("budget_info must be annual_salary_eur,current_committed_salary_eur")
+    return int(parts[0]), int(parts[1])
 
 
 def _evaluate(params: dict, event: dict) -> dict:
     candidate_name = require_string(params, "candidate_name")
     available_immediately = require_bool(params, "available_immediately")
     preferred_foot = require_string(params, "preferred_foot")
-    build_up = require_string(params, "build_up_ability")
-    crossing = require_string(params, "crossing_quality")
-    overlap = require_string(params, "overlap_runs")
-    annual_salary = require_int(params, "annual_salary_eur")
-    committed = require_int(params, "current_committed_salary_eur")
+    tactical_summary = require_string(params, "tactical_summary")
+    annual_salary, committed = _parse_budget_info(require_string(params, "budget_info"))
 
     checks: dict[str, str] = {}
     reasons: list[str] = []
@@ -65,37 +64,30 @@ def _evaluate(params: dict, event: dict) -> dict:
     foot = normalize_text(preferred_foot)
     if "right" in foot:
         checks["preferred_foot"] = "PASS"
-    elif foot in {"", "unknown", "n/a"}:
+    elif foot in {"unknown", "n/a", "na"}:
         checks["preferred_foot"] = "UNKNOWN"
         unknowns += 1
-        reasons.append("Preferred foot evidence is missing.")
     else:
         checks["preferred_foot"] = "PARTIAL"
         negatives += 1
         reasons.append("A right-footed player is preferred for the right-back role.")
 
-    for label, value, key in (
-        ("build_up_ability", build_up, "build_up_ability"),
-        ("crossing_quality", crossing, "crossing_quality"),
-        ("overlap_runs", overlap, "overlap_runs"),
-    ):
-        rating = qualitative_rating(value)
-        if rating == "POSITIVE":
-            checks[key] = "PASS"
-        elif rating == "NEGATIVE":
-            checks[key] = "FAIL"
-            negatives += 1
-            reasons.append(f"{label.replace('_', ' ')} does not meet the documented preference.")
-        elif rating == "NEUTRAL":
-            checks[key] = "PARTIAL"
-            negatives += 1
-            reasons.append(f"{label.replace('_', ' ')} is only partially evidenced.")
-        else:
-            checks[key] = "UNKNOWN"
-            unknowns += 1
-            reasons.append(f"{label.replace('_', ' ')} evidence is missing.")
+    rating = qualitative_rating(tactical_summary)
+    if rating == "POSITIVE":
+        checks["tactical_summary"] = "PASS"
+    elif rating == "NEGATIVE":
+        checks["tactical_summary"] = "FAIL"
+        negatives += 1
+        reasons.append("Tactical summary does not meet documented right-back preferences.")
+    elif rating == "NEUTRAL":
+        checks["tactical_summary"] = "PARTIAL"
+        negatives += 1
+    else:
+        checks["tactical_summary"] = "UNKNOWN"
+        unknowns += 1
+        reasons.append("Tactical evidence is missing from the summary.")
 
-    budget_ok = _budget_fits(annual_salary, committed)
+    budget_ok = (committed + annual_salary) <= MAX_COMBINED_EUR and annual_salary <= MAX_STANDARD_EUR
     checks["salary_budget"] = "PASS" if budget_ok else "FAIL"
     if not budget_ok:
         negatives += 1
@@ -103,7 +95,6 @@ def _evaluate(params: dict, event: dict) -> dict:
 
     if unknowns >= 2:
         decision = "UNKNOWN"
-        reasons.append("Too many required tactical attributes are missing to decide.")
     elif negatives == 0 and unknowns == 0:
         decision = "PREFERRED_FIT"
         reasons.append("Candidate matches the documented right-back preferences.")

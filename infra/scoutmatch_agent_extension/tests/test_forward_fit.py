@@ -32,8 +32,7 @@ def _invoke(**params):
 def test_or_david_pass_with_exception():
     body = _invoke(
         candidate_name="Or David",
-        link_up_play="Excellent link-up play",
-        movement="Strong movement",
+        forward_profile="Excellent link-up play and strong movement",
         annual_salary_eur=58000,
         current_committed_salary_eur=30000,
         exception_approved=True,
@@ -44,8 +43,7 @@ def test_or_david_pass_with_exception():
 def test_forward_needs_exception_salary():
     body = _invoke(
         candidate_name="Expensive Forward",
-        link_up_play="Good link-up",
-        movement="Good movement",
+        forward_profile="Good link-up play and good movement",
         annual_salary_eur=58000,
         current_committed_salary_eur=30000,
         exception_approved=False,
@@ -56,8 +54,7 @@ def test_forward_needs_exception_salary():
 def test_forward_pass_under_cap():
     body = _invoke(
         candidate_name="Budget Forward",
-        link_up_play="Good link-up play",
-        movement="Strong movement",
+        forward_profile="Good link-up play and strong movement",
         annual_salary_eur=48000,
         current_committed_salary_eur=30000,
         exception_approved=False,
