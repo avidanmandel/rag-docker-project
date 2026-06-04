@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import time
 import zipfile
@@ -45,9 +46,36 @@ SHORTLIST_TABLE = "ScoutMatchRecruitmentShortlistAvidan"
 REVIEWS_TABLE = "ScoutMatchRecruitmentReviewsAvidan"
 BRIEF_S3_PREFIX = "scoutmatch/recruitment-advisor/briefs/"
 STATE_MACHINE_NAME = "ScoutMatchCandidateReviewWorkflowAvidan"
-WORKFLOW_ROLE_NAME = "ScoutMatchExtensionWorkflowRoleAvidan"
+NATIVE_TOOLS_ROLE = "ScoutMatchNativeToolsLambdaRoleAvidan"
+NATIVE_WORKFLOW_ROLE = "ScoutMatchNativeWorkflowRoleAvidan"
+
+WRITE_CONFIRM_FUNCTIONS = frozenset(
+    {
+        "AddCandidateToShortlist",
+        "UpdateCandidateShortlistStatus",
+        "RemoveCandidateFromShortlist",
+        "CreateRecruitmentBrief",
+        "StartCandidateReviewWorkflow",
+    }
+)
+
+NATIVE_AGENT_ACTION_GROUP = "ScoutMatchNativeActionsAvidan"
+NATIVE_AGENT_FUNCTIONS = [
+    "AddCandidateToShortlist",
+    "ListShortlistCandidates",
+    "RemoveCandidateFromShortlist",
+    "CreateRecruitmentBrief",
+    "GetRecruitmentBrief",
+    "StartCandidateReviewWorkflow",
+]
 
 NATIVE_LAMBDAS = {
+    "ScoutMatchNativeToolsAvidan": {
+        "folder": "native_tools",
+        "action_group": NATIVE_AGENT_ACTION_GROUP,
+        "functions": NATIVE_AGENT_FUNCTIONS,
+        "description": "AWS-native shortlist, brief, and workflow tools (quota-safe single group).",
+    },
     "ScoutMatchShortlistManagerAvidan": {
         "folder": "shortlist_manager",
         "action_group": "ScoutMatchShortlistActionsAvidan",
@@ -57,7 +85,8 @@ NATIVE_LAMBDAS = {
             "UpdateCandidateShortlistStatus",
             "RemoveCandidateFromShortlist",
         ],
-        "description": "Manage the ScoutMatch recruitment shortlist in DynamoDB.",
+        "description": "Direct shortlist validation Lambda (not attached to agent).",
+        "attach_to_agent": False,
     },
     "ScoutMatchRecruitmentBriefAvidan": {
         "folder": "recruitment_brief",
@@ -67,7 +96,8 @@ NATIVE_LAMBDAS = {
             "GetRecruitmentBrief",
             "ListRecruitmentBriefs",
         ],
-        "description": "Create and read sanitized recruitment briefs in S3.",
+        "description": "Direct recruitment brief Lambda (not attached to agent).",
+        "attach_to_agent": False,
     },
     "ScoutMatchRecruitmentWorkflowAvidan": {
         "folder": "recruitment_workflow",
@@ -77,7 +107,8 @@ NATIVE_LAMBDAS = {
             "GetCandidateReviewWorkflowStatus",
             "GetCandidateReviewResult",
         ],
-        "description": "Run the ScoutMatch candidate review Step Functions workflow.",
+        "description": "Direct workflow Lambda (not attached to agent).",
+        "attach_to_agent": False,
     },
 }
 
@@ -177,7 +208,14 @@ def _zip_lambda(folder: str) -> bytes:
     return buf.getvalue()
 
 
-def _function_schema(name: str, description: str, properties: dict, required: list[str]) -> dict:
+def _function_schema(
+    name: str,
+    description: str,
+    properties: dict,
+    required: list[str],
+    *,
+    require_confirmation: bool | None = None,
+) -> dict:
     params: dict[str, dict] = {}
     for key, meta in properties.items():
         params[key] = {
@@ -185,11 +223,14 @@ def _function_schema(name: str, description: str, properties: dict, required: li
             "description": meta.get("description", key.replace("_", " ")),
             "required": key in required,
         }
-    return {
+    fn = {
         "name": name,
         "description": description,
         "parameters": params,
     }
+    if require_confirmation is not None:
+        fn["requireConfirmation"] = "ENABLED" if require_confirmation else "DISABLED"
+    return fn
 
 
 def _schemas() -> dict[str, dict]:
@@ -807,6 +848,12 @@ class Deployer:
             if exc.response["Error"]["Code"] != "ConflictException":
                 raise
 
+    def _football_action_groups_present(self, agent_id: str) -> set[str]:
+        groups = self.agent.list_agent_action_groups(
+            agentId=agent_id, agentVersion="DRAFT"
+        ).get("actionGroupSummaries", [])
+        return {g.get("actionGroupName", "") for g in groups}
+
     def ensure_action_group(
         self,
         agent_id: str,
@@ -814,8 +861,22 @@ class Deployer:
         action_group_name: str,
         function_name: str,
         description: str,
+        *,
+        update_if_exists: bool = True,
+        require_confirmation: bool | None = None,
     ) -> None:
         schema = _schemas()[function_name]
+        if require_confirmation is not None:
+            schema = _function_schema(
+                schema["name"],
+                schema["description"],
+                {
+                    k: {"type": v["type"], "description": v.get("description", k)}
+                    for k, v in schema["parameters"].items()
+                },
+                [k for k, v in schema["parameters"].items() if v.get("required")],
+                require_confirmation=require_confirmation,
+            )
         payload = {
             "agentId": agent_id,
             "agentVersion": "DRAFT",
@@ -836,6 +897,9 @@ class Deployer:
                 (g for g in groups if g.get("actionGroupName") == action_group_name),
                 None,
             )
+            if existing and not update_if_exists:
+                self.present.append(f"Preserved action group: {action_group_name}")
+                return
             if existing:
                 self.agent.update_agent_action_group(
                     agentId=agent_id,
@@ -847,6 +911,64 @@ class Deployer:
                 self.agent.create_agent_action_group(**payload)
         except ClientError as exc:
             self.blockers.append(f"Action group {action_group_name}: {exc}")
+
+    def ensure_native_action_group(
+        self,
+        agent_id: str,
+        lambda_arn: str,
+        action_group_name: str,
+        function_names: list[str],
+        description: str,
+    ) -> None:
+        schemas_map = {**_schemas(), **_native_schemas()}
+        functions = []
+        for fn_name in function_names:
+            base = schemas_map[fn_name]
+            props = {
+                k: {"type": v["type"], "description": v.get("description", k)}
+                for k, v in base["parameters"].items()
+            }
+            req = [k for k, v in base["parameters"].items() if v.get("required")]
+            functions.append(
+                _function_schema(
+                    fn_name,
+                    base["description"],
+                    props,
+                    req,
+                    require_confirmation=fn_name in WRITE_CONFIRM_FUNCTIONS,
+                )
+            )
+        payload = {
+            "agentId": agent_id,
+            "agentVersion": "DRAFT",
+            "actionGroupName": action_group_name,
+            "description": description,
+            "actionGroupExecutor": {"lambda": lambda_arn},
+            "functionSchema": {"functions": functions},
+            "actionGroupState": "ENABLED",
+        }
+        self.plan.append(f"Create or update native action group: {action_group_name}")
+        if not self.apply:
+            return
+        try:
+            groups = self.agent.list_agent_action_groups(
+                agentId=agent_id, agentVersion="DRAFT"
+            ).get("actionGroupSummaries", [])
+            existing = next(
+                (g for g in groups if g.get("actionGroupName") == action_group_name),
+                None,
+            )
+            if existing:
+                self.agent.update_agent_action_group(
+                    agentId=agent_id,
+                    agentVersion="DRAFT",
+                    actionGroupId=existing["actionGroupId"],
+                    **{k: v for k, v in payload.items() if k not in {"agentId", "agentVersion"}},
+                )
+            else:
+                self.agent.create_agent_action_group(**payload)
+        except ClientError as exc:
+            self.blockers.append(f"Native action group {action_group_name}: {exc}")
 
     def allow_agent_invoke(self, lambda_name: str, agent_arn: str, statement_id: str) -> None:
         self.plan.append(f"Add scoped invoke permission on {lambda_name}")
@@ -1025,7 +1147,15 @@ class Deployer:
         )
         self.agent.validate_flow_definition(definition=definition)
         self.agent.prepare_flow(flowIdentifier=flow_id)
-        version = self.agent.create_flow_version(flowIdentifier=flow_id)["version"]
+        try:
+            version = self.agent.create_flow_version(flowIdentifier=flow_id)["version"]
+        except ClientError as exc:
+            if "max-number-flow-versions" in str(exc):
+                self.present.append(
+                    "Flow version quota reached; flow draft updated but alias routing unchanged"
+                )
+                return
+            raise
         alias_id = self.state.get("flow_alias_id") or ""
         if alias_id:
             alias_name = FLOW_ALIAS_NAME
@@ -1066,50 +1196,421 @@ class Deployer:
         self.state["flow_version"] = version
         return alias_id
 
-    def plan_aws_native_extension(self, agent_id: str, agent_arn: str) -> None:
-        """Plan DynamoDB, S3 prefix, Step Functions, native Lambdas, and agent updates."""
-        self.log("\n=== AWS-NATIVE EXTENSION PLAN ===")
-        self.plan.append(f"Create DynamoDB table (on-demand): {SHORTLIST_TABLE}")
-        self.plan.append(f"Create DynamoDB table (on-demand): {REVIEWS_TABLE}")
-        self.plan.append(
-            f"Use isolated S3 prefix {BRIEF_S3_PREFIX} in configured AWS_S3_BUCKET (read-only verify at apply)"
-        )
-        self.plan.append(f"Create Step Functions state machine: {STATE_MACHINE_NAME}")
-        self.plan.append(f"Create IAM role: {WORKFLOW_ROLE_NAME} (Step Functions + scoped Lambda/DynamoDB/S3)")
-        for name, meta in NATIVE_LAMBDAS.items():
-            self.plan.append(f"Create Lambda: {name}")
-            for fn in meta["functions"]:
-                self.plan.append(
-                    f"Attach Action Group {meta['action_group']} function {fn} to agent {AGENT_NAME} only"
-                )
-                self.plan.append(
-                    f"Add scoped lambda:InvokeFunction permission on {name} for bedrock.amazonaws.com "
-                    f"(SourceArn agent/{agent_id}, SourceAccount {self.account_id})"
-                )
-        self.plan.append(
-            "Update agent instruction on scoutmatch-recruitment-agent-user5-avidan (draft) with native addendum"
-        )
-        self.plan.append(
-            "Enable write confirmation via sessionAttributes.write_confirmed for shortlist, brief, and workflow writes"
-        )
-        self.plan.append(
-            "Step Functions invokes existing tactical Lambdas using Bedrock-shaped payloads (adapter documented; no change to Action Group handlers)"
-        )
+    def _resolve_s3_bucket(self) -> str:
+        bucket = os.getenv("AWS_S3_BUCKET", "").strip()
+        if not bucket:
+            try:
+                sys.path.insert(0, str(ROOT))
+                import config as app_config
+
+                bucket = (app_config.AWS_S3_BUCKET or "").strip()
+            except Exception:
+                bucket = ""
+        return bucket
+
+    def ensure_dynamodb_table(self, table_name: str) -> None:
+        self.plan.append(f"Create DynamoDB table (on-demand): {table_name}")
         if not self.apply:
-            plan_path = ROOT / "docs" / "SCOUTMATCH_AGENT_UPDATE_PLAN.md"
-            self.plan.append(f"Write sanitized agent update plan: {plan_path.relative_to(ROOT)}")
-            plan_path.parent.mkdir(parents=True, exist_ok=True)
-            plan_path.write_text(
-                "# ScoutMatch Agent update plan (apply stage only)\n\n"
-                f"- Target agent: `{AGENT_NAME}`\n"
-                f"- Preserve existing four football Action Groups unchanged.\n"
-                f"- Add Action Groups: {', '.join(m['action_group'] for m in NATIVE_LAMBDAS.values())}.\n"
-                f"- Instruction addendum: see deploy script `AGENT_INSTRUCTION_NATIVE_ADDENDUM`.\n"
-                f"- Confirmation: set `sessionAttributes.write_confirmed=true` before write tools.\n",
-                encoding="utf-8",
+            return
+        ddb = self.session.client("dynamodb")
+        try:
+            ddb.describe_table(TableName=table_name)
+            self.present.append(f"DynamoDB table exists: {table_name}")
+            return
+        except ClientError as exc:
+            code = exc.response["Error"]["Code"]
+            if code not in {"ResourceNotFoundException", "AccessDeniedException"}:
+                raise
+        try:
+            ddb.create_table(
+            TableName=table_name,
+            AttributeDefinitions=[{"AttributeName": "candidate_key", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "candidate_key", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+            Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "ResourceInUseException":
+                self.present.append(f"DynamoDB table already exists: {table_name}")
+                return
+            if exc.response["Error"]["Code"] == "AccessDeniedException":
+                self.already.append(f"DynamoDB table may already exist: {table_name}")
+                return
+            raise
+        waiter = ddb.get_waiter("table_exists")
+        waiter.wait(TableName=table_name)
+
+    def ensure_native_tools_role(self, bucket: str) -> str:
+        trust = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+        try:
+            role_arn = self.iam.get_role(RoleName=NATIVE_TOOLS_ROLE)["Role"]["Arn"]
+            self.present.append(f"IAM role exists: {NATIVE_TOOLS_ROLE}")
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "NoSuchEntity":
+                raise
+            self.plan.append(f"Create IAM role: {NATIVE_TOOLS_ROLE}")
+            if not self.apply:
+                return f"arn:aws:iam::{self.account_id}:role/{NATIVE_TOOLS_ROLE}"
+            role_arn = self.iam.create_role(
+                RoleName=NATIVE_TOOLS_ROLE,
+                AssumeRolePolicyDocument=json.dumps(trust),
+                Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
+            )["Role"]["Arn"]
+        if self.apply:
+            self.iam.attach_role_policy(
+                RoleName=NATIVE_TOOLS_ROLE,
+                PolicyArn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            )
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "dynamodb:GetItem",
+                            "dynamodb:PutItem",
+                            "dynamodb:UpdateItem",
+                            "dynamodb:DeleteItem",
+                            "dynamodb:Scan",
+                            "dynamodb:Query",
+                        ],
+                        "Resource": [
+                            f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{SHORTLIST_TABLE}",
+                            f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{REVIEWS_TABLE}",
+                        ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
+                        "Resource": [
+                            f"arn:aws:s3:::{bucket}",
+                            f"arn:aws:s3:::{bucket}/{BRIEF_S3_PREFIX}*",
+                        ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["states:StartExecution", "states:DescribeExecution"],
+                        "Resource": [
+                            f"arn:aws:states:{REGION}:{self.account_id}:stateMachine:{STATE_MACHINE_NAME}",
+                            f"arn:aws:states:{REGION}:{self.account_id}:execution:{STATE_MACHINE_NAME}:*",
+                        ],
+                    },
+                ],
+            }
+            self.iam.put_role_policy(
+                RoleName=NATIVE_TOOLS_ROLE,
+                PolicyName="ScoutMatchNativeToolsInlineAvidan",
+                PolicyDocument=json.dumps(policy),
+            )
+        return role_arn
+
+    def ensure_native_workflow_role(self) -> str:
+        trust = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "states.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+        try:
+            role_arn = self.iam.get_role(RoleName=NATIVE_WORKFLOW_ROLE)["Role"]["Arn"]
+            self.present.append(f"IAM role exists: {NATIVE_WORKFLOW_ROLE}")
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "NoSuchEntity":
+                raise
+            self.plan.append(f"Create IAM role: {NATIVE_WORKFLOW_ROLE}")
+            if not self.apply:
+                return f"arn:aws:iam::{self.account_id}:role/{NATIVE_WORKFLOW_ROLE}"
+            role_arn = self.iam.create_role(
+                RoleName=NATIVE_WORKFLOW_ROLE,
+                AssumeRolePolicyDocument=json.dumps(trust),
+                Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
+            )["Role"]["Arn"]
+        if self.apply:
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["lambda:InvokeFunction"],
+                        "Resource": [
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchBudgetImpactAvidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchRightBackFitAvidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchBelowStrikerFitAvidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchForwardFitAvidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchRecruitmentBriefAvidan",
+                        ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["dynamodb:PutItem"],
+                        "Resource": [
+                            f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{REVIEWS_TABLE}"
+                        ],
+                    },
+                ],
+            }
+            self.iam.put_role_policy(
+                RoleName=NATIVE_WORKFLOW_ROLE,
+                PolicyName="ScoutMatchNativeWorkflowInlineAvidan",
+                PolicyDocument=json.dumps(policy),
+            )
+        return role_arn
+
+    def ensure_lambda_env(self, name: str, env: dict[str, str]) -> None:
+        if not self.apply:
+            return
+        self._wait_lambda_active(name)
+        cfg = self.lambda_client.get_function_configuration(FunctionName=name)
+        merged = {**cfg.get("Environment", {}).get("Variables", {}), **env}
+        for attempt in range(6):
+            try:
+                self.lambda_client.update_function_configuration(
+                    FunctionName=name,
+                    Environment={"Variables": merged},
+                )
+                break
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] != "ResourceConflictException" or attempt >= 5:
+                    raise
+                time.sleep(10)
+        self._wait_lambda_active(name)
+
+    def ensure_state_machine(self, workflow_role_arn: str) -> str:
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from native_extension_apply import build_state_machine_definition
+
+        self.plan.append(f"Create Step Functions state machine: {STATE_MACHINE_NAME}")
+        if not self.apply:
+            return f"arn:aws:states:{REGION}:{self.account_id}:stateMachine:{STATE_MACHINE_NAME}"
+        sfn = self.session.client("stepfunctions")
+        definition = build_state_machine_definition(
+            region=REGION,
+            account_id=self.account_id,
+            reviews_table=REVIEWS_TABLE,
+            brief_function="ScoutMatchRecruitmentBriefAvidan",
+        )
+        sm_arn = f"arn:aws:states:{REGION}:{self.account_id}:stateMachine:{STATE_MACHINE_NAME}"
+        try:
+            sfn.describe_state_machine(stateMachineArn=sm_arn)
+            sfn.update_state_machine(
+                stateMachineArn=sm_arn,
+                definition=json.dumps(definition),
+                roleArn=workflow_role_arn,
+            )
+            self.present.append(f"State machine updated: {STATE_MACHINE_NAME}")
+        except ClientError as exc:
+            code = exc.response["Error"]["Code"]
+            if code not in {"StateMachineDoesNotExist", "StateMachineTypeNotSupported"}:
+                if code == "AccessDeniedException" and self.apply:
+                    self.blockers.append(f"Step Functions deploy denied for {STATE_MACHINE_NAME}: {code}")
+                    return sm_arn
+                raise
+            resp = sfn.create_state_machine(
+                name=STATE_MACHINE_NAME,
+                definition=json.dumps(definition),
+                roleArn=workflow_role_arn,
+            )
+            sm_arn = resp["stateMachineArn"]
+        self.state["state_machine_arn"] = sm_arn
+        return sm_arn
+
+    def _publish_agent_alias(self, agent_id: str) -> str:
+        """Reuse existing alias (quota-safe) and point routing at the latest prepared version."""
+        alias_id = self.state.get("agent_alias_id") or self._find_agent_alias_id(agent_id)
+        if not alias_id:
+            self.blockers.append(
+                "No agent alias available to publish (aliases-per-agent quota). "
+                "Reuse an existing ScoutMatch alias manually."
+            )
+            return ""
+        alias_name = AGENT_ALIAS_NAME
+        for summary in self.agent.list_agent_aliases(agentId=agent_id, maxResults=50).get(
+            "agentAliasSummaries", []
+        ):
+            if summary.get("agentAliasId") == alias_id:
+                alias_name = summary.get("agentAliasName") or alias_name
+                break
+        versions: list[str] = []
+        token = None
+        while True:
+            kwargs = {"agentId": agent_id, "maxResults": 50}
+            if token:
+                kwargs["nextToken"] = token
+            page = self.agent.list_agent_versions(**kwargs)
+            for item in page.get("agentVersionSummaries", []):
+                ver = str(item.get("agentVersion", ""))
+                if ver.isdigit():
+                    versions.append(ver)
+            token = page.get("nextToken")
+            if not token:
+                break
+        if not versions:
+            self.blockers.append("No numbered agent version found after prepare")
+            return ""
+        latest = str(max(int(v) for v in versions))
+        self.plan.append(f"Update agent alias routing to version {latest}")
+        self.agent.update_agent_alias(
+            agentId=agent_id,
+            agentAliasId=alias_id,
+            agentAliasName=alias_name,
+            routingConfiguration=[{"agentVersion": latest}],
+        )
+        self.present.append(f"Published agent alias {alias_name} to version {latest}")
+        return alias_id
+
+    def update_agent_instruction_native(self, agent_id: str) -> None:
+        self.plan.append("Update agent instruction with AWS-native addendum")
+        if not self.apply:
+            return
+        detail = self.agent.get_agent(agentId=agent_id)["agent"]
+        instruction = (detail.get("instruction") or AGENT_INSTRUCTION) + AGENT_INSTRUCTION_NATIVE_ADDENDUM
+        self.agent.update_agent(
+            agentId=agent_id,
+            agentName=detail["agentName"],
+            agentResourceRoleArn=detail["agentResourceRoleArn"],
+            foundationModel=detail.get("foundationModel") or FOUNDATION_MODEL,
+            instruction=instruction,
+            idleSessionTTLInSeconds=detail.get("idleSessionTTLInSeconds", 600),
+        )
+
+    def apply_aws_native_extension(self, agent_id: str, agent_arn: str) -> None:
+        """Apply DynamoDB, native Lambdas, Step Functions, and new Action Groups."""
+        self.log("\n=== AWS-NATIVE EXTENSION ===")
+        bucket = self._resolve_s3_bucket()
+        if not bucket:
+            self.blockers.append("AWS_S3_BUCKET not configured — cannot deploy recruitment briefs")
+            return
+        if self.apply:
+            try:
+                self.session.client("s3").head_bucket(Bucket=bucket)
+                self.present.append(f"S3 bucket accessible for brief prefix: {bucket}")
+            except ClientError as exc:
+                self.blockers.append(f"S3 bucket ownership check failed: {exc}")
+                return
+
+        self.ensure_dynamodb_table(SHORTLIST_TABLE)
+        self.ensure_dynamodb_table(REVIEWS_TABLE)
+        if self.blockers:
+            return
+        tools_role = self.ensure_native_tools_role(bucket)
+        workflow_role = self.ensure_native_workflow_role()
+        sm_arn = self.ensure_state_machine(workflow_role)
+
+        native_env = {
+            "SCOUTMATCH_SHORTLIST_TABLE": SHORTLIST_TABLE,
+            "SCOUTMATCH_REVIEWS_TABLE": REVIEWS_TABLE,
+            "SCOUTMATCH_BRIEF_BUCKET": bucket,
+            "SCOUTMATCH_BRIEF_PREFIX": BRIEF_S3_PREFIX,
+            "SCOUTMATCH_REVIEW_STATE_MACHINE_ARN": sm_arn,
+            "SCOUTMATCH_BEDROCK_NATIVE_CONFIRMATION": "true",
+        }
+
+        native_arns: dict[str, str] = {}
+        for name, meta in NATIVE_LAMBDAS.items():
+            native_arns[name] = self.ensure_lambda(name, meta["folder"], tools_role)
+            if self.apply:
+                self.ensure_lambda_env(name, native_env)
+                if meta.get("attach_to_agent", True):
+                    self.allow_agent_invoke(
+                        name,
+                        agent_arn,
+                        f"bedrock-native-{agent_id}-{meta['action_group']}"[:80],
+                    )
+                    self.ensure_native_action_group(
+                        agent_id,
+                        native_arns[name],
+                        meta["action_group"],
+                        meta["functions"],
+                        meta["description"],
+                    )
+                else:
+                    self.present.append(f"Lambda deployed without agent attach: {name}")
+
+        self.update_agent_instruction_native(agent_id)
+        if self.apply:
+            self.prepare_agent(agent_id)
+            new_alias = self._publish_agent_alias(agent_id)
+            if not new_alias:
+                return
+            self.state["agent_alias_id"] = new_alias
+            _save_state(self.state)
+            time.sleep(45)
+            alias_arn = (
+                f"arn:aws:bedrock:{REGION}:{self.account_id}:agent-alias/{agent_id}/{new_alias}"
+            )
+            try:
+                self.iam.put_user_policy(
+                    UserName="user5",
+                    PolicyName="ScoutMatchRuntimeInvokeAvidan",
+                    PolicyDocument=json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "InvokeScoutMatchAgentAliasOnly",
+                                    "Effect": "Allow",
+                                    "Action": "bedrock:InvokeAgent",
+                                    "Resource": alias_arn,
+                                },
+                                {
+                                    "Sid": "InvokeScoutMatchFlowAliasOnly",
+                                    "Effect": "Allow",
+                                    "Action": "bedrock:InvokeFlow",
+                                    "Resource": f"arn:aws:bedrock:{REGION}:{self.account_id}:flow-alias/{self.state.get('flow_id')}/{self.state.get('flow_alias_id')}",
+                                },
+                            ],
+                        }
+                    ),
+                )
+            except ClientError:
+                self.plan.append("Update caller ScoutMatchRuntimeInvokeAvidan policy manually if needed")
+            flow_id = self.state.get("flow_id")
+            if flow_id:
+                self.sync_flow_agent_alias(flow_id, alias_arn)
+            self.iam.put_role_policy(
+                RoleName="ScoutMatchExtensionFlowRoleAvidan",
+                PolicyName="ScoutMatchFlowInvokeAgentAvidan",
+                PolicyDocument=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Sid": "InvokeScoutMatchAgentAliasFromFlowOnly",
+                                "Effect": "Allow",
+                                "Action": "bedrock:InvokeAgent",
+                                "Resource": alias_arn,
+                            }
+                        ],
+                    }
+                ),
             )
 
+    def plan_aws_native_extension(self, agent_id: str, agent_arn: str) -> None:
+        self.apply_aws_native_extension(agent_id, agent_arn)
+
     def run(self) -> int:
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(ROOT / ".env", override=False)
+            load_dotenv(ROOT / ".env.agent", override=False)
+        except Exception:
+            pass
         self.log(f"Region: {REGION} | Mode: {'apply' if self.apply else 'plan'}")
         self.audit_existing()
         if self.blockers:
@@ -1145,14 +1646,20 @@ class Deployer:
         self.associate_kb(agent_id, kb_id)
 
         agent_arn = f"arn:aws:bedrock:{REGION}:{self.account_id}:agent/{agent_id}"
+        football_present = self._football_action_groups_present(agent_id) if agent_id else set()
         for name, meta in LAMBDAS.items():
-            self.ensure_action_group(
-                agent_id,
-                lambda_arns[name],
-                meta["action_group"],
-                meta["function"],
-                meta["description"],
-            )
+            preserve = meta["action_group"] in football_present
+            if not preserve:
+                self.ensure_action_group(
+                    agent_id,
+                    lambda_arns[name],
+                    meta["action_group"],
+                    meta["function"],
+                    meta["description"],
+                    update_if_exists=True,
+                )
+            else:
+                self.present.append(f"Preserved football action group: {meta['action_group']}")
             self.allow_agent_invoke(
                 name,
                 agent_arn,
@@ -1170,7 +1677,7 @@ class Deployer:
             self.sync_flow_agent_alias(flow_id, agent_alias_arn)
         flow_alias_id = self.finalize_flow(flow_id)
 
-        self.plan_aws_native_extension(agent_id, agent_arn)
+        self.apply_aws_native_extension(agent_id, agent_arn)
 
         _save_state(self.state)
         self._report(alias_id=alias_id, flow_alias_id=flow_alias_id)

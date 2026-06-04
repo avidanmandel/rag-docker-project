@@ -23,11 +23,12 @@ They encode **documented club rules** (budget caps, tactical preferences, forwar
 | Review outcome store | DynamoDB | `ScoutMatchRecruitmentReviewsAvidan` |
 | Agent tools (no manual Lambda pick) | Bedrock Action Groups | Shortlist, Brief, Workflow groups |
 
-## Proposed resources (apply stage only)
+## Applied resources (stage two — complete)
 
-- Lambdas: `ScoutMatchShortlistManagerAvidan`, `ScoutMatchRecruitmentBriefAvidan`, `ScoutMatchRecruitmentWorkflowAvidan`
-- Action Groups: `ScoutMatchShortlistActionsAvidan`, `ScoutMatchRecruitmentBriefActionsAvidan`, `ScoutMatchRecruitmentWorkflowActionsAvidan`
-- IAM: extend `ScoutMatchExtensionLambdaRoleAvidan` with table- and prefix-scoped inline policies; add `ScoutMatchExtensionWorkflowRoleAvidan` for Step Functions
+- Lambdas: `ScoutMatchShortlistManagerAvidan`, `ScoutMatchRecruitmentBriefAvidan`, `ScoutMatchRecruitmentWorkflowAvidan`, `ScoutMatchNativeToolsAvidan` (agent router)
+- Agent Action Group: `ScoutMatchNativeActionsAvidan` (consolidated; Bedrock 10-API quota)
+- Standalone Action Group schemas remain for direct Lambda/OpenAPI parity; not all attached to agent
+- IAM: **new** `ScoutMatchNativeToolsLambdaRoleAvidan`, `ScoutMatchNativeWorkflowRoleAvidan` — existing tactical Lambda roles **not** broadened
 
 ## Stable resources (untouched)
 

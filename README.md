@@ -410,14 +410,15 @@ Documentation: `docs/SCOUTMATCH_AGENT_EXTENSION.md`, `docs/SCOUTMATCH_FLOW_EXTEN
 Screenshots: `infra/scoutmatch_agent_extension/evidence/SCREENSHOT_CHECKLIST.md`.  
 Production EC2 was **not** modified by this extension.
 
-### AWS-native recruitment advisor (plan stage — branch `feature/scoutmatch-agent-flow-extension`)
+### AWS-native recruitment advisor (applied — branch `feature/scoutmatch-agent-flow-extension`)
 
-Adds **local** implementations for DynamoDB shortlist, S3 recruitment briefs, and Step Functions candidate review. The Bedrock Agent will gain three new Action Groups after an approved `--apply` deploy; the four existing football tools stay unchanged.
+DynamoDB shortlist, S3 recruitment briefs, Step Functions candidate review, and a consolidated native Action Group on the Bedrock Agent. Four existing football Action Groups are unchanged. Production EC2/Docker v14/S3 baseline/KB content were **not** modified.
 
 - Gap analysis: `docs/SCOUTMATCH_AWS_NATIVE_WORKFLOW_GAP_ANALYSIS.md`
-- Workflow design: `docs/SCOUTMATCH_AWS_NATIVE_RECRUITMENT_WORKFLOW.md`
+- Applied workflow: `docs/SCOUTMATCH_AWS_NATIVE_RECRUITMENT_WORKFLOW.md`
 - Optional UI: `/recruitment-advisor` and `POST /api/recruitment-advisor/chat` (disabled by default)
-- Plan only: `python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --plan`
+- Deploy: `python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --apply`
+- Validation: `python infra/scoutmatch_agent_extension/scripts/validate_stage2_native.py`
 
 ---
 

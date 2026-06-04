@@ -18,9 +18,7 @@ FOUR_LAMBDAS = {
     "ScoutMatchForwardFitAvidan",
 }
 NEW_ACTION_GROUPS = {
-    "ScoutMatchShortlistActionsAvidan",
-    "ScoutMatchRecruitmentBriefActionsAvidan",
-    "ScoutMatchRecruitmentWorkflowActionsAvidan",
+    "ScoutMatchNativeActionsAvidan",
 }
 FORBIDDEN_TOOLS = ("ScoutMatchWeatherAvidan", "ScoutMatchLiveToolsAvidan", "time", "joke")
 

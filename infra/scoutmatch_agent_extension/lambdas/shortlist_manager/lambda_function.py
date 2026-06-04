@@ -109,6 +109,15 @@ def _sanitize_entry(item: dict) -> dict:
 
 
 def _guard_write(function_name: str, event: dict) -> dict | None:
+    from write_confirmation import is_write_denied  # noqa: E402
+
+    if is_write_denied(event):
+        return build_function_response(
+            action_group=ACTION_GROUP,
+            function_name=function_name,
+            body={"status": "DENIED", "message": "Write cancelled by coach."},
+            event=event,
+        )
     if function_name in WRITE_ACTIONS and not is_write_confirmed(event):
         return pending_confirmation_response(
             action_group=ACTION_GROUP,

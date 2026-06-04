@@ -21,9 +21,9 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | 15_flow_three_nodes.png | Input → Agent → Output flow graph |
 | 16_flow_successful_invocation.png | Flow test invocation succeeded |
 | 17_existing_v14_flask_ui_unchanged.png | Production/local v14 UI unchanged |
-| 18_shortlist_action_group.png | ScoutMatchShortlistActionsAvidan on new agent |
-| 19_brief_action_group.png | ScoutMatchRecruitmentBriefActionsAvidan |
-| 20_workflow_action_group.png | ScoutMatchRecruitmentWorkflowActionsAvidan |
+| 18_native_action_group.png | ScoutMatchNativeActionsAvidan on agent (quota-safe consolidated group) |
+| 19_native_lambdas_list.png | ScoutMatchNativeToolsAvidan + standalone native Lambdas |
+| 20_native_write_confirmation.png | Bedrock requireConfirmation on write functions |
 | 21_dynamodb_shortlist_table.png | ScoutMatchRecruitmentShortlistAvidan table |
 | 22_dynamodb_reviews_table.png | ScoutMatchRecruitmentReviewsAvidan table |
 | 23_step_functions_graph.png | ScoutMatchCandidateReviewWorkflowAvidan graph |
