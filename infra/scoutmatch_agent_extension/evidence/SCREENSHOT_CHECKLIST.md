@@ -46,3 +46,11 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | 40_inline_lineup_board_chat.png | Lineup SVG displayed inline in Recruitment Advisor chat |
 | 41_lineup_board_433.png | Generated 4-3-3 board with player markers |
 | 42_pending_management_marker.png | PENDING_MANAGEMENT_APPROVAL marker on transfer candidate |
+| dynamodb_fallback_operational_state.png | football_ops# prefixed item in fallback DynamoDB table |
+| sns_confirmed_email_subscription.png | SNS email subscription status Confirmed (blur endpoint) |
+| remaining_budget_after_confirm.png | Advisor chat shows remaining budget after confirm |
+| public_recruitment_advisor_route.png | Public /recruitment-advisor after EC2 cutover |
+| kb_data_source_sync_complete.png | Tactical KB sync COMPLETE |
+| agent_guardrail_central.png | Central guardrail attached to agent |
+| four_action_groups_enabled.png | Four final Action Groups enabled |
+| four_dedicated_lambdas.png | Four dedicated final Lambdas |

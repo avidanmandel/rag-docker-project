@@ -39,6 +39,27 @@ See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, 
 | `41_lineup_board_433.png` | Full board with 11 own-team markers |
 | `42_pending_management_marker.png` | PENDING APPROVAL badge on Ron Ben Ari |
 
+## Required manual screenshot order (16 items)
+
+| # | File | Capture |
+|---|------|---------|
+| 1 | `agent_kb_association_enabled.png` | Agent → Knowledge Bases → **ENABLED** |
+| 2 | `kb_data_source_sync_complete.png` | Data source sync **COMPLETE** (tactical docs included) |
+| 3 | `agent_guardrail_central.png` | `scoutmatch-guardrail-user5-avidan` on agent |
+| 4 | `four_action_groups_enabled.png` | Four final Action Groups only |
+| 5 | `four_dedicated_lambdas.png` | Four dedicated Lambdas |
+| 6 | `dynamodb_fallback_operational_state.png` | `football_ops#` operational record (sanitized) |
+| 7 | `34_sns_management_topic.png` | SNS topic exists |
+| 8 | `sns_confirmed_email_subscription.png` | Email subscription **Confirmed** (blur email) |
+| 9 | `33_player_selection_confirmation.png` | Confirmation prompt in Advisor chat |
+| 10 | `remaining_budget_after_confirm.png` | Remaining budget after confirm |
+| 11 | `39_private_lineup_svg_s3.png` | Private S3 SVG under lineup prefix |
+| 12 | `40_inline_lineup_board_chat.png` | Inline SVG in browser chat |
+| 13 | `41_ron_ben_ari_right_back.png` | Ron Ben Ari at right-back |
+| 14 | `42_pending_management_marker.png` | PENDING_MANAGEMENT_APPROVAL badge |
+| 15 | `17_existing_v14_flask_ui_unchanged.png` | v14 homepage still healthy |
+| 16 | `public_recruitment_advisor_route.png` | Public `/recruitment-advisor` after EC2 cutover |
+
 ## Regression proof
 
 | File | Capture |
