@@ -50,6 +50,8 @@ def build_svg(lineup: dict) -> str:
         '<circle cx="360" cy="260" r="60" fill="none" stroke="#ffffff" stroke-width="2"/>',
         f'<text x="360" y="28" text-anchor="middle" fill="#ffffff" font-size="20" font-family="Arial">'
         f'ScoutMatch FC — {formation} vs {opponent}</text>',
+        '<text x="360" y="52" text-anchor="middle" fill="#ffe08a" font-size="12" font-family="Arial">'
+        "PROPOSED LINEUP — PENDING HEAD COACH REVIEW</text>",
     ]
     for player, x_ratio, y_ratio in _slot_positions(lineup.get("formation", "4-3-3"), starters):
         cx = 40 + int(640 * x_ratio)

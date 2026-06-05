@@ -221,7 +221,9 @@ def main() -> int:
         "PASS" if "confirm" in lineup_pre.lower() or "PENDING_CONFIRMATION" in lineup_pre.upper() else "FAIL"
     )
     results["F_lineup_confirm"] = (
-        "PASS" if lineup_confirm.get("status") == "LINEUP_FINALIZED" else f"FAIL:{lineup_confirm.get('status')}"
+        "PASS"
+        if lineup_confirm.get("status") in {"LINEUP_FINALIZED", "PENDING_HEAD_COACH_REVIEW"}
+        else f"FAIL:{lineup_confirm.get('status')}"
     )
 
     board_text, tools_board = _agent_text(

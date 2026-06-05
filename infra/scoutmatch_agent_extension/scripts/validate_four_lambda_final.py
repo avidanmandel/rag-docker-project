@@ -155,7 +155,7 @@ def main() -> int:
             },
         )
     )
-    if fin_body.get("status") != "LINEUP_FINALIZED":
+    if fin_body.get("status") not in {"LINEUP_FINALIZED", "PENDING_HEAD_COACH_REVIEW"}:
         fin_body = _body(
             _invoke_lambda(
                 lam,
@@ -172,7 +172,9 @@ def main() -> int:
             )
         )
     results["lambda_ScoutMatchFinalizeCurrentLineupAvidan"] = (
-        "PASS" if fin_body.get("status") == "LINEUP_FINALIZED" else f"FAIL:{fin_body.get('status')}"
+        "PASS"
+        if fin_body.get("status") in {"LINEUP_FINALIZED", "PENDING_HEAD_COACH_REVIEW"}
+        else f"FAIL:{fin_body.get('status')}"
     )
 
     board_body = _body(

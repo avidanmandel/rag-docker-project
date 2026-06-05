@@ -86,6 +86,7 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
     )
     return {
         **record,
-        "status": "LINEUP_FINALIZED",
+        "status": "PENDING_HEAD_COACH_REVIEW",
+        "lineup_state": "PROPOSED_LINEUP",
         "starting_players": 11,
     }, ""

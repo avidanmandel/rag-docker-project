@@ -18,9 +18,11 @@ FUNCTION_NAME = "PlanMatchTactics"
 
 
 def _handle(params: dict, event: dict) -> dict:
+    squad_context = require_string(params, "squad_context")
+    opponent = optional_string(params, "opponent") or ""
     body = plan_match_tactics(
-        opponent=require_string(params, "opponent"),
-        squad_context=require_string(params, "squad_context"),
+        opponent=opponent,
+        squad_context=squad_context,
         available_budget_eur=optional_int(params, "available_budget_eur"),
         preferred_style=optional_string(params, "preferred_style") or "",
         formation_options=optional_string(params, "formation_options") or "",
