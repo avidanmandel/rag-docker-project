@@ -43,14 +43,17 @@ def fetch_lineup_svg(lineup_id: str) -> tuple[str | None, str]:
         return None, "Lineup image storage is not configured."
     prefix = f"{LINEUP_PREFIX.rstrip('/')}/{lineup_id}/"
     client = boto3.client("s3", region_name=AWS_REGION)
-    listed = client.list_objects_v2(Bucket=LINEUP_BUCKET, Prefix=prefix, MaxKeys=20)
-    keys = [
-        obj["Key"]
-        for obj in listed.get("Contents", [])
-        if str(obj.get("Key", "")).endswith(".svg")
-    ]
-    if not keys:
-        return None, "Lineup image not found."
-    latest_key = sorted(keys)[-1]
-    body = client.get_object(Bucket=LINEUP_BUCKET, Key=latest_key)["Body"].read()
-    return body.decode("utf-8", errors="replace"), ""
+    try:
+        listed = client.list_objects_v2(Bucket=LINEUP_BUCKET, Prefix=prefix, MaxKeys=20)
+        keys = [
+            obj["Key"]
+            for obj in listed.get("Contents", [])
+            if str(obj.get("Key", "")).endswith(".svg")
+        ]
+        if not keys:
+            return None, "Lineup image not found."
+        latest_key = sorted(keys)[-1]
+        body = client.get_object(Bucket=LINEUP_BUCKET, Key=latest_key)["Body"].read()
+        return body.decode("utf-8", errors="replace"), ""
+    except Exception:
+        return None, "Lineup image is not accessible from the application host."

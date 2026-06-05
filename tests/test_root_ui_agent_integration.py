@@ -195,6 +195,19 @@ def test_confirmation_card_extracted_from_reprompt():
     assert card["parameters"]["candidate_name"] == "Ron Ben Ari"
 
 
+def test_confirmation_card_extracted_from_answer_text():
+    answer = (
+        "Before I reserve the budget, please confirm the following submission:\n"
+        "- **Candidate:** Ron Ben Ari\n"
+        "- **Target Role:** Right-Back\n"
+        "- **Salary:** 43,000 EUR/year"
+    )
+    card = advisor._extract_confirmation_from_answer(answer)
+    assert card is not None
+    assert card["function"] == "SubmitPlayerSelectionToManagement"
+    assert card["parameters"]["candidate"] == "Ron Ben Ari"
+
+
 def test_agent_metadata_sanitizes_arns():
     text = advisor._sanitize_text("resource arn:aws:lambda:us-east-1:123456789012:function:test")
     assert "arn:aws" not in text

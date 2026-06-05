@@ -67,6 +67,14 @@ _REMAINING_BUDGET_PATTERN = re.compile(
     re.I,
 )
 _COACH_BRIEF_PREFIX = re.compile(r"^\s*coach\s+brief\s*:\s*", re.I)
+_CONFIRM_PROMPT_PATTERN = re.compile(
+    r"(please confirm|confirm the following|action requires confirmation)",
+    re.I,
+)
+_CONFIRM_FIELD_PATTERN = re.compile(
+    r"(?:^|\n)\s*(?:[-*]\s*)?\*\*(Candidate|Target Role|Salary|Formation|Players):\*\*\s*([^\n]+)",
+    re.I,
+)
 
 
 def is_enabled() -> bool:
@@ -141,7 +149,44 @@ def _extract_confirmation_card(events: list[dict], answer: str) -> dict[str, Any
             "title": "Action requires confirmation",
             "action_label": "Confirm this write action",
         }
-    return None
+    return _extract_confirmation_from_answer(answer)
+
+
+def _extract_confirmation_from_answer(answer: str) -> dict[str, Any] | None:
+    text = answer or ""
+    if not _CONFIRM_PROMPT_PATTERN.search(text):
+        return None
+    fields = {
+        key.lower().replace(" ", "_"): value.strip()
+        for key, value in _CONFIRM_FIELD_PATTERN.findall(text)
+    }
+    if "candidate" in fields or "formation" in fields:
+        fn = (
+            "FinalizeCurrentLineup"
+            if "formation" in fields or "players" in fields
+            else "SubmitPlayerSelectionToManagement"
+        )
+        card: dict[str, Any] = {
+            "function": fn,
+            "parameters": fields,
+            "state": "pending",
+        }
+        if fn == "SubmitPlayerSelectionToManagement":
+            card["title"] = "Submit recommendation to management"
+            card["action_label"] = (
+                "Submit recommendation to management and reserve budget"
+            )
+        else:
+            card["title"] = "Save proposed lineup for head-coach review"
+            card["action_label"] = "Save proposed lineup for head-coach review"
+        return card
+    return {
+        "function": "unknown",
+        "parameters": fields,
+        "state": "pending",
+        "title": "Action requires confirmation",
+        "action_label": "Confirm this write action",
+    }
 
 
 def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
@@ -186,7 +231,7 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
             if payload.get("formation"):
                 pass
         guard_trace = event.get("trace", {}).get("trace", {}).get("guardrailTrace")
-        if guard_trace:
+        if guard_trace and guard_trace.get("action") == "INTERVENED":
             guardrail_intervened = True
 
     route_match = _LINEUP_ROUTE_PATTERN.search(answer)
