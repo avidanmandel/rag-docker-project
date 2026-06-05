@@ -177,6 +177,9 @@ function normalizeMarkdownInput(text) {
     ));
     normalized = normalized.replace(/([^\n#\s])(#{1,4})(?=\s)/g, "$1\n$2");
     normalized = normalized.replace(/^(#{1,4})([^\s#\n])/gm, "$1 $2");
+    normalized = normalized.replace(/([^\n])(\d+\.\s+[A-Z][^\n]{2,}?(?:\s+—\s+|\s+-))/g, "$1\n$2");
+    normalized = normalized.replace(/([^\n])([⚠️✅🧠]\s*[A-Z][^\n]{8,})/gu, "$1\n$2");
+    normalized = normalized.replace(/([.!?])\s+(\*\*[⚠️✅🧠]?)/g, "$1\n$2");
     return normalized;
 }
 
@@ -241,12 +244,21 @@ function renderMarkdown(text) {
         if (/^#{1,4}\s*$/.test(line)) {
             continue;
         }
+        if (/^\d+\.\s+/.test(line)) {
+            out.push(`<p class="markdown-section-title">${formatInlineMarkdown(line)}</p>`);
+            continue;
+        }
         if (/^>\s?/.test(line)) {
             out.push(`<blockquote>${escapeHtml(line.replace(/^>\s?/, ""))}</blockquote>`);
             continue;
         }
         if (/^[-*]\s+/.test(line)) {
-            out.push(`<li>${formatInlineMarkdown(line.replace(/^[-*]\s+/, ""))}</li>`);
+            const item = line.replace(/^[-*]\s+/, "");
+            const parts = item.split(/\n(?=\d+\.\s+[A-Z])/).filter(Boolean);
+            parts.forEach((part, index) => {
+                const value = index === 0 ? part : part.trim();
+                out.push(`<li>${formatInlineMarkdown(value)}</li>`);
+            });
             continue;
         }
         if (/^---+$/.test(line)) {

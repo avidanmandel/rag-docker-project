@@ -23,7 +23,7 @@ def test_homepage_hero_uses_full_column_height_and_contain():
     assert "height: 100%" in stage_block
     img_block = repair.split(".messages.messages--landing .dashboard-stage__panel-img {", 1)[1].split("}", 1)[0]
     assert "transform: scale(" in img_block
-    assert "object-position: center 42%" in img_block
+    assert "object-position: center 40%" in img_block
 
 
 def test_homepage_hero_stage_fills_right_column_not_fixed_poster_frame():

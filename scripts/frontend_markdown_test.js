@@ -135,4 +135,13 @@ const stripped = stripInternalDetails(
 assert(!stripped.includes("/api/recruitment-advisor/lineups/current/image"), "proxy route hidden");
 assert(stripped.includes("Board ready"), "user-facing text preserved");
 
+assert(
+  normalizeMarkdownInput("- depth is thin 4. Midfield Pressure — MEDIUM").includes("\n4."),
+  "inline numbered section split onto new line"
+);
+assert(
+  renderMarkdown("- depth is thin 4. Midfield Pressure — MEDIUM").includes("Midfield Pressure"),
+  "inline numbered section renders separately"
+);
+
 console.log("frontend_markdown_test: OK");
