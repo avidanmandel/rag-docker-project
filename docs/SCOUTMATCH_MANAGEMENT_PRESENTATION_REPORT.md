@@ -69,13 +69,11 @@
 
 ## 14. Role of SNS
 
-**VERIFIED (optional bonus — not required for course demo):**
+**OPTIONAL FUTURE EXTENSION (frozen — not part of course demo or submission):**
 
 - DynamoDB management-review record is the source of truth for submitted recommendations.
-- Publishes **only after Confirm** on player selection; never on Deny, pre-confirm, or idempotent repeat.
-- Never calls `sns:ListTopics` at runtime; uses `SCOUTMATCH_MANAGEMENT_SNS_TOPIC_ARN` on `ScoutMatchSubmitPlayerSelectionAvidan` only.
-- Publish failure is non-blocking; UI shows clean pending-approval wording without SNS jargon.
-- **MANUAL VALIDATION REQUIRED:** Topic `ScoutMatchManagementNotificationsAvidan` must exist in **us-east-1** under the ScoutMatch account. Live Lambda publish currently reports `NotFoundException`. Email inbox delivery not verified in this pass.
+- SNS publish code is isolated, non-blocking, and safe to ignore for presentation purposes.
+- **Not listed as a project blocker.** See `docs/SCOUTMATCH_FINAL_COURSE_READINESS_REPORT.md`.
 
 ## 15. Role of private S3 SVG storage
 

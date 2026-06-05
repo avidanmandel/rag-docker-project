@@ -30,9 +30,9 @@ Documents
 | Public four-tool validation | `BLOCKERS=0` |
 | Guardrail live regression | `BLOCKERS=0` (v11, alias v22) |
 | Live rehearsal script | `python scripts/final_hardening_live_rehearsal.py` |
-| SNS management notification | **Optional bonus** — DynamoDB is source of truth; see `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md` |
-| SNS live publish | **Not verified** — Lambda reports `NotFoundException` until topic exists in runtime account/region |
-| Submission package | **DRAFT** — see `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md` |
+| SNS management notification | **Optional future extension** — not required for course demo or submission |
+| Course readiness audit | `docs/SCOUTMATCH_FINAL_COURSE_READINESS_REPORT.md` |
+| Submission package | **READY_FOR_MANUAL_SCREENSHOTS** — see `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md` |
 
 ## Current production release
 

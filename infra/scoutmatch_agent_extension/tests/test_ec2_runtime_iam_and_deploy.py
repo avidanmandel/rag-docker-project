@@ -92,8 +92,9 @@ def test_build_policy_document_scopes_alias_arn_only():
 
 
 def test_lineup_proxy_requires_s3_get_and_list():
-    """Flask proxy uses list_objects_v2 + get_object on private lineup prefix."""
+    """Flask proxy uses DynamoDB metadata + get_object with list_objects fallback."""
     service = (ROOT / "lineup_board_service.py").read_text(encoding="utf-8")
+    assert "_object_key_from_metadata" in service
     assert "list_objects_v2" in service
     assert "get_object" in service
     doc = json.loads(TEMPLATE.read_text(encoding="utf-8"))
@@ -101,3 +102,5 @@ def test_lineup_proxy_requires_s3_get_and_list():
     actions = s3_stmt["Action"]
     assert "s3:GetObject" in actions
     assert "s3:ListBucket" in actions
+    ddb_stmt = doc["Statement"][2]
+    assert "dynamodb:GetItem" in ddb_stmt["Action"]

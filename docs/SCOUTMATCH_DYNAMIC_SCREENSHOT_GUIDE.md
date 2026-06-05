@@ -1,94 +1,132 @@
-# ScoutMatch Dynamic Screenshot Guide
+# ScoutMatch Screenshot Checklist (short)
 
-Store PNGs under `submission_evidence/agent_flow_extension/`. Do not fabricate images.
+Store PNGs under `submission_evidence/agent_flow_extension/`.  
+Baseline v14 screenshots already exist in `submission_evidence/final_v14/` (11 PNGs).
 
-## Baseline v14 (already captured)
+**SNS screenshots are not required** for course submission.
 
-See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, grounded answers, refusal, upload, delete, clear.
+---
 
-## Bedrock architecture (required)
+## A. Automatically validated (Cursor / scripts — no manual capture needed)
 
-| File | Capture |
-|------|---------|
-| `kb_console_overview.png` | Knowledge Base `knowledge-base-user5` |
-| `kb_data_source_sync.png` | Data source sync COMPLETE (includes `scoutmatch/knowledge-base/tactical/` if added) |
-| `agent_kb_association_enabled.png` | Agent → Knowledge Bases → state **ENABLED** |
-| `agent_guardrail_central.png` | `scoutmatch-guardrail-user5-avidan` attached to agent (one central guardrail) |
+| Item | Validation command / evidence |
+|------|-------------------------------|
+| Public health | `curl http://3.239.47.249/api/health` → 200 |
+| Homepage HTTP 200 | `curl http://3.239.47.249/` → 200 |
+| Four-tool live flows | `python infra/scoutmatch_agent_extension/scripts/validate_public_alias_four_tool.py` → BLOCKERS=0 |
+| Full live rehearsal | `python scripts/final_course_readiness_rehearsal.py` → BLOCKERS=0 |
+| Guardrail regression | `python scripts/run_guardrail_regression.py` → BLOCKERS=0 |
+| Automated tests | `python -m pytest -q` → 437 passed |
+| Sanitized AWS evidence | `python scripts/collect_aws_sanitized_evidence.py` → JSON artifact |
+| Secret scan | `python scripts/run_secret_scan.py` → REVIEW (no live keys) |
 
-## Final four-Lambda architecture (applied)
+---
 
-| File | Capture |
-|------|---------|
-| `four_action_groups_enabled.png` | Exactly four groups: `ScoutMatchTacticsActionsAvidan`, `ScoutMatchSelectionAgAvidan`, `ScoutMatchLineupActionsAvidan`, `ScoutMatchLineupBoardActionsAvidan` |
-| `four_dedicated_lambdas.png` | `ScoutMatchPlanMatchTacticsAvidan`, `ScoutMatchSubmitPlayerSelectionAvidan`, `ScoutMatchFinalizeCurrentLineupAvidan`, `ScoutMatchGenerateLineupBoardAvidan` |
-| `legacy_groups_detached.png` | Old native/football groups disabled on agent; Lambdas still exist in console |
+## B. Manual screenshots required (short ordered list)
 
-## Dynamic sporting-director flow
+### 1. `agent_kb_association_enabled.png`
 
-| File | Capture |
-|------|---------|
-| `31_dynamic_analyst_chat.png` | Multi-turn polished root UI conversation (coach brief → selection → lineup) |
-| `32_squad_planning_context_saved.png` | DynamoDB `SQUAD_CONTEXT` / `TACTICAL_PLAN` item (sanitized) |
-| `33_player_selection_confirmation.png` | Bedrock confirmation before budget reservation |
-| `37_budget_ledger_record.png` | `RESERVED_PENDING_APPROVAL` ledger entry |
-| `34_sns_management_topic.png` | `ScoutMatchManagementNotificationsAvidan` topic |
-| `35_sns_publish_evidence.png` | Publish metrics / message preview (no email in repo) |
-| `38_lineup_record.png` | Finalized 11-player lineup record |
-| `39_private_lineup_svg_s3.png` | Private object under `scoutmatch/football-operations/lineups/` |
-| `40_inline_lineup_board_chat.png` | SVG inline in polished root UI chat (Flask proxy route only) |
-| `41_lineup_board_433.png` | Full board with 11 own-team markers |
-| `42_pending_management_marker.png` | PENDING APPROVAL badge on Ron Ben Ari |
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → Amazon Bedrock → Agents → `scoutmatch-recruitment-agent-user5-avidan` → Knowledge bases |
+| **Must show** | Knowledge base association state **ENABLED** |
+| **Hide / blur** | Full ARNs, account ID, alias IDs |
+| **Slide** | Slide 4 — AWS architecture |
 
-## Required manual screenshot order (16 items)
+### 2. `kb_data_source_sync_complete.png`
 
-| # | File | Capture |
-|---|------|---------|
-| 1 | `agent_kb_association_enabled.png` | Agent → Knowledge Bases → **ENABLED** |
-| 2 | `kb_data_source_sync_complete.png` | Data source sync **COMPLETE** (tactical docs included) |
-| 3 | `agent_guardrail_central.png` | `scoutmatch-guardrail-user5-avidan` on agent |
-| 4 | `four_action_groups_enabled.png` | Four final Action Groups only |
-| 5 | `four_dedicated_lambdas.png` | Four dedicated Lambdas |
-| 6 | `dynamodb_fallback_operational_state.png` | `football_ops#` operational record (sanitized) |
-| 7 | `34_sns_management_topic.png` | SNS topic exists (**optional** — not required for course submission) |
-| 8 | `sns_confirmed_email_subscription.png` | Email subscription **Confirmed** (blur email; **optional**) |
-| 9 | `33_player_selection_confirmation.png` | Confirmation prompt in Advisor chat |
-| 10 | `remaining_budget_after_confirm.png` | Remaining budget after confirm |
-| 11 | `39_private_lineup_svg_s3.png` | Private S3 SVG under lineup prefix |
-| 12 | `40_inline_lineup_board_chat.png` | Inline SVG in browser chat |
-| 13 | `41_ron_ben_ari_right_back.png` | Ron Ben Ari at right-back |
-| 14 | `42_pending_management_marker.png` | PENDING_MANAGEMENT_APPROVAL badge |
-| 15 | `17_existing_v14_flask_ui_unchanged.png` | v14 homepage still healthy |
-| 16 | `public_recruitment_advisor_route.png` | Public `/recruitment-advisor` after EC2 cutover |
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → Bedrock → Knowledge bases → `knowledge-base-user5` → Data sources → sync history |
+| **Must show** | Status **COMPLETE** (tactical docs included) |
+| **Hide / blur** | Bucket ARN, data source IDs |
+| **Slide** | Slide 4 — AWS architecture |
 
-## Regression proof
+### 3. `agent_guardrail_central.png`
 
-| File | Capture |
-|------|---------|
-| `17_existing_v14_flask_ui_unchanged.png` | Production homepage unchanged after Advisor work |
-| `public_recruitment_advisor_route.png` | `/recruitment-advisor` after optional EC2 cutover |
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → Bedrock → Agents → Guardrail section |
+| **Must show** | `scoutmatch-guardrail-user5-avidan` attached (central guardrail) |
+| **Hide / blur** | Guardrail version ARN details |
+| **Slide** | Slide 6 — Safety |
 
-## Click-by-click: SNS email subscription
+### 4. `four_action_groups_enabled.png`
 
-See `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`.
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → Bedrock → Agents → Action groups |
+| **Must show** | Exactly four enabled groups: Tactics, Selection, Lineup, Lineup Board |
+| **Hide / blur** | Action group IDs, Lambda ARNs |
+| **Slide** | Slide 4 — AWS architecture |
 
-## Click-by-click: Knowledge Base tactical sync
+### 5. `four_dedicated_lambdas.png`
 
-1. AWS Console → Amazon Bedrock → Knowledge bases → `knowledge-base-user5`
-2. Data sources → `scoutmatch-player-documents` → Sync history → confirm COMPLETE after tactical upload
-3. Agents → `scoutmatch-recruitment-agent-user5-avidan` → Knowledge bases → **ENABLED**
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → Lambda → Functions (filter `ScoutMatch`) |
+| **Must show** | Four final Lambdas: PlanMatchTactics, SubmitPlayerSelection, FinalizeCurrentLineup, GenerateLineupBoard |
+| **Hide / blur** | Full function ARNs |
+| **Slide** | Slide 4 — AWS architecture |
 
-## MANUAL viewport validation (browser automation unavailable)
+### 6. `33_player_selection_confirmation.png`
 
-Capture at **1366×768**, **1440×900**, and **1920×1080**. Save sanitized PNGs under `submission_evidence/agent_flow_extension/viewport/`.
+| Field | Detail |
+|-------|--------|
+| **Where** | Browser → http://3.239.47.249/ → chat after submit prompt |
+| **Must show** | Confirm / Deny confirmation card before budget write |
+| **Hide / blur** | Session IDs, internal trace IDs |
+| **Slide** | Slide 3 — User journey |
 
-| File | Check |
-|------|-------|
-| `01_home_opening_season_1366x768.png` | No page-level vertical scrollbar; four opening prompts visible |
-| `02_sidebar_collapsed.png` | Groups collapsed; no full player/doc lists |
-| `03_sidebar_expanded.png` | Expanded group scrolls internally only |
-| `04_system_status_collapsed.png` | System status collapsed by default |
-| `05_system_status_expanded.png` | Expanded status shows sanitized labels only |
+### 7. `remaining_budget_after_confirm.png`
 
-**Verify:** composer visible, summary cards visible, Markdown rendered (no raw `**`), no internal IDs, no prominent AWS developer labels, chat scrolls inside message area only.
+| Field | Detail |
+|-------|--------|
+| **Where** | Browser → same chat after Confirm |
+| **Must show** | Pending management approval; reserved 43,000 EUR; remaining 57,000 EUR |
+| **Hide / blur** | Internal status codes, planning context IDs |
+| **Slide** | Slide 5 — Live demo |
 
-**Automated text evidence:** `python scripts/collect_aws_sanitized_evidence.py` and `python scripts/final_hardening_live_rehearsal.py`.
+### 8. `40_inline_lineup_board_chat.png`
+
+| Field | Detail |
+|-------|--------|
+| **Where** | Browser → after *Show me the current proposed lineup* |
+| **Must show** | Inline SVG board in chat; Flask proxy route only |
+| **Hide / blur** | Public S3 URLs (must not appear) |
+| **Slide** | Slide 5 — Live demo |
+
+### 9. `39_private_lineup_svg_s3.png`
+
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → S3 → bucket → `scoutmatch/football-operations/lineups/` |
+| **Must show** | Private SVG object (no public ACL) |
+| **Hide / blur** | Bucket name if sensitive; full object ARN |
+| **Slide** | Slide 4 — AWS architecture |
+
+### 10. `dynamodb_fallback_operational_state.png`
+
+| Field | Detail |
+|-------|--------|
+| **Where** | AWS Console → DynamoDB → `ScoutMatchRecruitmentShortlistAvidan` → Explore items → `football_ops#` prefix |
+| **Must show** | Sanitized player selection or budget ledger record |
+| **Hide / blur** | Personal data, full table ARN |
+| **Slide** | Slide 4 — AWS architecture |
+
+---
+
+## Optional viewport captures (browser only)
+
+If time permits, capture at 1440×900 under `submission_evidence/agent_flow_extension/viewport/`:
+
+- `01_home_opening_season.png` — no page scrollbar; four quick-start prompts visible
+- `02_sidebar_collapsed.png` — collapsed sidebar groups
+
+---
+
+## After screenshots
+
+1. Verify filenames match the table above.
+2. Run `python scripts/prepare_submission_zip.py`.
+3. Update `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md` status to **FINAL**.

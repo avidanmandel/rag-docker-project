@@ -2,91 +2,73 @@
 
 **Date:** 2026-06-04  
 **Branch:** `feature/scoutmatch-agent-flow-extension`  
-**Starting commit (SNS pass):** `9fad787`  
-**Package status:** **DRAFT** (manual viewport/Console screenshots still required; SNS publish not yet verified live)
+**Package status:** **READY_FOR_MANUAL_SCREENSHOTS**
 
 ---
 
-## Included in repository / draft ZIP
+## What is complete
 
-- Application source (Flask, Agent service, four-tool Lambdas, shared football modules)
-- Opening-season dataset and knowledge upload scripts
-- Tests (437 passed full suite)
-- Deployment and validation scripts
-- Sanitized documentation set
-- Evidence JSON: `artifacts/evidence/scoutmatch_sanitized_aws_evidence.json`
+| Area | Status |
+|------|--------|
+| Flask + Bedrock KB RAG on EC2 Docker | **Complete** — http://3.239.47.249/ |
+| Four-tool Bedrock Agent (4 Lambdas, 4 Action Groups) | **Complete** — live validation BLOCKERS=0 |
+| DynamoDB operational workflow + confirmation gates | **Complete** |
+| Private lineup SVG + Flask proxy | **Complete** — metadata lookup + S3 GetObject |
+| Guardrail live regression | **Complete** — BLOCKERS=0 |
+| Automated tests | **437 passed** |
+| Live rehearsal Flows A–G | **Complete** — BLOCKERS=0 |
+| Final demo script | **Complete** — `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md` |
+| Presentation content (6 slides) | **Complete** — `docs/SCOUTMATCH_FINAL_PRESENTATION_CONTENT.md` |
+| Course requirements audit | **Complete** — `docs/SCOUTMATCH_FINAL_COURSE_READINESS_REPORT.md` |
+| Baseline v14 screenshots | **Complete** — `submission_evidence/final_v14/` (11 PNGs) |
+| Candidate submission ZIP | **Generated** — `dist/Avidan_RAG_Docker_Project-submission.zip` |
 
-## Excluded (by design)
+## What is automatically validated
 
-- `.env`, `.env.agent`, PEM keys, `chat.db`, raw logs
-- Complete ARNs, account IDs, Agent IDs in committed docs
-- Subscriber email addresses in any committed file
-- Unsafe screenshots with private identifiers
-- Repair scratch scripts (`fix_agent_model.py`, `repair_agent_runtime.py`) — untracked, not packaged
+```
+python -m pytest -q                          → 437 passed
+python scripts/final_course_readiness_rehearsal.py  → BLOCKERS=0
+python infra/.../validate_public_alias_four_tool.py   → BLOCKERS=0
+python scripts/run_guardrail_regression.py     → BLOCKERS=0
+python scripts/collect_aws_sanitized_evidence.py
+python scripts/run_secret_scan.py            → REVIEW (no live keys committed)
+```
+
+## SNS (optional only — not a blocker)
+
+SNS code remains as a **non-blocking optional extension**. The course demo, presentation, and submission **do not depend on SNS**. DynamoDB is the source of truth for submitted recommendations.
+
+## Screenshots still requiring manual capture
+
+See `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md` — **10 items** (Bedrock Console + browser demo). SNS screenshots **not required**.
+
+## What remains before final submission
+
+1. Capture the 10 manual screenshots listed in the screenshot guide.
+2. Store PNGs under `submission_evidence/agent_flow_extension/`.
+3. Rehearse the 5–7 minute demo once (backup screenshots ready).
+4. Regenerate ZIP and mark this report **FINAL**.
 
 ## Secret scan
 
-**Result:** REVIEW (heuristic matches in code comments / variable names — no live keys committed)  
-**Report:** `artifacts/evidence/secret_scan_report.json`  
+**Result:** REVIEW — heuristic matches only; no live keys, PEM files, or subscriber emails committed.  
 **Command:** `python scripts/run_secret_scan.py`
-
-## Test result
-
-```
-437 passed, 0 failed (python -m pytest -q --cache-clear)
-```
-
-## DynamoDB source of truth
-
-- Confirmed player recommendations are persisted in DynamoDB management-review / selection records.
-- User-facing status after Confirm: **Pending management approval** (`PENDING_MANAGEMENT_APPROVAL` internally).
-- Management approval and signing remain **outside** the application.
-
-## SNS optional extension
-
-| Item | Result |
-|------|--------|
-| Course-facing live demo depends on SNS | **No** — core workflow is DynamoDB + budget reservation |
-| Topic name | `ScoutMatchManagementNotificationsAvidan` |
-| Region | `us-east-1` |
-| Local discovery | `sts_constructed_fallback` — local IAM lacks `sns:GetTopicAttributes`, `sns:ListTopics`, `sns:CreateTopic`, `sns:Publish` |
-| Lambda env configured | **Yes** — `ScoutMatchSubmitPlayerSelectionAvidan` only (`SCOUTMATCH_MANAGEMENT_SNS_TOPIC_ARN`) |
-| Lambda publish (live) | **Failed** — `NotFoundException` (topic not found at configured ARN in runtime account/region) |
-| Publish only after Confirm | **Verified** (Lambda + unit tests) |
-| Deny never publishes | **Verified** |
-| Repeat Confirm idempotent (no duplicate SNS) | **Verified** |
-| SNS failure non-blocking | **Verified** — DynamoDB write and budget reservation succeed |
-| Inbox delivery verified | **No** — email subscription not confirmed in this pass |
-
-## Runtime validation
-
-| Check | Result |
-|-------|--------|
-| Public health `/api/health` | VERIFIED 200 |
-| Four-tool alias validation | VERIFIED BLOCKERS=0 |
-| Live rehearsal A–H | VERIFIED BLOCKERS=0 |
-| Guardrail live regression | VERIFIED BLOCKERS=0 (v11, alias v22) |
-| No-lineup edge case (unit) | VERIFIED — `test_lineup_scoped_to_active_demo_season_only` |
-| Clean UI selection wording | VERIFIED — no SNS jargon in ordinary success text |
-
-## Remaining manual artifacts
-
-1. Verify SNS topic exists in **same AWS account and region** as ScoutMatch Lambdas (`us-east-1`)
-2. Run `python scripts/configure_sns_lambda_env.py` after topic verification
-3. Optional SNS email subscription confirmation (not required for course submission)
-4. Viewport screenshots (manual checklist in `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`)
-5. AWS Console evidence screenshots
 
 ## ZIP status
 
-**DRAFT** — run `python scripts/prepare_submission_zip.py` after manual screenshots are captured.  
-Do **not** mark FINAL until required presentation screenshots are complete. SNS screenshots are optional for course submission.
+**READY_FOR_MANUAL_SCREENSHOTS** — not FINAL until manual screenshots are complete.
+
+Regenerate:
+
+```bash
+python scripts/prepare_submission_zip.py
+```
+
+Output: `dist/Avidan_RAG_Docker_Project-submission.zip` + manifest + SHA256.
 
 ## Exact next action for the user
 
-1. AWS Console → SNS → confirm topic `ScoutMatchManagementNotificationsAvidan` exists in **us-east-1** under the ScoutMatch account
-2. Run `python scripts/configure_sns_lambda_env.py`
-3. Re-test Confirm flow; expect optional line **Management notification sent.** only after real publish succeeds
-4. Optional: email subscription per `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`
-5. Capture manual viewport and Console screenshots per `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`
-6. Regenerate draft/final ZIP and mark this report **FINAL**
+1. Open `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`.
+2. Capture screenshots 1–10 (AWS Console + browser).
+3. Run `python scripts/prepare_submission_zip.py`.
+4. Submit the ZIP with `submission_evidence/` folders attached.

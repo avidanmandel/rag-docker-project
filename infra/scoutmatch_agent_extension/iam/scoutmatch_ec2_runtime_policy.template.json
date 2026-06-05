@@ -20,6 +20,12 @@
           "s3:prefix": ["scoutmatch/football-operations/lineups/*"]
         }
       }
+    },
+    {
+      "Sid": "ReadLineupBoardMetadataOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem"],
+      "Resource": ["arn:aws:dynamodb:{{REGION}}:{{ACCOUNT_ID}}:table/{{FOOTBALL_OPS_TABLE}}"]
     }
   ]
 }

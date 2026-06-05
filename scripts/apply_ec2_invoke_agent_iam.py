@@ -22,6 +22,9 @@ REGION = os.getenv("AWS_REGION", "us-east-1")
 ROLE_NAME = "ScoutMatch-EC2-Role"
 POLICY_NAME = "ScoutMatchEC2InvokeAgentAvidan"
 LINEUP_PREFIX = "scoutmatch/football-operations/lineups/"
+FOOTBALL_OPS_TABLE = os.getenv(
+    "SCOUTMATCH_FOOTBALL_OPS_TABLE", "ScoutMatchRecruitmentShortlistAvidan"
+)
 
 
 def _load_agent_ids() -> tuple[str, str]:
@@ -68,7 +71,13 @@ def _bucket_name() -> str:
 def build_policy_document(*, account_id: str, agent_id: str, alias_id: str, bucket: str) -> dict:
     alias_arn = f"arn:aws:bedrock:{REGION}:{account_id}:agent-alias/{agent_id}/{alias_id}"
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    document = template.replace("{{AGENT_ALIAS_ARN}}", alias_arn).replace("{{BUCKET_NAME}}", bucket)
+    document = (
+        template.replace("{{AGENT_ALIAS_ARN}}", alias_arn)
+        .replace("{{BUCKET_NAME}}", bucket)
+        .replace("{{REGION}}", REGION)
+        .replace("{{ACCOUNT_ID}}", account_id)
+        .replace("{{FOOTBALL_OPS_TABLE}}", FOOTBALL_OPS_TABLE)
+    )
     return json.loads(document)
 
 
