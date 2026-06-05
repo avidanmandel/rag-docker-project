@@ -2,6 +2,7 @@
 
 const API = {
     status: () => fetch("/api/status").then(r => r.json()),
+    openingSeasonWorkspace: () => fetch("/api/opening-season/workspace").then(r => r.json()),
     listSessions: () => fetch("/api/sessions").then(r => r.json()),
     createSession: () =>
         fetch("/api/sessions", {
@@ -104,6 +105,7 @@ const state = {
     kbOperationInProgress: false,
     sessionDocumentRevision: 0,
     ingestionJobId: null,
+    workspace: null,
 };
 
 const els = {
@@ -132,9 +134,13 @@ const els = {
     syncStatus: document.getElementById("syncStatus"),
     documentList: document.getElementById("documentList"),
     baselineDocumentList: document.getElementById("baselineDocumentList"),
+    candidatePoolList: document.getElementById("candidatePoolList"),
     clearDocumentsBtn: document.getElementById("clearDocumentsBtn"),
     resetProjectBtn: document.getElementById("resetProjectBtn"),
-    awsBadge: document.getElementById("awsBadge"),
+    workspaceBadge: document.getElementById("workspaceBadge"),
+    systemStatusList: document.getElementById("systemStatusList"),
+    squadCountLabel: document.getElementById("squadCountLabel"),
+    candidateCountLabel: document.getElementById("candidateCountLabel"),
 };
 
 const REFUSAL_MARKERS = [
@@ -251,19 +257,101 @@ function updateComposerState() {
 }
 
 async function refreshKbDocuments() {
+    const clubDocs =
+        state.workspace?.club_knowledge ||
+        (state.activeSessionId
+            ? (await API.listDocuments(state.activeSessionId).catch(() => ({}))).club_knowledge
+            : null) ||
+        [];
+    const poolDocs =
+        state.workspace?.candidate_pool ||
+        (state.activeSessionId
+            ? (await API.listDocuments(state.activeSessionId).catch(() => ({}))).candidate_pool
+            : null) ||
+        [];
+    renderBaselineDocuments(clubDocs);
+    renderCandidatePool(poolDocs);
     if (!state.activeSessionId) {
-        renderBaselineDocuments([]);
         renderKbDocuments([]);
         return;
     }
     try {
         const d = await API.listDocuments(state.activeSessionId);
-        renderBaselineDocuments(d.club_knowledge || []);
-        renderKbDocuments(d.candidate_documents || d.documents || []);
+        renderBaselineDocuments(d.club_knowledge || clubDocs);
+        renderCandidatePool(d.candidate_pool || poolDocs);
+        renderKbDocuments(d.session_uploads || d.candidate_documents || []);
     } catch {
-        renderBaselineDocuments([]);
         renderKbDocuments([]);
     }
+}
+
+async function loadOpeningSeasonWorkspace() {
+    try {
+        const ws = await API.openingSeasonWorkspace();
+        state.workspace = ws;
+        if (els.squadCountLabel) {
+            els.squadCountLabel.textContent = String(ws.club_player_count || 15);
+        }
+        if (els.candidateCountLabel) {
+            els.candidateCountLabel.textContent = String(ws.candidate_pool_count || 8);
+        }
+        renderBaselineDocuments(ws.club_knowledge || []);
+        renderCandidatePool(ws.candidate_pool || []);
+        renderSuggestedPrompts(ws.suggested_prompts || [], ws.secondary_prompts || []);
+        renderSystemStatus(ws.system_status || {});
+    } catch {
+        renderSuggestedPrompts([], []);
+    }
+}
+
+function renderSuggestedPrompts(primary, secondary) {
+    if (!els.suggestions) return;
+    els.suggestions.innerHTML = "";
+    [...primary, ...secondary].forEach(item => {
+        const btn = document.createElement("button");
+        btn.className = "suggestion";
+        btn.type = "button";
+        btn.dataset.q = item.query || item.label || "";
+        btn.textContent = item.label || item.query || "";
+        els.suggestions.appendChild(btn);
+    });
+}
+
+function renderSystemStatus(status) {
+    if (!els.systemStatusList) return;
+    const rows = [
+        ["Club knowledge", status.club_knowledge || "available"],
+        ["Scouted candidates", status.scouted_candidates || "8 loaded"],
+        ["Agent tools", status.agent_tools || "4 available"],
+        ["Safety controls", status.safety_controls || "enabled"],
+    ];
+    els.systemStatusList.innerHTML = rows
+        .map(([k, v]) => `<li><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></li>`)
+        .join("");
+}
+
+function renderCandidatePool(docs) {
+    if (!els.candidatePoolList) return;
+    els.candidatePoolList.innerHTML = "";
+    if (!docs.length) {
+        const empty = document.createElement("div");
+        empty.className = "document-list__empty";
+        empty.textContent = "8 preloaded candidates";
+        els.candidatePoolList.appendChild(empty);
+        return;
+    }
+    docs.forEach(doc => {
+        const row = document.createElement("div");
+        row.className = "document-list__item document-list__item--readonly";
+        const pos = (doc.primary_position || "Candidate").toUpperCase();
+        const label = doc.display_name || doc.name || "Candidate";
+        row.innerHTML = `
+            <span class="document-list__badge document-list__badge--scout">${escapeHtml(pos.split(" ")[0])}</span>
+            <span class="document-list__name" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            <span class="document-list__lock" title="Preloaded scouting report">&#128274;</span>
+        `;
+        els.candidatePoolList.appendChild(row);
+    });
 }
 
 function renderBaselineDocuments(docs) {
@@ -424,8 +512,12 @@ async function pollEngineStatus() {
         const s = await API.status();
         state.awsMode = s.aws_mode === true || s.rag_backend === "aws_kb";
 
-        if (els.awsBadge) {
-            els.awsBadge.hidden = !state.awsMode;
+        if (els.workspaceBadge) {
+            els.workspaceBadge.hidden = false;
+            els.workspaceBadge.textContent =
+                s.workspace_ready === false
+                    ? "Opening-season workspace loading"
+                    : "Opening-season workspace ready";
         }
         if (els.resetProjectBtn) {
             els.resetProjectBtn.hidden = state.awsMode;
@@ -455,9 +547,9 @@ async function pollEngineStatus() {
             state.engineReady = true;
             els.statusDot.dataset.state = "ready";
             if (state.agentMode) {
-                els.statusText.textContent = "Bedrock Agent recruitment workspace ready";
+                els.statusText.textContent = "Opening-season workspace ready";
             } else if (state.awsMode) {
-                els.statusText.textContent = "AWS Bedrock KB ready";
+                els.statusText.textContent = "Opening-season workspace ready";
             } else {
                 els.statusText.textContent = `Ready — ${s.chunks} chunks indexed`;
             }
@@ -1117,6 +1209,7 @@ els.clearDocumentsBtn?.addEventListener("click", clearActiveDocuments);
 els.resetProjectBtn?.addEventListener("click", () => handleResetProject());
 
 (async function boot() {
+    await loadOpeningSeasonWorkspace();
     pollEngineStatus();
     await loadSessions();
     renderMessages();

@@ -4,18 +4,28 @@ from __future__ import annotations
 
 import uuid
 
-from operations_store import get_item, list_by_prefix, put_item
+from operations_store import active_demo_season_id, get_item, list_by_prefix, put_item
 
 
 def get_context_budget() -> dict | None:
     return get_item("squad_context#current")
 
 
+def _in_active_demo_season(record: dict) -> bool:
+    season = (record.get("demo_season_id") or "").strip()
+    if not season:
+        return False
+    return season == active_demo_season_id()
+
+
 def sum_reserved_amounts() -> int:
     total = 0
     for entry in list_by_prefix("budget_ledger#"):
-        if entry.get("entry_type") == "RESERVATION":
-            total += int(entry.get("reserved_amount_eur") or 0)
+        if entry.get("entry_type") != "RESERVATION":
+            continue
+        if not _in_active_demo_season(entry):
+            continue
+        total += int(entry.get("reserved_amount_eur") or 0)
     return total
 
 
@@ -31,7 +41,11 @@ def available_budget_from_context() -> tuple[int | None, str]:
 def existing_selection_reservation(candidate_name: str) -> dict | None:
     key = f"player_selection#{candidate_name.strip().lower()}"
     record = get_item(key)
-    if record and record.get("reservation_status") == "RESERVED_PENDING_APPROVAL":
+    if (
+        record
+        and record.get("reservation_status") == "RESERVED_PENDING_APPROVAL"
+        and _in_active_demo_season(record)
+    ):
         return record
     return None
 

@@ -129,16 +129,19 @@ def plan_match_tactics(
             "A compact shape limits exposure on the weak flank.",
         ]
 
+    from operations_store import active_demo_season_id
+
     record = put_item(
         entity_key="squad_context#current",
         item_type="SQUAD_CONTEXT",
         payload={
             "planning_context_id": planning_context_id,
+            "demo_season_id": active_demo_season_id(),
             "opponent": opponent,
             "preferred_formation": primary,
             "priority_positions": "RB" if signals["weak_right_back"] else "",
             "strong_positions": "attack" if signals["striker_alone"] else "",
-            "available_budget_eur": int(available_budget_eur or 0),
+            "available_budget_eur": int(available_budget_eur or 100000),
             "coach_notes": squad_context[:500],
             "preferred_style": preferred_style[:200],
             "formation_options": formation_options[:200],

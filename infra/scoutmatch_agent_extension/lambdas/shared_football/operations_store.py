@@ -11,7 +11,12 @@ TABLE_NAME = os.getenv(
 )
 HASH_KEY = os.getenv("SCOUTMATCH_FOOTBALL_OPS_HASH_KEY", "entity_key")
 OPS_PREFIX = os.getenv("SCOUTMATCH_FOOTBALL_OPS_KEY_PREFIX", "")
+DEMO_SEASON_ID = os.getenv("SCOUTMATCH_DEMO_SEASON_ID", "opening-season-demo-v1")
 _LOCAL_STORE: dict[str, dict] = {}
+
+
+def active_demo_season_id() -> str:
+    return (DEMO_SEASON_ID or "opening-season-demo-v1").strip()
 
 
 def _now() -> str:
@@ -47,7 +52,13 @@ def get_item(entity_key: str) -> dict | None:
 
 
 def put_item(*, entity_key: str, item_type: str, payload: dict) -> dict:
-    record = {**payload, "entity_key": entity_key, "item_type": item_type, "updated_at": _now()}
+    record = {
+        **payload,
+        "entity_key": entity_key,
+        "item_type": item_type,
+        "updated_at": _now(),
+        "demo_season_id": payload.get("demo_season_id") or active_demo_season_id(),
+    }
     if not _use_ddb():
         _LOCAL_STORE[entity_key] = record
         return record

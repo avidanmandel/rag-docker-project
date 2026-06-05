@@ -29,6 +29,12 @@ GEMINI_API_KEY = config.GEMINI_API_KEY
 HF_TOKEN = config.HF_TOKEN
 import database  # noqa: E402
 from baseline_club_knowledge import parse_demo_candidate_content  # noqa: E402
+from opening_season_workspace import (  # noqa: E402
+    candidate_pool_payload,
+    club_knowledge_payload,
+    system_status_panel,
+    workspace_summary,
+)
 from requirement_verification import _name_from_filename, _parse_facts_from_text  # noqa: E402
 from rag_engine import RAGEngine  # noqa: E402
 from aws_kb_engine import AWS_KB_MODE_MSG, AWSKnowledgeBaseEngine  # noqa: E402
@@ -453,6 +459,12 @@ def api_status():
     payload["chat_backend"] = (
         "bedrock_agent" if recruitment_advisor_enabled() else config.RAG_BACKEND
     )
+    ws = workspace_summary()
+    payload["opening_season_workspace"] = True
+    payload["workspace_ready"] = ws.get("workspace_ready", True)
+    payload["club_player_count"] = ws["club_player_count"]
+    payload["candidate_pool_count"] = ws["candidate_pool_count"]
+    payload["demo_season_id"] = ws["demo_season_id"]
     return jsonify(payload)
 
 
@@ -701,6 +713,20 @@ def _session_or_404(session_id: str):
     return session, None
 
 
+@app.route("/api/opening-season/workspace", methods=["GET"])
+def api_opening_season_workspace():
+    """Opening-season workspace metadata for polished root UI."""
+    ws = workspace_summary()
+    return jsonify(
+        {
+            **ws,
+            "club_knowledge": club_knowledge_payload(),
+            "candidate_pool": candidate_pool_payload(),
+            "system_status": system_status_panel(),
+        }
+    )
+
+
 @app.route("/api/baseline/documents", methods=["GET"])
 def api_list_baseline_documents():
     """Return read-only club knowledge documents for the active baseline set."""
@@ -723,23 +749,23 @@ def api_list_session_documents(session_id):
     if error:
         return error
 
-    baseline_docs = (
-        [_baseline_document_payload(d) for d in database.list_baseline_documents()]
-        if config.BASELINE_KNOWLEDGE_ENABLED
-        else []
-    )
-    candidate_docs = [
+    club_docs = club_knowledge_payload()
+    pool_docs = candidate_pool_payload()
+    session_upload_docs = [
         _session_document_payload(d) for d in database.list_session_documents(session_id)
     ]
     ingestion = aws_storage.latest_ingestion_snapshot() if _is_aws_kb_mode() else None
     if ingestion:
-        for doc in candidate_docs:
+        for doc in session_upload_docs:
             doc["ingestion_status"] = ingestion.get("status")
     return jsonify({
-        "documents": baseline_docs + candidate_docs,
-        "club_knowledge": baseline_docs,
-        "candidate_documents": candidate_docs,
+        "documents": club_docs + pool_docs + session_upload_docs,
+        "club_knowledge": club_docs,
+        "candidate_pool": pool_docs,
+        "candidate_documents": session_upload_docs,
+        "session_uploads": session_upload_docs,
         "baseline_set_id": config.AWS_BASELINE_SET_ID if config.BASELINE_KNOWLEDGE_ENABLED else None,
+        "opening_season": workspace_summary(),
     })
 
 

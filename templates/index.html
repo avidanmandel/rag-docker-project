@@ -48,16 +48,21 @@
             </button>
 
             <div class="sidebar__badges" id="modeBadges">
-                <span class="badge badge--aws" id="awsBadge" hidden>AWS Bedrock KB connected</span>
-                <span class="badge badge--strict">Grounded answers only</span>
+                <span class="badge badge--workspace" id="workspaceBadge">Opening-season workspace ready</span>
             </div>
 
             <div class="sidebar__kb">
                 <div class="sidebar__label sidebar__label--row">
                     <span>Club Knowledge</span>
-                    <span class="document-list__readonly" title="Preloaded club data">&#128274; Read-only</span>
+                    <span class="document-list__readonly" title="Preloaded club data">Preloaded</span>
                 </div>
                 <div class="document-list document-list--baseline" id="baselineDocumentList"></div>
+
+                <div class="sidebar__label sidebar__label--row sidebar__label--spaced">
+                    <span>Recruitment Candidate Pool</span>
+                    <span class="document-list__readonly" title="Preloaded scouting reports">Preloaded</span>
+                </div>
+                <div class="document-list document-list--pool" id="candidatePoolList"></div>
 
                 <div class="sidebar__label sidebar__label--row sidebar__label--spaced">
                     <span>Uploaded Candidate Documents</span>
@@ -83,6 +88,10 @@
             <div class="session-list" id="sessionList"></div>
 
             <div class="sidebar__footer">
+                <details class="system-status" id="systemStatusPanel">
+                    <summary>System status</summary>
+                    <ul class="system-status__list" id="systemStatusList"></ul>
+                </details>
                 <div class="status" id="engineStatus">
                     <span class="status__dot" data-state="loading"></span>
                     <span class="status__text">Starting ScoutMatch...</span>
@@ -139,41 +148,32 @@
                         <div class="empty-state" id="emptyState">
                             <div class="hero-kicker">
                                 <span class="hero-kicker__dot"></span>
-                                Elite scouting workspace
+                                Opening-season scouting workspace
                             </div>
                             <div class="hero-copy">
-                                <h2 class="hero-copy__headline">Scout smarter. Recommend better.</h2>
-                                <p class="hero-copy__sub">ScoutMatch AI helps recruitment analysts prepare grounded recommendations for management and proposed lineups for head-coach review.</p>
+                                <h2 class="hero-copy__headline">Scout smarter.<br>Build the season.</h2>
+                                <p class="hero-copy__sub">Analyze the current squad, compare preloaded recruitment candidates, respond to coach briefs, and prepare grounded recommendations for the head coach and management.</p>
                             </div>
-                            <div class="scouting-status-strip" aria-hidden="true">
+                            <div class="scouting-status-strip" id="workspaceCards">
                                 <div class="scouting-status-tile">
                                     <span class="scouting-status-tile__icon scouting-status-tile__icon--docs"></span>
-                                    <span>Grounded club documents</span>
+                                    <span><strong id="squadCountLabel">15</strong> current squad players</span>
                                 </div>
                                 <div class="scouting-status-tile">
                                     <span class="scouting-status-tile__icon scouting-status-tile__icon--kb"></span>
-                                    <span>AWS Bedrock KB connected</span>
+                                    <span><strong id="candidateCountLabel">8</strong> scouted recruitment candidates</span>
                                 </div>
                                 <div class="scouting-status-tile">
                                     <span class="scouting-status-tile__icon scouting-status-tile__icon--ready"></span>
+                                    <span>Club knowledge loaded</span>
+                                </div>
+                                <div class="scouting-status-tile">
+                                    <span class="scouting-status-tile__icon scouting-status-tile__icon--analysis"></span>
                                     <span>Recruitment analysis ready</span>
                                 </div>
                             </div>
-                            <p class="empty-state__notice">Grounded club evidence, Bedrock Agent tools, and confirmation-safe write actions.</p>
-                            <div class="suggestions" id="suggestions">
-                                <button class="suggestion" data-q="Coach brief: Our starting goalkeeper was injured during training and will miss the next three matches. Which position should we prioritize and what tactical adjustment should we propose to the head coach?">
-                                    Analyze an urgent goalkeeper injury
-                                </button>
-                                <button class="suggestion" data-q="Our left-back is unavailable. We do not currently have a strong right-back within the budget. Our striker is aggressive and can play alone. Which formation and playing style should we propose to the head coach?">
-                                    Recommend a formation when full-backs are unavailable
-                                </button>
-                                <button class="suggestion" data-q="I choose Ron Ben Ari because he is the more aggressive option for this match. Submit the player recommendation to management.">
-                                    Submit a player recommendation to management
-                                </button>
-                                <button class="suggestion" data-q="Show me the current proposed lineup.">
-                                    Show the current proposed lineup
-                                </button>
-                            </div>
+                            <p class="empty-state__notice">Opening-season workspace ready — grounded evidence, Agent tools, and confirmation-safe recommendations.</p>
+                            <div class="suggestions" id="suggestions"></div>
                             <div class="workspace-panel" aria-hidden="true">
                                 <div class="workspace-panel__title">Scouting workspace</div>
                                 <div class="workspace-panel__items">

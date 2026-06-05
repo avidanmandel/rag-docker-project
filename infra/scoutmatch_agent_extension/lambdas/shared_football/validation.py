@@ -17,33 +17,65 @@ APPROVED_TRANSFER_CANDIDATES: dict[str, dict] = {
         "salary_eur": 38000,
         "style_note": "budget-flexible right-back option",
     },
-    "or david": {
-        "display_name": "Or David",
-        "target_role": "forward",
-        "salary_eur": 55000,
-        "style_note": "documented forward link-up profile",
+    "omer azulay": {
+        "display_name": "Omer Azulay",
+        "target_role": "goalkeeper",
+        "salary_eur": 45000,
+        "style_note": "build-up oriented goalkeeper",
+    },
+    "yossi levi": {
+        "display_name": "Yossi Levi",
+        "target_role": "goalkeeper",
+        "salary_eur": 42000,
+        "style_note": "shot-stopping goalkeeper",
+    },
+    "noam david": {
+        "display_name": "Noam David",
+        "target_role": "centre-back",
+        "salary_eur": 40000,
+        "style_note": "centre-back depth option",
+    },
+    "roy cohen": {
+        "display_name": "Roy Cohen",
+        "target_role": "midfielder",
+        "salary_eur": 39000,
+        "style_note": "performs well under pressure",
+    },
+    "miguel santos": {
+        "display_name": "Miguel Santos",
+        "target_role": "midfielder",
+        "salary_eur": 37000,
+        "style_note": "relocation-willing midfielder",
+    },
+    "pedro silva": {
+        "display_name": "Pedro Silva",
+        "target_role": "striker",
+        "salary_eur": 48000,
+        "style_note": "aggressive striker option",
     },
 }
 
 OWN_SQUAD_PLAYERS: dict[str, dict] = {
-    "avi cohen": {"display_name": "Avi Cohen", "position": "GK"},
-    "daniel levy": {"display_name": "Daniel Levy", "position": "RB"},
-    "ron ben ari": {"display_name": "Ron Ben Ari", "position": "RB", "transfer_candidate": True},
-    "michael ross": {"display_name": "Michael Ross", "position": "CB"},
-    "yossi bar": {"display_name": "Yossi Bar", "position": "CB"},
-    "tal amar": {"display_name": "Tal Amar", "position": "LB"},
-    "noam sharon": {"display_name": "Noam Sharon", "position": "CM"},
-    "ido katz": {"display_name": "Ido Katz", "position": "CM"},
-    "eran blum": {"display_name": "Eran Blum", "position": "CM"},
-    "lior dan": {"display_name": "Lior Dan", "position": "RW"},
-    "guy navon": {"display_name": "Guy Navon", "position": "LW"},
-    "amit peretz": {"display_name": "Amit Peretz", "position": "ST"},
-    "or david": {"display_name": "Or David", "position": "ST", "transfer_candidate": True},
+    "avi cohen": {"display_name": "Avi Cohen", "position": "GK", "squad_role": "likely_starter"},
+    "daniel park": {"display_name": "Daniel Park", "position": "GK", "squad_role": "rotation"},
+    "michael ross": {"display_name": "Michael Ross", "position": "CB", "squad_role": "likely_starter"},
+    "yossi bar": {"display_name": "Yossi Bar", "position": "CB", "squad_role": "likely_starter"},
+    "noam harari": {"display_name": "Noam Harari", "position": "CB", "squad_role": "rotation"},
+    "tal amar": {"display_name": "Tal Amar", "position": "LB", "squad_role": "likely_starter"},
+    "daniel levy": {"display_name": "Daniel Levy", "position": "RB", "squad_role": "likely_starter"},
+    "guy netzer": {"display_name": "Guy Netzer", "position": "WB", "squad_role": "rotation"},
+    "noam sharon": {"display_name": "Noam Sharon", "position": "CM", "squad_role": "likely_starter"},
+    "ido katz": {"display_name": "Ido Katz", "position": "CM", "squad_role": "likely_starter"},
+    "eran blum": {"display_name": "Eran Blum", "position": "CM", "squad_role": "likely_starter"},
+    "lior geva": {"display_name": "Lior Geva", "position": "AM", "squad_role": "rotation"},
+    "lior dan": {"display_name": "Lior Dan", "position": "RW", "squad_role": "likely_starter"},
+    "guy navon": {"display_name": "Guy Navon", "position": "LW", "squad_role": "likely_starter"},
+    "amit peretz": {"display_name": "Amit Peretz", "position": "ST", "squad_role": "likely_starter"},
 }
 
 VALID_FORMATIONS = frozenset({"4-3-3", "4-4-2", "3-5-2", "3-4-3", "5-4-1", "5-2-3"})
 VALID_POSITIONS = frozenset(
-    {"GK", "RB", "LB", "CB", "DM", "CM", "AM", "RW", "LW", "ST", "CF"}
+    {"GK", "RB", "LB", "CB", "DM", "CM", "AM", "RW", "LW", "ST", "CF", "WB"}
 )
 FORMATION_SLOTS_433 = [
     ("GK", 0.5, 0.92),
