@@ -1,0 +1,24 @@
+{
+  "record_scope": "DEMO",
+  "roster_id": "scoutmatch-demo-433",
+  "formation": "4-3-3",
+  "description": "Sanitized fictional ScoutMatch FC demo roster for the sporting-director lineup-board demo. Not real-world player data.",
+  "players": [
+    {"name": "Avi Cohen", "position": "GK", "role_slot": "goalkeeper"},
+    {"name": "Daniel Levy", "position": "RB", "role_slot": "right-back"},
+    {"name": "Michael Ross", "position": "CB", "role_slot": "center-back"},
+    {"name": "Yossi Bar", "position": "CB", "role_slot": "center-back"},
+    {"name": "Tal Amar", "position": "LB", "role_slot": "left-back"},
+    {"name": "Noam Sharon", "position": "CM", "role_slot": "midfielder"},
+    {"name": "Ido Katz", "position": "CM", "role_slot": "midfielder"},
+    {"name": "Eran Blum", "position": "CM", "role_slot": "midfielder"},
+    {"name": "Lior Dan", "position": "RW", "role_slot": "right-winger"},
+    {"name": "Amit Peretz", "position": "ST", "role_slot": "striker"},
+    {"name": "Guy Navon", "position": "LW", "role_slot": "left-winger"}
+  ],
+  "demo_right_back_candidate": {
+    "name": "Ron Ben Ari",
+    "position": "RB",
+    "note": "Approved transfer candidate used when finalizing the demo lineup at right-back."
+  }
+}

@@ -60,3 +60,23 @@ def test_legacy_resources_not_modified_by_deploy():
 def test_v14_app_still_has_session_messages_route():
     app = (ROOT / "app.py").read_text(encoding="utf-8")
     assert "/api/sessions/<session_id>/messages" in app
+
+
+def test_native_tools_budget_helper_invoke_scoped_in_deploy_plan():
+    assert "ScoutMatchBudgetImpactAvidan" in DEPLOY
+    assert "lambda:InvokeFunction" in DEPLOY
+    assert "ScoutMatchNativeToolsLambdaRoleAvidan" in DEPLOY or "NATIVE_TOOLS_ROLE" in DEPLOY
+
+
+def test_demo_roster_seed_in_deploy_plan():
+    assert "demo_roster" in DEPLOY.lower() or "record_scope" in DEPLOY
+    demo_json = EXT / "demo_data" / "scoutmatch_demo_roster.json"
+    assert demo_json.is_file()
+    assert '"record_scope": "DEMO"' in demo_json.read_text(encoding="utf-8")
+
+
+def test_no_hardcoded_sns_email_in_extension():
+    for path in (EXT / "lambdas").rglob("*.py"):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        assert "@amdocs" not in text.lower()
+        assert "@gmail" not in text.lower()

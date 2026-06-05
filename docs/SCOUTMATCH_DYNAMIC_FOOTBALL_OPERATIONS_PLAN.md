@@ -35,11 +35,30 @@ The Agent must never invent management approval or salaries. Approval status com
 
 | Item type | Key pattern |
 |-----------|-------------|
+| DEMO_ROSTER | `demo_roster#433` (`record_scope=DEMO`) |
 | SQUAD_CONTEXT | `squad_context#current` |
 | LINEUP | `lineup#current` |
 | PLAYER_SELECTION | `player_selection#{candidate}` |
 | BUDGET_LEDGER | `budget_ledger#{id}` |
 | AVAILABILITY_UPDATE | `availability#{player}` |
+
+## Safe demo roster (pre-apply hardened)
+
+**File:** `infra/scoutmatch_agent_extension/demo_data/scoutmatch_demo_roster.json`
+
+- Exactly **11** sanitized fictional own-team players in **4-3-3**
+- **Ron Ben Ari** is the approved right-back transfer candidate for the demo finalize step
+- `record_scope = DEMO` on seeded DynamoDB records
+
+**Apply seeding:** idempotent; seeds only when missing or existing `record_scope=DEMO`. **Never overwrites non-demo data.** **Never deletes existing data.**
+
+**Demo lineup finalize:** when the sporting director requests the demo lineup (`demo_lineup=true` or equivalent), `FinalizeCurrentLineup` loads the sanitized roster and places Ron Ben Ari at right-back. Non-demo lineups still require all 11 starters explicitly.
+
+**Reset demo records later (explicit approval only):**
+
+1. Delete only items with `record_scope=DEMO` or keys `demo_roster#433` / demo-tagged lineup rows.
+2. Re-run `--apply` demo seed step, or call the seed helper manually.
+3. Do not delete production squad context, real selections, or non-demo lineups without explicit user approval.
 
 Concise JSON only — no raw CVs, secrets, or full KB documents.
 
@@ -52,11 +71,7 @@ Concise JSON only — no raw CVs, secrets, or full KB documents.
 
 ### Manual SNS email subscription (after apply)
 
-1. AWS Console → **Amazon SNS** → **Topics**.
-2. Open `ScoutMatchManagementNotificationsAvidan`.
-3. **Create subscription** → Protocol **Email** → enter management address.
-4. Confirm the subscription from the inbox.
-5. Re-run a confirmed `SubmitPlayerSelectionToManagement` test.
+See full guide: `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`
 
 ## SVG lineup board flow
 

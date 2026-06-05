@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from demo_roster import build_demo_starting_xi, is_demo_lineup_request
 from operations_store import get_item, put_item
 from squad_context import get_current_context
 from validation import normalize_name, resolve_squad_player, validate_formation, validate_starter_lineup
@@ -39,7 +40,19 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
     if not validate_formation(formation):
         return None, f"Unsupported formation: {formation or 'missing'}"
 
-    starters = parse_starting_xi(params.get("starting_xi") or "")
+    demo_mode = is_demo_lineup_request(params)
+    raw_xi = (params.get("starting_xi") or "").strip()
+    if demo_mode and (not raw_xi or raw_xi.lower() in {"demo", "demo_lineup", "use_demo_roster", "demo roster"}):
+        starters = build_demo_starting_xi(ron_at_right_back=True)
+    else:
+        starters = parse_starting_xi(raw_xi)
+        if demo_mode and len(starters) < 11:
+            starters = build_demo_starting_xi(ron_at_right_back=True)
+    if not demo_mode and not starters:
+        return None, (
+            "Starting lineup is incomplete. Provide all 11 starters explicitly, "
+            "or request the demo lineup if you want the sanitized 4-3-3 template."
+        )
     ok, err = validate_starter_lineup(starters)
     if not ok:
         return None, err

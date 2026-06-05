@@ -47,13 +47,31 @@ def _invoke_budget(candidate_name: str, salary: int, committed: int) -> dict:
         spec.loader.exec_module(module)
         return parse_function_body(module.lambda_handler(event, None))
     import boto3
+    from botocore.exceptions import ClientError
 
-    resp = boto3.client("lambda").invoke(
-        FunctionName="ScoutMatchBudgetImpactAvidan",
-        InvocationType="RequestResponse",
-        Payload=json.dumps(event).encode("utf-8"),
-    )
-    return parse_function_body(json.loads(resp["Payload"].read()))
+    try:
+        resp = boto3.client("lambda").invoke(
+            FunctionName="ScoutMatchBudgetImpactAvidan",
+            InvocationType="RequestResponse",
+            Payload=json.dumps(event).encode("utf-8"),
+        )
+        if resp.get("FunctionError"):
+            return {
+                "decision": "FAIL",
+                "error": resp.get("FunctionError", "budget_helper_error"),
+                "missing_information": "Budget helper returned an error. Cannot reserve selection.",
+            }
+        return parse_function_body(json.loads(resp["Payload"].read()))
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "AccessDenied")
+        return {
+            "decision": "FAIL",
+            "error": code,
+            "missing_information": (
+                "Budget helper is unavailable (internal ScoutMatchBudgetImpactAvidan invoke failed). "
+                "Cannot reserve selection."
+            ),
+        }
 
 
 def submit_selection(candidate_name: str, selection_reason: str = "") -> tuple[dict | None, str]:
@@ -86,6 +104,14 @@ def submit_selection(candidate_name: str, selection_reason: str = "") -> tuple[d
     salary = int(candidate["salary_eur"])
     committed = sum_reserved_amounts()
     budget_body = _invoke_budget(candidate["display_name"], salary, committed)
+    if budget_body.get("error"):
+        return {
+            "status": "REJECTED",
+            "candidate_name": candidate["display_name"],
+            "budget_decision": "FAIL",
+            "message": budget_body.get("missing_information")
+            or "Budget helper unavailable. No reservation was created.",
+        }, ""
     decision = budget_body.get("decision", "FAIL")
     if decision not in {"PASS", "NEEDS_EXCEPTION"}:
         return {

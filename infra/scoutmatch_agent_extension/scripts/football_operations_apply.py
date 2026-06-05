@@ -60,13 +60,43 @@ NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT = [
 ]
 
 AGENT_INSTRUCTION_DYNAMIC_ADDENDUM = (
-    " Act as a sporting director assistant for ScoutMatch FC. Use the Knowledge Base for static "
-    "club policy and candidate reports, and use football-operations tools for dynamic DynamoDB state. "
-    "Remember opponent, formation, weak positions, operational budget, pending selections, and the "
-    "latest lineup across follow-up messages in the same session. Resolve pronouns such as he, him, "
-    "that player, and the right-back from prior context. When the sporting director chooses a player, "
-    "call SubmitPlayerSelectionToManagement and require confirmation before any reservation or SNS "
-    "notification. Never invent salaries, players, or management approval. When the user asks for "
-    "the current lineup, call GenerateCurrentLineupBoard and return the safe image route. Distinguish "
-    "static Knowledge Base policy from live operational budget and pending approval status."
+    " Act as a sporting director assistant for ScoutMatch FC. Candidate recommendations must come from "
+    "the attached Bedrock Knowledge Base evidence (static ScoutMatch documents, candidate reports, and "
+    "club policy) plus dynamic DynamoDB planning context saved by UpdateSquadPlanningContext. If "
+    "candidate evidence is missing or insufficient, ask for clarification instead of inventing a profile, "
+    "salary, or management approval. Tactical fit helpers are internal only and are not user-facing tools. "
+    "Remember opponent, formation, weak positions, operational budget, pending selections, and the latest "
+    "lineup across follow-up messages in the same session. Resolve pronouns such as he, him, that player, "
+    "and the right-back from prior context. When the sporting director chooses a player, call "
+    "SubmitPlayerSelectionToManagement and require confirmation before any reservation or SNS notification. "
+    "When the user asks to finalize the demo lineup, call FinalizeCurrentLineup with demo_lineup=true so "
+    "the sanitized 4-3-3 roster with Ron Ben Ari at right-back is used. For non-demo lineups, require all "
+    "11 starters explicitly and ask clarification instead of inventing players. When the user asks for the "
+    "current lineup, call GenerateCurrentLineupBoard and return the safe image route. Distinguish static "
+    "Knowledge Base policy from live operational budget and pending approval status."
 )
+
+# Runtime helpers invoked internally (not Agent-facing after simplified apply).
+ACTIVE_INTERNAL_HELPERS_AT_RUNTIME = [
+    "CalculateBudgetImpact",  # invoked by SubmitPlayerSelectionToManagement via ScoutMatchBudgetImpactAvidan
+]
+
+ROLLBACK_ONLY_INTERNAL_HELPERS = [
+    "EvaluateRightBackFit",
+    "EvaluateBelowStrikerFit",
+    "EvaluateForwardFit",
+    "AddCandidateToShortlist",
+    "ListShortlistCandidates",
+    "RemoveCandidateFromShortlist",
+    "StartCandidateReviewWorkflow",
+    "GetCandidateReviewWorkflowStatus",
+    "GetCandidateReviewResult",
+    "CreateRecruitmentBrief",
+    "GetRecruitmentBrief",
+    "ListRecruitmentBriefs",
+    "RecordPlayerAvailabilityChange",
+    "AnalyzeSquadDepthGaps",
+]
+
+BUDGET_HELPER_LAMBDA_NAME = "ScoutMatchBudgetImpactAvidan"
+BUDGET_HELPER_FUNCTION = "CalculateBudgetImpact"

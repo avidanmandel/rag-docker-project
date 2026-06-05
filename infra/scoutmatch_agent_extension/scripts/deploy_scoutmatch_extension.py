@@ -504,9 +504,14 @@ def _native_schemas() -> dict[str, dict]:
                         "type": "string",
                         "description": "Semicolon-separated name:POSITION entries or JSON list",
                     },
+                    "demo_lineup": {
+                        "type": "boolean",
+                        "description": "Use sanitized 4-3-3 demo roster with Ron Ben Ari at right-back",
+                    },
+                    "lineup_mode": {"type": "string", "description": "Set to demo for sanitized demo roster"},
                     "bench": {"type": "string"},
                 },
-                ["starting_xi"],
+                [],
             ),
             "GenerateCurrentLineupBoard": _function_schema(
                 "GenerateCurrentLineupBoard",
@@ -942,7 +947,10 @@ class Deployer:
         return agent_id
 
     def associate_kb(self, agent_id: str, kb_id: str) -> None:
-        self.plan.append(f"Associate KB {KB_NAME} with agent")
+        self.plan.append(
+            f"Preserve KB {KB_NAME} association with agent {AGENT_NAME} (ENABLED, no disconnect)"
+        )
+        self.present.append(f"Knowledge Base preserved: {KB_NAME} (no content mutation planned)")
         if not self.apply or not agent_id or not kb_id:
             return
         try:
@@ -1376,7 +1384,11 @@ class Deployer:
             )["Role"]["Arn"]
         self.plan.append(
             f"Update IAM inline policy on {NATIVE_TOOLS_ROLE} "
-            f"(football ops table, lineup prefix, SNS publish)"
+            f"(football ops table, lineup prefix, SNS publish, "
+            f"lambda:InvokeFunction -> ScoutMatchBudgetImpactAvidan only)"
+        )
+        budget_invoke_arn = (
+            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatchBudgetImpactAvidan"
         )
         if self.apply:
             self.iam.attach_role_policy(
@@ -1424,12 +1436,21 @@ class Deployer:
                             f"arn:aws:states:{REGION}:{self.account_id}:execution:{STATE_MACHINE_NAME}:*",
                         ],
                     },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["lambda:InvokeFunction"],
+                        "Resource": [budget_invoke_arn],
+                    },
                 ],
             }
             self.iam.put_role_policy(
                 RoleName=NATIVE_TOOLS_ROLE,
                 PolicyName="ScoutMatchNativeToolsInlineAvidan",
                 PolicyDocument=json.dumps(policy),
+            )
+        else:
+            self.present.append(
+                f"IAM plan: {NATIVE_TOOLS_ROLE} may invoke only ScoutMatchBudgetImpactAvidan"
             )
         return role_arn
 
@@ -1648,14 +1669,35 @@ class Deployer:
             f"({len(NATIVE_AGENT_FUNCTIONS)} APIs only)"
         )
         self.plan.append("Preserve Agent Knowledge Base association (ENABLED, no disconnect)")
-        self.plan.append(f"Scoped S3 lineup prefix: {LINEUP_S3_PREFIX}")
-        self.plan.append("Add Flask proxy route: GET /api/recruitment-advisor/lineups/<lineup_id>/image")
+        self.plan.append(f"Scoped private S3 lineup prefix (no public ACL): {LINEUP_S3_PREFIX}")
+        self.plan.append("Flask proxy route already present: GET /api/recruitment-advisor/lineups/<lineup_id>/image")
         self.plan.append("Update agent instruction with dynamic sporting-director addendum")
+        self.plan.append("No production EC2 change, no production Docker change, no KB content change")
+        self.plan.append("No AWS resource deletion in this apply")
+        try:
+            from demo_roster_seed import apply_demo_roster_seed, plan_demo_roster_seed
+
+            self.plan.append(plan_demo_roster_seed())
+            if self.apply:
+                result = apply_demo_roster_seed(
+                    table_name=FOOTBALL_OPS_TABLE,
+                    apply=True,
+                )
+                self.present.append(f"Demo roster seed: {result.get('status', 'unknown')}")
+            else:
+                self.present.append("Demo roster seed: idempotent, record_scope=DEMO, skips non-demo records")
+        except ImportError:
+            self.plan.append(
+                "Seed sanitized demo roster (record_scope=DEMO) into ScoutMatchFootballOperationsAvidan"
+            )
         if sns_arn:
-            self.present.append("SNS topic plan prepared (manual email subscription may be required)")
+            self.present.append(
+                "SNS topic plan prepared (manual email subscription required for live email demo)"
+            )
         self.present.append(f"Football operations DynamoDB table plan: {FOOTBALL_OPS_TABLE}")
         if bucket:
-            self.present.append(f"Lineup SVG prefix uses existing bucket: {bucket}")
+            self.present.append(f"Lineup SVG prefix uses existing private bucket prefix: {bucket}")
+        self.present.append("Stable v14 production path preserved (direct KB retrieve, no EC2 mutation)")
 
     def update_agent_instruction_native(self, agent_id: str) -> None:
         self.plan.append("Update agent instruction with AWS-native and dynamic operations addendum")

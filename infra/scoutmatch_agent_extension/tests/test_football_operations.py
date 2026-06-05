@@ -241,6 +241,30 @@ def test_sns_payload_has_no_email():
     assert "Ron Ben Ari" in msg
 
 
+def test_demo_lineup_finalize_ron_right_back():
+    ops.lambda_handler(
+        _event(
+            "UpdateSquadPlanningContext",
+            {"opponent": "Barcelona", "preferred_formation": "4-3-3", "available_budget_eur": 55000},
+        ),
+        None,
+    )
+    ops.lambda_handler(
+        _event("SubmitPlayerSelectionToManagement", {"candidate_name": "Ron Ben Ari"}, confirmed=True),
+        None,
+    )
+    body = _body(
+        ops.lambda_handler(
+            _event("FinalizeCurrentLineup", {"demo_lineup": "true", "formation": "4-3-3"}, confirmed=True),
+            None,
+        )
+    )
+    assert body["status"] == "SAVED"
+    ron = next(p for p in body["lineup"]["starting_xi"] if p["name"] == "Ron Ben Ari")
+    assert ron["position"] == "RB"
+    assert ron["status"] == "PENDING_MANAGEMENT_APPROVAL"
+
+
 def test_analyze_depth_internal():
     ops.lambda_handler(
         _event(
