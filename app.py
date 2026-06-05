@@ -43,6 +43,7 @@ from image_extract import (  # noqa: E402
 )
 from bedrock_flow_service import invoke_flow as invoke_recruitment_flow  # noqa: E402
 from bedrock_agent_service import (  # noqa: E402
+    agent_result_to_chat_payload,
     disabled_response as advisor_disabled_response,
     invoke_agent as invoke_recruitment_advisor,
     is_enabled as recruitment_advisor_enabled,
@@ -448,6 +449,10 @@ def api_status():
             )
             payload["baseline_sync_state"] = baseline_sync.get("sync_state")
             payload["baseline_document_count"] = len(database.list_baseline_documents())
+    payload["agent_extension_enabled"] = recruitment_advisor_enabled()
+    payload["chat_backend"] = (
+        "bedrock_agent" if recruitment_advisor_enabled() else config.RAG_BACKEND
+    )
     return jsonify(payload)
 
 
@@ -1354,6 +1359,51 @@ def api_delete_session(session_id):
 
 # ---------- chat ----------
 
+def _send_message_via_bedrock_agent(
+    session_id: str,
+    session: dict,
+    question: str,
+    user_msg: dict,
+) -> tuple[dict, int]:
+    agent_session_id = (session.get("bedrock_session_id") or "").strip() or None
+    agent_result = invoke_recruitment_advisor(question, session_id=agent_session_id)
+    if not agent_result.get("enabled"):
+        return {
+            "error": agent_result.get("message") or "Bedrock Agent advisor is disabled.",
+            "user_message": user_msg,
+        }, 503
+    result = agent_result_to_chat_payload(agent_result)
+    assistant_msg = database.add_message(
+        session_id,
+        "assistant",
+        result["answer"],
+        context=result.get("context") or [],
+        refused=result.get("refused", False),
+        reason=result.get("reason"),
+        generation_mode=result.get("generation_mode"),
+        main_source=result.get("main_source"),
+        document_revision_at_answer=int(session.get("document_revision") or 0),
+        agent_metadata=result.get("agent_metadata"),
+    )
+    if result.get("bedrock_session_id"):
+        database.update_bedrock_session_id(session_id, result["bedrock_session_id"])
+    if session.get("title") == "New conversation":
+        new_title = question[:60] + ("..." if len(question) > 60 else "")
+        database.update_session_title(session_id, new_title)
+    status = 200 if not result.get("refused") else 200
+    return {
+        "user_message": user_msg,
+        "assistant_message": assistant_msg,
+        "refused": result.get("refused", False),
+        "reason": result.get("reason"),
+        "sources": result.get("context") or [],
+        "main_source": result.get("main_source"),
+        "generation_mode": result.get("generation_mode"),
+        "agent_metadata": result.get("agent_metadata") or {},
+        "agent_session_id": result.get("bedrock_session_id"),
+    }, status
+
+
 @app.route("/api/sessions/<session_id>/messages", methods=["POST"])
 def api_send_message(session_id):
     if _init_error is not None:
@@ -1361,12 +1411,6 @@ def api_send_message(session_id):
             "error": _init_error["message"],
             "status": engine.status,
             "init_failed": True,
-        }), 503
-
-    if not engine.ready:
-        return jsonify({
-            "error": "RAG engine is still initialising. Please wait.",
-            "status": engine.status,
         }), 503
 
     session = database.get_session(session_id)
@@ -1378,8 +1422,19 @@ def api_send_message(session_id):
     if not question:
         return jsonify({"error": "content is required"}), 400
 
-    history = database.get_history_for_llm(session_id, limit=20)
     user_msg = database.add_message(session_id, "user", question)
+
+    if recruitment_advisor_enabled():
+        body, status = _send_message_via_bedrock_agent(session_id, session, question, user_msg)
+        return jsonify(body), status
+
+    if not engine.ready:
+        return jsonify({
+            "error": "RAG engine is still initialising. Please wait.",
+            "status": engine.status,
+        }), 503
+
+    history = database.get_history_for_llm(session_id, limit=20)
 
     if _is_aws_kb_mode() and not database.is_baseline_retrieval_ready():
         sync_msg = (

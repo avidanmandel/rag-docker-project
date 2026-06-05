@@ -618,6 +618,7 @@ def add_message(
     generation_mode: str | None = None,
     main_source: dict | None = None,
     document_revision_at_answer: int | None = None,
+    agent_metadata: dict | None = None,
 ) -> dict:
     if role not in ("user", "assistant"):
         raise ValueError(f"Invalid role: {role}")
@@ -630,6 +631,7 @@ def add_message(
         "generation_mode": generation_mode,
         "main_source": main_source,
         "document_revision_at_answer": document_revision_at_answer,
+        "agent_metadata": agent_metadata,
     }
     context_json = json.dumps(meta) if any(v is not None for v in meta.values()) else None
 
@@ -656,6 +658,7 @@ def add_message(
         "generation_mode": generation_mode,
         "main_source": main_source,
         "document_revision_at_answer": document_revision_at_answer,
+        "agent_metadata": agent_metadata,
         "created_at": now,
     }
 
@@ -686,6 +689,7 @@ def get_messages(session_id: str) -> list[dict]:
                 item["document_revision_at_answer"] = parsed.get(
                     "document_revision_at_answer"
                 )
+                item["agent_metadata"] = parsed.get("agent_metadata")
             elif isinstance(parsed, list):
                 item["context"] = parsed
             else:

@@ -1,11 +1,12 @@
 """
-Optional ScoutMatch Bedrock Agent recruitment advisor (disabled by default).
+ScoutMatch Bedrock Agent recruitment advisor.
 
 Uses Amazon Bedrock Agent invoke only — no direct Lambda selection by the user.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
@@ -39,6 +40,24 @@ MISSING_CONFIG_MESSAGE = (
     "SCOUTMATCH_AGENT_ALIAS_ID is not configured."
 )
 GENERIC_ERROR_MESSAGE = "The recruitment advisor could not complete this request."
+GUARDRAIL_BLOCK_MESSAGE = (
+    "I cannot answer this request because it was blocked by the ScoutMatch safety policy."
+)
+
+WRITE_CONFIRM_TOOLS = frozenset(
+    {
+        "SubmitPlayerSelectionToManagement",
+        "FinalizeCurrentLineup",
+    }
+)
+ALLOWED_PUBLIC_TOOLS = frozenset(
+    {
+        "PlanMatchTactics",
+        "SubmitPlayerSelectionToManagement",
+        "FinalizeCurrentLineup",
+        "GenerateCurrentLineupBoard",
+    }
+)
 
 _ARN_PATTERN = re.compile(r"arn:aws:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:[^\s]+", re.I)
 _ACCOUNT_PATTERN = re.compile(r"\b[0-9]{12}\b")
@@ -47,6 +66,7 @@ _REMAINING_BUDGET_PATTERN = re.compile(
     r"remaining(?:\s+available)?\s+budget[:\s]+([0-9][0-9,]*)\s*EUR",
     re.I,
 )
+_COACH_BRIEF_PREFIX = re.compile(r"^\s*coach\s+brief\s*:\s*", re.I)
 
 
 def is_enabled() -> bool:
@@ -61,24 +81,86 @@ def disabled_response() -> dict[str, Any]:
 
 def _sanitize_text(value: str) -> str:
     text = _ARN_PATTERN.sub("[redacted-resource]", value)
+    text = re.sub(r"s3://[^\s]+", "[redacted-storage]", text, flags=re.I)
     return _ACCOUNT_PATTERN.sub("[redacted-account]", text)
 
 
-def _extract_metadata(events: list[dict]) -> dict[str, Any]:
+def _parse_parameters(block: dict | None) -> dict[str, str]:
+    params: dict[str, str] = {}
+    if not isinstance(block, dict):
+        return params
+    for item in block.get("parameters") or []:
+        if isinstance(item, dict) and item.get("name"):
+            params[str(item["name"])] = str(item.get("value", ""))
+    return params
+
+
+def _trace_orchestration(event: dict) -> dict:
+    trace = event.get("trace") or {}
+    return trace.get("trace", {}).get("orchestrationTrace") or {}
+
+
+def _extract_confirmation_card(events: list[dict], answer: str) -> dict[str, Any] | None:
+    pending = "PENDING_CONFIRMATION" in (answer or "").upper()
+    for event in reversed(events):
+        orchestration = _trace_orchestration(event)
+        inv = orchestration.get("invocationInput") or {}
+        ag = inv.get("actionGroupInvocationInput") or {}
+        fn = str(ag.get("function") or "")
+        if fn not in WRITE_CONFIRM_TOOLS:
+            continue
+        observation = orchestration.get("observation") or {}
+        if observation.get("repromptResponse"):
+            pending = True
+        action_out = observation.get("actionGroupInvocationOutput") or {}
+        body_text = str(action_out.get("text") or "")
+        if "PENDING_CONFIRMATION" in body_text.upper():
+            pending = True
+        if not pending:
+            continue
+        params = _parse_parameters(ag)
+        card: dict[str, Any] = {
+            "function": fn,
+            "parameters": params,
+            "state": "pending",
+        }
+        if fn == "SubmitPlayerSelectionToManagement":
+            card["title"] = "Submit recommendation to management"
+            card["action_label"] = (
+                "Submit recommendation to management and reserve budget"
+            )
+        elif fn == "FinalizeCurrentLineup":
+            card["title"] = "Save proposed lineup for head-coach review"
+            card["action_label"] = "Save proposed lineup for head-coach review"
+        return card
+    if pending:
+        return {
+            "function": "unknown",
+            "parameters": {},
+            "state": "pending",
+            "title": "Action requires confirmation",
+            "action_label": "Confirm this write action",
+        }
+    return None
+
+
+def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     tools: list[str] = []
     documents: list[str] = []
     warnings: list[str] = []
+    lineup_route = None
+    remaining_budget = None
+    guardrail_intervened = False
+
     for event in events:
-        if "trace" not in event:
-            continue
-        trace = event.get("trace") or {}
-        orchestration = trace.get("trace", {}).get("orchestrationTrace") or {}
+        orchestration = _trace_orchestration(event)
         invocation = orchestration.get("invocationInput") or {}
         if "actionGroupInvocationInput" in invocation:
             ag = invocation["actionGroupInvocationInput"]
             fn = ag.get("function") or ag.get("actionGroupName") or "tool"
-            if fn not in tools:
-                tools.append(str(fn))
+            fn_name = str(fn)
+            if fn_name in ALLOWED_PUBLIC_TOOLS and fn_name not in tools:
+                tools.append(fn_name)
         observation = orchestration.get("observation") or {}
         kb = observation.get("knowledgeBaseLookupOutput") or {}
         for ref in kb.get("retrievedReferences") or []:
@@ -88,44 +170,46 @@ def _extract_metadata(events: list[dict]) -> dict[str, Any]:
                 documents.append(name)
         if observation.get("repromptResponse"):
             warnings.append("confirmation_or_reprompt")
-    lineup_route = None
-    remaining_budget = None
-    for event in events:
-        if "trace" not in event:
-            continue
-        trace = event.get("trace") or {}
-        observation = trace.get("trace", {}).get("orchestrationTrace", {}).get("observation") or {}
         action_response = observation.get("actionGroupInvocationOutput") or {}
-        text = (
-            action_response.get("text", "")
-            or str(action_response.get("actionGroupInvocationOutput", ""))
+        text = action_response.get("text", "") or str(
+            action_response.get("actionGroupInvocationOutput", "")
         )
-        if "image_route" in text and "/api/recruitment-advisor/lineups/" in text:
-            import json
-
+        if text:
             try:
-                payload = json.loads(text) if text.strip().startswith("{") else {}
+                payload = json.loads(text) if str(text).strip().startswith("{") else {}
             except json.JSONDecodeError:
                 payload = {}
-            if not payload and "image_route" in text:
-                start = text.find("/api/recruitment-advisor/lineups/")
-                if start >= 0:
-                    end = text.find('"', start)
-                    lineup_route = text[start:end] if end > start else text[start:].split()[0]
-            else:
+            if payload.get("image_route"):
                 lineup_route = payload.get("image_route")
             if payload.get("remaining_budget_eur") is not None:
                 remaining_budget = payload.get("remaining_budget_eur")
+            if payload.get("formation"):
+                pass
+        guard_trace = event.get("trace", {}).get("trace", {}).get("guardrailTrace")
+        if guard_trace:
+            guardrail_intervened = True
+
+    route_match = _LINEUP_ROUTE_PATTERN.search(answer)
+    if route_match:
+        lineup_route = route_match.group(0)
+    budget_match = _REMAINING_BUDGET_PATTERN.search(answer)
+    if budget_match and remaining_budget is None:
+        remaining_budget = int(budget_match.group(1).replace(",", ""))
+
+    confirmation_card = _extract_confirmation_card(events, answer)
+    if confirmation_card and "confirmation_or_reprompt" not in warnings:
+        warnings.append("confirmation_or_reprompt")
+
     return {
         "documents_used": documents[:8],
         "tools_executed": tools[:8],
-        "workflow_status": next((t for t in tools if "Workflow" in t), None),
-        "shortlist_action": next((t for t in tools if "Shortlist" in t), None),
-        "recruitment_brief_created": any("Brief" in t for t in tools),
         "lineup_image_route": lineup_route,
         "remaining_budget_eur": remaining_budget,
         "missing_information": None,
         "warnings": warnings[:4],
+        "confirmation_card": confirmation_card,
+        "guardrail_intervened": guardrail_intervened,
+        "coach_brief": bool(_COACH_BRIEF_PREFIX.search(answer or "")),
     }
 
 
@@ -152,18 +236,16 @@ def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]
                     event["chunk"]["bytes"].decode("utf-8", errors="replace")
                 )
         answer = _sanitize_text("".join(answer_parts).strip()) or GENERIC_ERROR_MESSAGE
-        metadata = _extract_metadata(collected_events)
-        route_match = _LINEUP_ROUTE_PATTERN.search(answer)
-        if route_match:
-            metadata["lineup_image_route"] = route_match.group(0)
-        budget_match = _REMAINING_BUDGET_PATTERN.search(answer)
-        if budget_match and metadata.get("remaining_budget_eur") is None:
-            metadata["remaining_budget_eur"] = int(budget_match.group(1).replace(",", ""))
+        metadata = _extract_metadata(collected_events, answer)
+        refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+        if metadata.get("guardrail_intervened") and not answer.strip():
+            answer = GUARDRAIL_BLOCK_MESSAGE
+            refused = True
         return {
             "enabled": True,
             "session_id": agent_session,
             "answer": answer,
-            "refused": False,
+            "refused": refused,
             "generation_mode": "bedrock_agent",
             "metadata": metadata,
         }
@@ -177,3 +259,29 @@ def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]
             "reason": "agent_error",
             "metadata": {},
         }
+
+
+def agent_result_to_chat_payload(result: dict[str, Any]) -> dict[str, Any]:
+    """Map Agent invoke output to polished root UI chat response shape."""
+    metadata = result.get("metadata") or {}
+    documents = metadata.get("documents_used") or []
+    context = [
+        {
+            "source": name,
+            "text": "",
+            "score": 1.0,
+            "document_name": name,
+        }
+        for name in documents
+    ]
+    main_source = context[0] if context else None
+    return {
+        "answer": result.get("answer") or GENERIC_ERROR_MESSAGE,
+        "refused": bool(result.get("refused")),
+        "reason": result.get("reason"),
+        "generation_mode": "bedrock_agent",
+        "context": context,
+        "main_source": main_source,
+        "bedrock_session_id": result.get("session_id"),
+        "agent_metadata": metadata,
+    }
