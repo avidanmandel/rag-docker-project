@@ -67,12 +67,14 @@ def test_iam_template_uses_exact_alias_placeholder_not_wildcard():
 
 def test_iam_template_s3_scoped_to_lineup_prefix_only():
     doc = json.loads(TEMPLATE.read_text(encoding="utf-8"))
-    s3_stmt = next(
-        s for s in doc["Statement"] if "s3:GetObject" in json.dumps(s.get("Action", []))
+    get_stmt = next(
+        s for s in doc["Statement"] if s.get("Action") == ["s3:GetObject"]
     )
-    resources = s3_stmt["Resource"]
-    assert any("scoutmatch/football-operations/lineups/*" in r for r in resources)
-    prefix_cond = s3_stmt.get("Condition", {}).get("StringLike", {}).get("s3:prefix", [])
+    list_stmt = next(
+        s for s in doc["Statement"] if s.get("Action") == ["s3:ListBucket"]
+    )
+    assert any("scoutmatch/football-operations/lineups/*" in r for r in get_stmt["Resource"])
+    prefix_cond = list_stmt.get("Condition", {}).get("StringLike", {}).get("s3:prefix", [])
     assert "scoutmatch/football-operations/lineups/*" in prefix_cond
 
 

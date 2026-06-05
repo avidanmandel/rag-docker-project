@@ -114,10 +114,11 @@ def main() -> int:
     evidence["checks"]["sns_topic_suffix"] = "ScoutMatchManagementNotificationsAvidan"
     evidence["checks"]["sns_topic_verified"] = "MANUAL_REQUIRED"
     evidence["manual_validation_required"] = [
-        "SNS topic exists in Console (local IAM lacks SNS read/create)",
-        "SNS email subscription confirmed in inbox",
-        "Private S3 lineup SVG object (Console or EC2 runtime)",
-        "AWS Console screenshots for presentation slides",
+        "AWS Console screenshots for presentation slides (see SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md)",
+        "Browser demo screenshots after live rehearsal",
+    ]
+    evidence["optional_future_extensions"] = [
+        "SNS management notification (non-blocking; not required for course submission)",
     ]
 
     out_path = OUT / "scoutmatch_sanitized_aws_evidence.json"
