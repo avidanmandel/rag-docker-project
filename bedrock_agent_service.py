@@ -166,7 +166,7 @@ def _format_lineup_success(body: dict) -> str:
     count = body.get("starting_players") or len(body.get("starting_xi") or [])
     return (
         f"Proposed lineup saved for head-coach review.\n"
-        f"Status: PENDING_HEAD_COACH_REVIEW\n"
+        f"Status: Pending head-coach review\n"
         f"Formation: {formation}\n"
         f"Starting players: {count}"
     )
@@ -192,7 +192,7 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
         if status == "LINEUP_BOARD_GENERATED" and payload.get("image_route"):
             return (
                 f"Current proposed lineup board ({payload.get('formation', '4-3-3')}).\n"
-                f"Status: PENDING_HEAD_COACH_REVIEW\n"
+                f"Status: Pending head-coach review\n"
                 f"View: {payload['image_route']}"
             )
         if status == "NOT_FOUND" and payload.get("message"):

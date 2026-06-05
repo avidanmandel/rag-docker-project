@@ -300,6 +300,8 @@ function stripInternalDetails(text) {
         .replace(/\bctx-[A-Za-z0-9]+\b/gi, "")
         .replace(/^\s*View:\s*\/api\/[^\s]+\s*$/gim, "")
         .replace(/\bView:\s*\/api\/recruitment-advisor\/[^\s]+/gi, "")
+        .replace(/\bPENDING_HEAD_COACH_REVIEW\b/g, "Pending head-coach review")
+        .replace(/\bPENDING_MANAGEMENT_APPROVAL\b/g, "Pending management approval")
         .replace(/\n{3,}/g, "\n\n")
         .replace(/[ \t]{2,}/g, " ")
         .trim();

@@ -216,7 +216,9 @@ def test_demo_lineup_svg_contains_ron_rb_pending_and_no_opponent_lineup():
     import lineup_svg as football_lineup_svg
 
     svg = football_lineup_svg.get_local_svg("current")
-    assert svg and svg.count("<circle") >= 11
+    import re
+
+    assert svg and len(re.findall(r'<circle cx="\d+" cy="\d+" r="22"', svg)) == 11
     assert "Ron Ben Ari" in svg or "Ben Ari" in svg or "Ari" in svg
     assert "PENDING APPROVAL" in svg
     assert "Barcelona" in svg

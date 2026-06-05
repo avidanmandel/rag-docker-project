@@ -221,7 +221,11 @@ def test_generate_lineup_board_svg():
     assert "Barcelona" in svg
     assert "4-3-3" in svg
     assert "PENDING APPROVAL" in svg
-    assert svg.count("<circle") >= 11
+    import re
+
+    player_markers = re.findall(r'<circle cx="\d+" cy="\d+" r="22"', svg)
+    assert len(player_markers) == 11
+    assert len(set(re.findall(r'<circle cx="(\d+)" cy="(\d+)" r="22"', svg))) == 11
 
 
 def test_sns_payload_has_no_email():

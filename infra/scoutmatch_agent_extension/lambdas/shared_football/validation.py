@@ -92,6 +92,26 @@ FORMATION_SLOTS_433 = [
 ]
 
 
+def assign_formation_slots(
+    formation: str, starters: list[dict]
+) -> list[tuple[dict, float, float]]:
+    """Map each starter to a distinct slot; consume duplicate position keys in order."""
+    slots = list(FORMATION_SLOTS_433 if formation == "4-3-3" else FORMATION_SLOTS_433)
+    remaining_slots = list(slots)
+    mapped: list[tuple[dict, float, float]] = []
+    for starter in starters[:11]:
+        pos = str(starter.get("position", "")).upper()
+        match_idx = next(
+            (i for i, slot in enumerate(remaining_slots) if slot[0] == pos),
+            None,
+        )
+        if match_idx is None:
+            match_idx = 0
+        slot = remaining_slots.pop(match_idx)
+        mapped.append((starter, slot[1], slot[2]))
+    return mapped
+
+
 def normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", name.strip().lower())
 

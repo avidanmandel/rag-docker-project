@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from budget_ledger import available_budget_from_context
 from lineup_store import get_current_lineup
 from operations_store import put_item
-from validation import FORMATION_SLOTS_433, slug_name
+from validation import assign_formation_slots, slug_name
 
 LINEUP_PREFIX = os.getenv(
     "SCOUTMATCH_LINEUP_S3_PREFIX", "scoutmatch/football-operations/lineups/"
@@ -28,13 +28,7 @@ def _short_name(full_name: str) -> str:
 
 
 def _slot_positions(formation: str, starters: list[dict]) -> list[tuple[dict, float, float]]:
-    slots = FORMATION_SLOTS_433 if formation == "4-3-3" else FORMATION_SLOTS_433
-    mapped = []
-    for idx, starter in enumerate(starters[:11]):
-        pos = starter.get("position", "").upper()
-        coords = next((slot for slot in slots if slot[0] == pos), slots[min(idx, len(slots) - 1)])
-        mapped.append((starter, coords[1], coords[2]))
-    return mapped
+    return assign_formation_slots(formation, starters)
 
 
 def build_svg(lineup: dict) -> str:
