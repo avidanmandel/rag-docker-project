@@ -5,6 +5,7 @@
   const formEl = document.getElementById("advisor-form");
   const inputEl = document.getElementById("advisor-input");
   const newSessionBtn = document.getElementById("advisor-new-session");
+  const loadingEl = document.getElementById("advisor-loading");
 
   let sessionId = sessionStorage.getItem("scoutmatchAdvisorSession") || "";
 
@@ -20,16 +21,50 @@
     if (meta.workflow_status) parts.push("Workflow status: " + meta.workflow_status);
     if (meta.shortlist_action) parts.push("Shortlist action: " + meta.shortlist_action);
     if (meta.recruitment_brief_created) parts.push("Recruitment brief created: yes");
+    if (meta.remaining_budget_eur != null) {
+      parts.push("Remaining budget: " + meta.remaining_budget_eur + " EUR");
+    }
     if (meta.warnings && meta.warnings.length) parts.push("Warnings: " + meta.warnings.join(", "));
     return parts.length ? '<div class="advisor-meta">' + parts.join(" | ") + "</div>" : "";
+  }
+
+  function renderLineupBoard(route) {
+    if (!route) return "";
+    const safeRoute = route.startsWith("/") ? route : "";
+    if (!safeRoute) return "";
+    return (
+      '<div class="lineup-board-wrap">' +
+      '<img class="lineup-board-image" src="' +
+      safeRoute +
+      '" alt="Current lineup board" loading="lazy" />' +
+      '<a class="lineup-board-expand" href="' +
+      safeRoute +
+      '" target="_blank" rel="noopener">Open larger board</a>' +
+      "</div>"
+    );
   }
 
   function appendMessage(role, text, meta) {
     const div = document.createElement("div");
     div.className = role === "user" ? "msg-user" : "msg-assistant";
-    div.innerHTML = "<strong>" + (role === "user" ? "Coach" : "Advisor") + ":</strong> " + text + renderMeta(meta);
+    const lineupHtml =
+      role === "assistant" && meta && meta.lineup_image_route
+        ? renderLineupBoard(meta.lineup_image_route)
+        : "";
+    div.innerHTML =
+      "<strong>" +
+      (role === "user" ? "Sporting Director" : "Advisor") +
+      ":</strong> " +
+      text +
+      lineupHtml +
+      renderMeta(meta);
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function setLoading(active) {
+    if (!loadingEl) return;
+    loadingEl.hidden = !active;
   }
 
   async function checkEnabled() {
@@ -52,17 +87,22 @@
     if (!text) return;
     appendMessage("user", text);
     inputEl.value = "";
-    const resp = await fetch("/api/recruitment-advisor/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text, session_id: sessionId }),
-    });
-    const data = await resp.json();
-    if (data.session_id) {
-      sessionId = data.session_id;
-      sessionStorage.setItem("scoutmatchAdvisorSession", sessionId);
+    setLoading(true);
+    try {
+      const resp = await fetch("/api/recruitment-advisor/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text, session_id: sessionId }),
+      });
+      const data = await resp.json();
+      if (data.session_id) {
+        sessionId = data.session_id;
+        sessionStorage.setItem("scoutmatchAdvisorSession", sessionId);
+      }
+      appendMessage("assistant", data.answer || data.message || "No response.", data.metadata || {});
+    } finally {
+      setLoading(false);
     }
-    appendMessage("assistant", data.answer || data.message || "No response.", data.metadata || {});
   });
 
   newSessionBtn.addEventListener("click", function () {

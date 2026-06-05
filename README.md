@@ -410,6 +410,13 @@ Documentation: `docs/SCOUTMATCH_AGENT_EXTENSION.md`, `docs/SCOUTMATCH_FLOW_EXTEN
 Screenshots: `infra/scoutmatch_agent_extension/evidence/SCREENSHOT_CHECKLIST.md`.  
 Production EC2 was **not** modified by this extension.
 
+### Dynamic football operations (plan — branch `feature/scoutmatch-agent-flow-extension`)
+
+Sporting-director squad planning: operational DynamoDB state, budget reservations, SNS management notifications, and SVG lineup boards in the Recruitment Advisor UI. **Plan only** until approved `--apply`.
+
+- Plan doc: `docs/SCOUTMATCH_DYNAMIC_FOOTBALL_OPERATIONS_PLAN.md`
+- Deploy plan: `python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --plan`
+
 ### AWS-native recruitment advisor (applied — branch `feature/scoutmatch-agent-flow-extension`)
 
 DynamoDB shortlist, S3 recruitment briefs, Step Functions candidate review, and a consolidated native Action Group on the Bedrock Agent. Four existing football Action Groups are unchanged. Production EC2/Docker v14/S3 baseline/KB content were **not** modified.

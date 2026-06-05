@@ -12,14 +12,19 @@
         #advisor-messages { min-height: 240px; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
         .msg-user { text-align: right; margin: 0.5rem 0; }
         .msg-assistant { text-align: left; margin: 0.5rem 0; }
+        .lineup-board-wrap { margin-top: 0.75rem; padding: 0.5rem; background: #f4faf4; border: 1px solid #9ccc9c; border-radius: 8px; }
+        .lineup-board-image { max-width: 100%; height: auto; display: block; border-radius: 6px; }
+        .lineup-board-expand { display: inline-block; margin-top: 0.5rem; font-size: 0.85rem; }
+        #advisor-loading { margin: 0.5rem 0; color: #2f6b2f; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="advisor-wrap">
         <h1>ScoutMatch Recruitment Advisor</h1>
-        <p>Optional Bedrock Agent mode. Production v14 chat is unchanged.</p>
+        <p>Dynamic sporting-director chat via Bedrock Agent. Production v14 chat is unchanged.</p>
         <div id="advisor-disabled" class="advisor-disabled" hidden></div>
         <div id="advisor-chat" hidden>
+            <div id="advisor-loading" hidden>Generating advisor response…</div>
             <div id="advisor-messages"></div>
             <form id="advisor-form">
                 <textarea id="advisor-input" rows="3" placeholder="Ask a recruitment question..." required></textarea>

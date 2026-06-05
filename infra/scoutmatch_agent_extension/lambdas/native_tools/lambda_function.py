@@ -1,7 +1,7 @@
 """
 ScoutMatchNativeToolsAvidan — single action group router (Bedrock 10-API quota).
 
-Exposes six agent-attached functions; additional helpers remain available for direct Lambda tests.
+Routes quota-safe native and football-operations functions; additional helpers stay on direct Lambdas.
 """
 
 from __future__ import annotations
@@ -30,13 +30,14 @@ def _load_module(name: str, relative: str):
 _shortlist = _load_module("scoutmatch_shortlist", "shortlist_manager")
 _brief = _load_module("scoutmatch_brief", "recruitment_brief")
 _workflow = _load_module("scoutmatch_workflow", "recruitment_workflow")
+_football_ops = _load_module("scoutmatch_football_ops", "football_operations")
 
 _AGENT_FUNCTIONS = {
+    "UpdateSquadPlanningContext": _football_ops,
+    "SubmitPlayerSelectionToManagement": _football_ops,
+    "FinalizeCurrentLineup": _football_ops,
+    "GenerateCurrentLineupBoard": _football_ops,
     "AddCandidateToShortlist": _shortlist,
-    "ListShortlistCandidates": _shortlist,
-    "RemoveCandidateFromShortlist": _shortlist,
-    "CreateRecruitmentBrief": _brief,
-    "GetRecruitmentBrief": _brief,
     "StartCandidateReviewWorkflow": _workflow,
 }
 

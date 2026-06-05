@@ -19,7 +19,7 @@ import uuid
 
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
 # config loads .env with override=True before reading any settings.
@@ -47,6 +47,7 @@ from bedrock_agent_service import (  # noqa: E402
     invoke_agent as invoke_recruitment_advisor,
     is_enabled as recruitment_advisor_enabled,
 )
+from lineup_board_service import fetch_lineup_svg, is_valid_lineup_id  # noqa: E402
 
 
 def _parse_upload_player_facts(raw: bytes, ext: str, filename: str = "") -> dict[str, object | None]:
@@ -1507,6 +1508,17 @@ def api_recruitment_advisor_status():
         return jsonify({"enabled": True})
     payload = advisor_disabled_response()
     return jsonify({"enabled": False, "message": payload.get("message")})
+
+
+@app.route("/api/recruitment-advisor/lineups/<lineup_id>/image", methods=["GET"])
+def api_recruitment_advisor_lineup_image(lineup_id: str):
+    """Serve private lineup SVG via application proxy (not public S3)."""
+    if not is_valid_lineup_id(lineup_id):
+        return jsonify({"error": "invalid lineup id"}), 400
+    svg, err = fetch_lineup_svg(lineup_id)
+    if err or not svg:
+        return jsonify({"error": err or "lineup image not found"}), 404
+    return Response(svg, mimetype="image/svg+xml")
 
 
 @app.route("/api/recruitment-advisor/chat", methods=["POST"])

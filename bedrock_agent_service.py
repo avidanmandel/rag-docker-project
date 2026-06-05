@@ -42,6 +42,11 @@ GENERIC_ERROR_MESSAGE = "The recruitment advisor could not complete this request
 
 _ARN_PATTERN = re.compile(r"arn:aws:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:[^\s]+", re.I)
 _ACCOUNT_PATTERN = re.compile(r"\b[0-9]{12}\b")
+_LINEUP_ROUTE_PATTERN = re.compile(r"/api/recruitment-advisor/lineups/[a-zA-Z0-9_-]+/image")
+_REMAINING_BUDGET_PATTERN = re.compile(
+    r"remaining(?:\s+available)?\s+budget[:\s]+([0-9][0-9,]*)\s*EUR",
+    re.I,
+)
 
 
 def is_enabled() -> bool:
@@ -83,12 +88,42 @@ def _extract_metadata(events: list[dict]) -> dict[str, Any]:
                 documents.append(name)
         if observation.get("repromptResponse"):
             warnings.append("confirmation_or_reprompt")
+    lineup_route = None
+    remaining_budget = None
+    for event in events:
+        if "trace" not in event:
+            continue
+        trace = event.get("trace") or {}
+        observation = trace.get("trace", {}).get("orchestrationTrace", {}).get("observation") or {}
+        action_response = observation.get("actionGroupInvocationOutput") or {}
+        text = (
+            action_response.get("text", "")
+            or str(action_response.get("actionGroupInvocationOutput", ""))
+        )
+        if "image_route" in text and "/api/recruitment-advisor/lineups/" in text:
+            import json
+
+            try:
+                payload = json.loads(text) if text.strip().startswith("{") else {}
+            except json.JSONDecodeError:
+                payload = {}
+            if not payload and "image_route" in text:
+                start = text.find("/api/recruitment-advisor/lineups/")
+                if start >= 0:
+                    end = text.find('"', start)
+                    lineup_route = text[start:end] if end > start else text[start:].split()[0]
+            else:
+                lineup_route = payload.get("image_route")
+            if payload.get("remaining_budget_eur") is not None:
+                remaining_budget = payload.get("remaining_budget_eur")
     return {
         "documents_used": documents[:8],
         "tools_executed": tools[:8],
         "workflow_status": next((t for t in tools if "Workflow" in t), None),
         "shortlist_action": next((t for t in tools if "Shortlist" in t), None),
         "recruitment_brief_created": any("Brief" in t for t in tools),
+        "lineup_image_route": lineup_route,
+        "remaining_budget_eur": remaining_budget,
         "missing_information": None,
         "warnings": warnings[:4],
     }
@@ -118,6 +153,12 @@ def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]
                 )
         answer = _sanitize_text("".join(answer_parts).strip()) or GENERIC_ERROR_MESSAGE
         metadata = _extract_metadata(collected_events)
+        route_match = _LINEUP_ROUTE_PATTERN.search(answer)
+        if route_match:
+            metadata["lineup_image_route"] = route_match.group(0)
+        budget_match = _REMAINING_BUDGET_PATTERN.search(answer)
+        if budget_match and metadata.get("remaining_budget_eur") is None:
+            metadata["remaining_budget_eur"] = int(budget_match.group(1).replace(",", ""))
         return {
             "enabled": True,
             "session_id": agent_session,

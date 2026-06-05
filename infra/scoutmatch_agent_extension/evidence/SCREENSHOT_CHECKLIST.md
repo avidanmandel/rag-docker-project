@@ -34,3 +34,15 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | 28_chat_workflow_result.png | Full review workflow result in chat |
 | 29_chat_recruitment_brief.png | Generated recruitment brief in chat |
 | 30_four_football_action_groups.png | Existing four deterministic Action Groups still attached |
+| 31_dynamic_sporting_director_chat.png | Multi-turn sporting-director conversation with stateful follow-ups |
+| 32_squad_planning_context_saved.png | DynamoDB squad context item (sanitized console view) |
+| 33_player_selection_confirmation.png | Bedrock confirmation before budget reservation |
+| 34_sns_management_topic.png | ScoutMatchManagementNotificationsAvidan SNS topic |
+| 35_sns_publish_evidence.png | Sanitized management notification publish (no email in Git) |
+| 36_football_operations_dynamodb.png | ScoutMatchFootballOperationsAvidan table |
+| 37_budget_ledger_record.png | RESERVED_PENDING_APPROVAL ledger entry |
+| 38_lineup_record.png | Finalized 4-3-3 lineup record |
+| 39_private_lineup_svg_s3.png | Private SVG under scoutmatch/football-operations/lineups/ |
+| 40_inline_lineup_board_chat.png | Lineup SVG displayed inline in Recruitment Advisor chat |
+| 41_lineup_board_433.png | Generated 4-3-3 board with player markers |
+| 42_pending_management_marker.png | PENDING_MANAGEMENT_APPROVAL marker on transfer candidate |

@@ -15,6 +15,9 @@ WRITE_ACTIONS = frozenset(
         "RemoveCandidateFromShortlist",
         "CreateRecruitmentBrief",
         "StartCandidateReviewWorkflow",
+        "SubmitPlayerSelectionToManagement",
+        "FinalizeCurrentLineup",
+        "RecordPlayerAvailabilityChange",
     }
 )
 

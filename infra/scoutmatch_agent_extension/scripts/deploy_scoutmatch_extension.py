@@ -27,6 +27,9 @@ from botocore.exceptions import ClientError
 
 ROOT = Path(__file__).resolve().parents[3]
 EXT = ROOT / "infra" / "scoutmatch_agent_extension"
+SCRIPTS = EXT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 STATE_PATH = EXT / ".local" / "state.json"
 REGION = "us-east-1"
 
@@ -56,18 +59,53 @@ WRITE_CONFIRM_FUNCTIONS = frozenset(
         "RemoveCandidateFromShortlist",
         "CreateRecruitmentBrief",
         "StartCandidateReviewWorkflow",
+        "SubmitPlayerSelectionToManagement",
+        "FinalizeCurrentLineup",
+        "RecordPlayerAvailabilityChange",
     }
 )
 
 NATIVE_AGENT_ACTION_GROUP = "ScoutMatchNativeActionsAvidan"
-NATIVE_AGENT_FUNCTIONS = [
-    "AddCandidateToShortlist",
-    "ListShortlistCandidates",
-    "RemoveCandidateFromShortlist",
-    "CreateRecruitmentBrief",
-    "GetRecruitmentBrief",
-    "StartCandidateReviewWorkflow",
-]
+
+try:
+    from football_operations_apply import (  # noqa: E402
+        AGENT_INSTRUCTION_DYNAMIC_ADDENDUM,
+        FOOTBALL_OPS_TABLE,
+        FOOTBALL_OPS_WRITE_CONFIRM,
+        LINEUP_S3_PREFIX,
+        NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT,
+        NATIVE_AGENT_FUNCTIONS_V3,
+        SNS_TOPIC_NAME,
+    )
+except ImportError:
+    FOOTBALL_OPS_TABLE = "ScoutMatchFootballOperationsAvidan"
+    SNS_TOPIC_NAME = "ScoutMatchManagementNotificationsAvidan"
+    LINEUP_S3_PREFIX = "scoutmatch/football-operations/lineups/"
+    NATIVE_AGENT_FUNCTIONS_V3 = [
+        "UpdateSquadPlanningContext",
+        "SubmitPlayerSelectionToManagement",
+        "FinalizeCurrentLineup",
+        "GenerateCurrentLineupBoard",
+        "AddCandidateToShortlist",
+        "StartCandidateReviewWorkflow",
+    ]
+    NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT = [
+        "ListShortlistCandidates",
+        "RemoveCandidateFromShortlist",
+        "CreateRecruitmentBrief",
+        "GetRecruitmentBrief",
+    ]
+    FOOTBALL_OPS_WRITE_CONFIRM = frozenset(
+        {
+            "SubmitPlayerSelectionToManagement",
+            "FinalizeCurrentLineup",
+            "RecordPlayerAvailabilityChange",
+        }
+    )
+    AGENT_INSTRUCTION_DYNAMIC_ADDENDUM = ""
+
+NATIVE_AGENT_FUNCTIONS = list(NATIVE_AGENT_FUNCTIONS_V3)
+BEDROCK_AGENT_FUNCTION_QUOTA = 10
 
 NATIVE_LAMBDAS = {
     "ScoutMatchNativeToolsAvidan": {
@@ -197,6 +235,14 @@ def _save_state(state: dict[str, Any]) -> None:
     STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
+NATIVE_ROUTER_DEPENDENCIES = [
+    "shortlist_manager",
+    "recruitment_brief",
+    "recruitment_workflow",
+    "football_operations",
+]
+
+
 def _zip_lambda(folder: str) -> bytes:
     base = EXT / "lambdas" / folder
     common_dir = EXT / "lambdas" / "common"
@@ -205,6 +251,11 @@ def _zip_lambda(folder: str) -> bytes:
         zf.write(base / "lambda_function.py", "lambda_function.py")
         for module in sorted(common_dir.glob("*.py")):
             zf.write(module, module.name)
+        if folder == "native_tools":
+            for dep in NATIVE_ROUTER_DEPENDENCIES:
+                dep_dir = EXT / "lambdas" / dep
+                for py_file in sorted(dep_dir.glob("*.py")):
+                    zf.write(py_file, f"{dep}/{py_file.name}")
     return buf.getvalue()
 
 
@@ -420,6 +471,64 @@ def _native_schemas() -> dict[str, dict]:
                 "Get the latest stored review result.",
                 {"candidate_name": {"type": "string"}},
                 ["candidate_name"],
+            ),
+            "UpdateSquadPlanningContext": _function_schema(
+                "UpdateSquadPlanningContext",
+                "Save or update the sporting director squad-planning context.",
+                {
+                    "opponent": {"type": "string"},
+                    "preferred_formation": {"type": "string"},
+                    "priority_positions": {"type": "string"},
+                    "strong_positions": {"type": "string"},
+                    "available_budget_eur": {"type": "integer"},
+                    "immediate_starter_required": {"type": "boolean"},
+                    "coach_notes": {"type": "string"},
+                },
+                ["opponent", "preferred_formation"],
+            ),
+            "SubmitPlayerSelectionToManagement": _function_schema(
+                "SubmitPlayerSelectionToManagement",
+                "Reserve budget and notify management about a player selection.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "selection_reason": {"type": "string"},
+                },
+                ["candidate_name"],
+            ),
+            "FinalizeCurrentLineup": _function_schema(
+                "FinalizeCurrentLineup",
+                "Validate and save the current starting lineup.",
+                {
+                    "formation": {"type": "string"},
+                    "starting_xi": {
+                        "type": "string",
+                        "description": "Semicolon-separated name:POSITION entries or JSON list",
+                    },
+                    "bench": {"type": "string"},
+                },
+                ["starting_xi"],
+            ),
+            "GenerateCurrentLineupBoard": _function_schema(
+                "GenerateCurrentLineupBoard",
+                "Render the current lineup board as a private SVG.",
+                {},
+                [],
+            ),
+            "RecordPlayerAvailabilityChange": _function_schema(
+                "RecordPlayerAvailabilityChange",
+                "Record an operational availability update for a squad player.",
+                {
+                    "player_name": {"type": "string"},
+                    "availability_status": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                ["player_name", "availability_status"],
+            ),
+            "AnalyzeSquadDepthGaps": _function_schema(
+                "AnalyzeSquadDepthGaps",
+                "Analyze squad depth gaps from current operational state.",
+                {},
+                [],
             ),
         }
     )
@@ -1265,6 +1374,10 @@ class Deployer:
                 AssumeRolePolicyDocument=json.dumps(trust),
                 Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
             )["Role"]["Arn"]
+        self.plan.append(
+            f"Update IAM inline policy on {NATIVE_TOOLS_ROLE} "
+            f"(football ops table, lineup prefix, SNS publish)"
+        )
         if self.apply:
             self.iam.attach_role_policy(
                 RoleName=NATIVE_TOOLS_ROLE,
@@ -1286,6 +1399,7 @@ class Deployer:
                         "Resource": [
                             f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{SHORTLIST_TABLE}",
                             f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{REVIEWS_TABLE}",
+                            f"arn:aws:dynamodb:{REGION}:{self.account_id}:table/{FOOTBALL_OPS_TABLE}",
                         ],
                     },
                     {
@@ -1294,7 +1408,13 @@ class Deployer:
                         "Resource": [
                             f"arn:aws:s3:::{bucket}",
                             f"arn:aws:s3:::{bucket}/{BRIEF_S3_PREFIX}*",
+                            f"arn:aws:s3:::{bucket}/{LINEUP_S3_PREFIX}*",
                         ],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["sns:Publish"],
+                        "Resource": [f"arn:aws:sns:{REGION}:{self.account_id}:{SNS_TOPIC_NAME}"],
                     },
                     {
                         "Effect": "Allow",
@@ -1473,12 +1593,67 @@ class Deployer:
         self.present.append(f"Published agent alias {alias_name} to version {latest}")
         return alias_id
 
+    def _audit_agent_function_quota(self, agent_id: str) -> None:
+        groups = self.agent.list_agent_action_groups(agentId=agent_id, agentVersion="DRAFT")
+        names = [g.get("actionGroupName", "") for g in groups.get("actionGroupSummaries", [])]
+        football_count = sum(1 for n in names if n in {m["action_group"] for m in LAMBDAS.values()})
+        native_count = len(NATIVE_AGENT_FUNCTIONS)
+        total = football_count + native_count
+        self.present.append(f"Bedrock quota audit: {len(names)} action groups on agent draft")
+        self.present.append(
+            f"Bedrock quota audit: {football_count} football + {native_count} native = {total} "
+            f"proposed enabled APIs (max {BEDROCK_AGENT_FUNCTION_QUOTA})"
+        )
+        if total > BEDROCK_AGENT_FUNCTION_QUOTA:
+            self.blockers.append(
+                f"Proposed function count {total} exceeds Bedrock quota {BEDROCK_AGENT_FUNCTION_QUOTA}"
+            )
+        for removed in NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT:
+            self.present.append(f"Quota plan: {removed} remains direct-Lambda only (not on agent)")
+
+    def ensure_sns_topic(self) -> str:
+        self.plan.append(f"Create SNS topic (if missing): {SNS_TOPIC_NAME}")
+        if not self.apply:
+            return f"arn:aws:sns:{REGION}:{self.account_id}:{SNS_TOPIC_NAME}"
+        sns = self.session.client("sns")
+        try:
+            topics = sns.list_topics().get("Topics", [])
+            for topic in topics:
+                if topic["TopicArn"].endswith(f":{SNS_TOPIC_NAME}"):
+                    self.present.append(f"SNS topic exists: {SNS_TOPIC_NAME}")
+                    return topic["TopicArn"]
+        except ClientError as exc:
+            self.blockers.append(f"SNS list denied: {exc.response['Error'].get('Code', 'Error')}")
+            return ""
+        created = sns.create_topic(Name=SNS_TOPIC_NAME)
+        return created["TopicArn"]
+
+    def plan_football_operations_extension(self, agent_id: str, bucket: str) -> None:
+        self.log("\n=== DYNAMIC FOOTBALL OPERATIONS (PLAN) ===")
+        self.ensure_dynamodb_table(FOOTBALL_OPS_TABLE)
+        sns_arn = self.ensure_sns_topic()
+        self._audit_agent_function_quota(agent_id)
+        self.plan.append(f"Extend native router Lambda: ScoutMatchNativeToolsAvidan")
+        self.plan.append(f"Update native action group with quota-safe function set ({len(NATIVE_AGENT_FUNCTIONS)} APIs)")
+        self.plan.append(f"Scoped S3 lineup prefix: {LINEUP_S3_PREFIX}")
+        self.plan.append("Add Flask proxy route: GET /api/recruitment-advisor/lineups/<lineup_id>/image")
+        self.plan.append("Update agent instruction with dynamic sporting-director addendum")
+        if sns_arn:
+            self.present.append("SNS topic plan prepared (manual email subscription may be required)")
+        self.present.append(f"Football operations DynamoDB table plan: {FOOTBALL_OPS_TABLE}")
+        if bucket:
+            self.present.append(f"Lineup SVG prefix uses existing bucket: {bucket}")
+
     def update_agent_instruction_native(self, agent_id: str) -> None:
-        self.plan.append("Update agent instruction with AWS-native addendum")
+        self.plan.append("Update agent instruction with AWS-native and dynamic operations addendum")
         if not self.apply:
             return
         detail = self.agent.get_agent(agentId=agent_id)["agent"]
-        instruction = (detail.get("instruction") or AGENT_INSTRUCTION) + AGENT_INSTRUCTION_NATIVE_ADDENDUM
+        instruction = (
+            (detail.get("instruction") or AGENT_INSTRUCTION)
+            + AGENT_INSTRUCTION_NATIVE_ADDENDUM
+            + AGENT_INSTRUCTION_DYNAMIC_ADDENDUM
+        )
         self.agent.update_agent(
             agentId=agent_id,
             agentName=detail["agentName"],
@@ -1511,6 +1686,7 @@ class Deployer:
         workflow_role = self.ensure_native_workflow_role()
         sm_arn = self.ensure_state_machine(workflow_role)
 
+        sns_arn = self.ensure_sns_topic() if not self.blockers else ""
         native_env = {
             "SCOUTMATCH_SHORTLIST_TABLE": SHORTLIST_TABLE,
             "SCOUTMATCH_REVIEWS_TABLE": REVIEWS_TABLE,
@@ -1518,6 +1694,11 @@ class Deployer:
             "SCOUTMATCH_BRIEF_PREFIX": BRIEF_S3_PREFIX,
             "SCOUTMATCH_REVIEW_STATE_MACHINE_ARN": sm_arn,
             "SCOUTMATCH_BEDROCK_NATIVE_CONFIRMATION": "true",
+            "SCOUTMATCH_FOOTBALL_OPS_TABLE": FOOTBALL_OPS_TABLE,
+            "SCOUTMATCH_LINEUP_BUCKET": bucket,
+            "SCOUTMATCH_LINEUP_S3_PREFIX": LINEUP_S3_PREFIX,
+            "SCOUTMATCH_MANAGEMENT_SNS_TOPIC": SNS_TOPIC_NAME,
+            "SCOUTMATCH_MANAGEMENT_SNS_TOPIC_ARN": sns_arn or "",
         }
 
         native_arns: dict[str, str] = {}
@@ -1541,6 +1722,7 @@ class Deployer:
                 else:
                     self.present.append(f"Lambda deployed without agent attach: {name}")
 
+        self.plan_football_operations_extension(agent_id, bucket)
         self.update_agent_instruction_native(agent_id)
         if self.apply:
             self.prepare_agent(agent_id)
