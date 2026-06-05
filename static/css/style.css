@@ -4101,3 +4101,203 @@ kbd {
         display: none;
     }
 }
+
+/* ==========================================================
+   Homepage visual repair — 100% zoom desktop balance
+   Overrides stacked legacy min-heights that forced outer scroll.
+   ========================================================== */
+.messages.messages--landing {
+    padding: 10px 18px 12px;
+    overflow: hidden;
+}
+
+.messages.messages--landing .home-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(280px, 0.96fr);
+    gap: clamp(12px, 1.6vw, 22px);
+    align-items: stretch;
+    width: min(100%, 1380px);
+    margin: 0 auto;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    padding: clamp(8px, 1.2vw, 16px) clamp(12px, 1.8vw, 20px);
+    overflow: hidden;
+}
+
+.messages.messages--landing .hero-left {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: none;
+    align-self: stretch;
+}
+
+.messages.messages--landing .hero-right {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
+}
+
+.messages.messages--landing .hero-kicker {
+    margin-bottom: 6px;
+    font-size: 11px;
+}
+
+.messages.messages--landing .hero-copy__headline {
+    font-size: clamp(1.35rem, 1.9vw, 1.9rem);
+    line-height: 1.12;
+    margin: 0 0 6px;
+}
+
+.messages.messages--landing .hero-copy__sub {
+    font-size: 12.5px;
+    line-height: 1.4;
+    margin: 0 0 8px;
+}
+
+.messages.messages--landing .scouting-status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.messages.messages--landing .scouting-status-tile {
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.messages.messages--landing .empty-state__notice {
+    display: block;
+    margin: 4px 0 6px;
+    font-size: 11.5px;
+    line-height: 1.35;
+}
+
+.messages.messages--landing .home-hero .suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    max-height: none;
+    overflow: visible;
+}
+
+.messages.messages--landing .home-hero .suggestion {
+    min-height: 2.85rem;
+    height: auto;
+    padding: 9px 12px 9px 38px;
+    font-size: 12px;
+    line-height: 1.38;
+    white-space: normal;
+    overflow: visible;
+    display: flex;
+    align-items: center;
+}
+
+.messages.messages--landing .home-hero .suggestion::before {
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.messages.messages--landing .workspace-panel {
+    display: none;
+}
+
+.messages.messages--landing .dashboard-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: min(460px, calc(100vh - 220px));
+    padding: 8px 10px;
+    overflow: hidden;
+}
+
+.messages.messages--landing .dashboard-stage__panel-img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    min-height: 0;
+    object-fit: contain;
+    object-position: center center;
+    border-radius: 12px;
+}
+
+@media (max-height: 820px) {
+    .messages.messages--landing {
+        padding: 8px 14px 10px;
+    }
+
+    .messages.messages--landing .home-hero {
+        gap: 10px;
+        padding: 8px 12px;
+    }
+
+    .messages.messages--landing .dashboard-stage {
+        max-height: min(340px, calc(100vh - 232px));
+    }
+
+    .messages.messages--landing .hero-copy__headline {
+        font-size: clamp(1.25rem, 1.75vw, 1.55rem);
+    }
+
+    .messages.messages--landing .empty-state__notice {
+        display: block;
+        font-size: 11px;
+        margin: 2px 0 4px;
+    }
+
+    .messages.messages--landing .home-hero .suggestion {
+        min-height: 2.6rem;
+        padding: 8px 10px 8px 36px;
+        font-size: 11.5px;
+    }
+}
+
+@media (min-height: 860px) {
+    .messages.messages--landing .dashboard-stage {
+        max-height: min(500px, calc(100vh - 210px));
+    }
+
+    .messages.messages--landing .hero-copy__headline {
+        font-size: clamp(1.5rem, 2vw, 2rem);
+    }
+
+    .messages.messages--landing {
+        padding: 12px 20px 14px;
+    }
+}
+
+@media (min-height: 980px) {
+    .messages.messages--landing .dashboard-stage {
+        max-height: min(560px, calc(100vh - 200px));
+    }
+
+    .messages.messages--landing {
+        padding: 14px 22px 16px;
+    }
+}
+
+@media (min-width: 1600px) and (min-height: 900px) {
+    .messages.messages--landing .home-hero {
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 0.95fr);
+        gap: clamp(18px, 2vw, 28px);
+    }
+
+    .messages.messages--landing .dashboard-stage {
+        max-height: min(580px, calc(100vh - 190px));
+    }
+}
