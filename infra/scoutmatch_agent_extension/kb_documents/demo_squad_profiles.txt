@@ -1,0 +1,13 @@
+ScoutMatch FC — Demo Squad Profiles (sanitized fictional data)
+
+Own-team demo roster (4-3-3 capable):
+- Avi Cohen (GK)
+- Daniel Levy (RB)
+- Michael Ross (CB)
+- Yossi Bar (CB)
+- Tal Amar (LB)
+- Noam Sharon, Ido Katz, Eran Blum (CM)
+- Lior Dan (RW), Amit Peretz (ST), Guy Navon (LW)
+
+Transfer candidate:
+- Ron Ben Ari — aggressive right-back option; documented salary request 43,000 EUR.

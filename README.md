@@ -418,22 +418,37 @@ Production EC2 was **not** modified by this extension.
 - Presentation outline: `docs/SCOUTMATCH_PRESENTATION_CONTENT.md`
 - Submission ZIP: `docs/SUBMISSION_CHECKLIST.md`
 
-### Dynamic football operations (plan — branch `feature/scoutmatch-agent-flow-extension`)
+### Final four-Lambda Recruitment Advisor (applied — branch `feature/scoutmatch-agent-flow-extension`)
 
-Sporting-director squad planning: operational DynamoDB state, budget reservations, SNS management notifications, and SVG lineup boards in the Recruitment Advisor UI. **Plan only** until approved `--apply`.
+Sporting-director squad planning through **one Bedrock Agent**, **one central Guardrail**, **one Knowledge Base association (ENABLED)**, and **exactly four user-facing Tools** — each with its own Action Group and dedicated Lambda:
 
-- Plan doc: `docs/SCOUTMATCH_DYNAMIC_FOOTBALL_OPERATIONS_PLAN.md`
-- Deploy plan: `python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --plan`
+| Tool | Action Group | Lambda |
+|------|--------------|--------|
+| `PlanMatchTactics` | `ScoutMatchTacticsActionsAvidan` | `ScoutMatchPlanMatchTacticsAvidan` |
+| `SubmitPlayerSelectionToManagement` | `ScoutMatchPlayerSelectionActionsAvidan` | `ScoutMatchSubmitPlayerSelectionAvidan` |
+| `FinalizeCurrentLineup` | `ScoutMatchLineupActionsAvidan` | `ScoutMatchFinalizeCurrentLineupAvidan` |
+| `GenerateCurrentLineupBoard` | `ScoutMatchLineupBoardActionsAvidan` | `ScoutMatchGenerateLineupBoardAvidan` |
 
-### AWS-native recruitment advisor (applied — branch `feature/scoutmatch-agent-flow-extension`)
+- **Static evidence:** Bedrock Knowledge Base (`knowledge-base-user5`) — club policies, CVs, scouting reports, tactical documents under `scoutmatch/knowledge-base/tactical/`
+- **Dynamic state:** DynamoDB operational records (`ScoutMatchFootballOperationsAvidan` or approved fallback prefix on shortlist table)
+- **Management alerts:** SNS topic `ScoutMatchManagementNotificationsAvidan` (manual email subscription required — see `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`)
+- **Lineup boards:** private SVG under `scoutmatch/football-operations/lineups/`, served via `GET /api/recruitment-advisor/lineups/<lineup_id>/image`
+- **Legacy resources preserved** but detached from the Agent (native router, old football groups, shortlist/workflow Lambdas — not deleted)
 
-DynamoDB shortlist, S3 recruitment briefs, Step Functions candidate review, and a consolidated native Action Group on the Bedrock Agent. Four existing football Action Groups are unchanged. Production EC2/Docker v14/S3 baseline/KB content were **not** modified.
+Deploy and validate:
 
-- Gap analysis: `docs/SCOUTMATCH_AWS_NATIVE_WORKFLOW_GAP_ANALYSIS.md`
-- Applied workflow: `docs/SCOUTMATCH_AWS_NATIVE_RECRUITMENT_WORKFLOW.md`
-- Optional UI: `/recruitment-advisor` and `POST /api/recruitment-advisor/chat` (disabled by default)
-- Deploy: `python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --apply`
-- Validation: `python infra/scoutmatch_agent_extension/scripts/validate_stage2_native.py`
+```bash
+python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --plan
+python infra/scoutmatch_agent_extension/scripts/deploy_scoutmatch_extension.py --apply
+python infra/scoutmatch_agent_extension/scripts/validate_four_lambda_final.py
+```
+
+Optional UI (disabled by default locally; enable with `SCOUTMATCH_AGENT_EXTENSION_ENABLED=true` in `.env.agent` — never commit):
+
+- `/recruitment-advisor`
+- `POST /api/recruitment-advisor/chat` via `boto3.client("bedrock-agent-runtime").invoke_agent(...)`
+
+**Production EC2:** stable v14 remains on `scoutmatch-ai:baseline-club-v14` until safe cutover. See `scripts/deploy_recruitment_advisor_ec2.sh` for candidate-port validation and rollback to v14.
 
 ---
 

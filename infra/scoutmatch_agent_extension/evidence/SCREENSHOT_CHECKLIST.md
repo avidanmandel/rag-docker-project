@@ -5,11 +5,11 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | File | What it proves |
 |------|----------------|
 | 01_new_agent_overview.png | New agent `scoutmatch-recruitment-agent-user5-avidan` exists |
-| 02_agent_four_action_groups.png | Four ScoutMatch*ActionsAvidan groups are attached |
+| 02_agent_four_action_groups.png | Four final groups: Tactics, PlayerSelection, Lineup, LineupBoard ActionsAvidan |
 | 03_agent_knowledge_base_attached.png | `knowledge-base-user5` is associated |
 | 04_agent_guardrail_attached.png | `scoutmatch-guardrail-user5-avidan` on agent only |
 | 05_guardrail_version_1.png | Guardrail version 1 published |
-| 06_four_lambdas_filtered_list.png | Four new ScoutMatch*Avidan Lambdas in console |
+| 06_four_lambdas_filtered_list.png | ScoutMatchPlanMatchTacticsAvidan, SubmitPlayerSelectionAvidan, FinalizeCurrentLineupAvidan, GenerateLineupBoardAvidan |
 | 07_lambda_scoped_permission_example.png | bedrock.amazonaws.com invoke with SourceArn scoped to agent |
 | 08_agent_budget_test_success.png | Budget PASS example (58k + 35k committed) |
 | 09_agent_right_back_test_success.png | Ron Ben Ari / right-back evaluation |
@@ -33,7 +33,7 @@ Save PNGs under `submission_evidence/agent_flow_extension/`. Do not overwrite `s
 | 27_chat_budget_followup_same_session.png | Budget follow-up in same advisor session |
 | 28_chat_workflow_result.png | Full review workflow result in chat |
 | 29_chat_recruitment_brief.png | Generated recruitment brief in chat |
-| 30_four_football_action_groups.png | Existing four deterministic Action Groups still attached |
+| 30_legacy_resources_preserved.png | Old native/football Lambdas and groups still exist but detached from Agent |
 | 31_dynamic_sporting_director_chat.png | Multi-turn sporting-director conversation with stateful follow-ups |
 | 32_squad_planning_context_saved.png | DynamoDB squad context item (sanitized console view) |
 | 33_player_selection_confirmation.png | Bedrock confirmation before budget reservation |

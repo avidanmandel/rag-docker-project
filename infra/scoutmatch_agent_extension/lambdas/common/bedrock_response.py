@@ -78,6 +78,15 @@ def optional_string(params: dict[str, Any], name: str) -> str | None:
     return value or None
 
 
+def optional_int(params: dict[str, Any], name: str) -> int | None:
+    if name not in params or params[name] is None or str(params[name]).strip() == "":
+        return None
+    try:
+        return int(str(params[name]).strip().replace(",", ""))
+    except ValueError as exc:
+        raise ParameterError(f"Invalid integer for {name}") from exc
+
+
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().lower())
 

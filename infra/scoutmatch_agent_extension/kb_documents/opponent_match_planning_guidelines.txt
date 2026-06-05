@@ -1,0 +1,6 @@
+ScoutMatch FC — Opponent Match Planning Guidelines (sanitized demo document)
+
+- Use coach-provided opponent name only as match context, not as a source of real-world opponent facts.
+- Ask for clarification when opponent-specific scouting evidence is missing.
+- Combine Knowledge Base tactical policy with dynamic DynamoDB planning context.
+- Recommend formations from documented ScoutMatch rules and current squad constraints.

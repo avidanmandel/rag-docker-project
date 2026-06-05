@@ -6,7 +6,7 @@
 
 ## When this is required
 
-After approved `--apply`, `SubmitPlayerSelectionToManagement` can publish sanitized management notifications to SNS. **SNS publish can succeed even when no email subscription exists**, but **no email will be received** until a subscription is created and confirmed.
+After four-Lambda `--apply`, `ScoutMatchSubmitPlayerSelectionAvidan` / `SubmitPlayerSelectionToManagement` publishes sanitized management notifications to SNS only after explicit user confirmation. **SNS publish can succeed even when no email subscription exists**, but **no email will be received** until a subscription is created and confirmed.
 
 Manual email subscription is required for the live email demo.
 

@@ -190,9 +190,9 @@ def test_demo_lineup_svg_contains_ron_rb_pending_and_no_opponent_lineup():
     )
     board = _body(ops.lambda_handler(_event("GenerateCurrentLineupBoard", {}), None))
     assert board["status"] == "RENDERED"
-    from lineup_svg import get_local_svg
+    import lineup_svg as football_lineup_svg
 
-    svg = get_local_svg("current")
+    svg = football_lineup_svg.get_local_svg("current")
     assert svg and svg.count("<circle") >= 11
     assert "Ron Ben Ari" in svg or "Ben Ari" in svg or "Ari" in svg
     assert "PENDING APPROVAL" in svg
@@ -237,7 +237,15 @@ def test_budget_helper_fail_path_no_reservation():
 
 
 def test_budget_helper_invoke_failure_safe_no_write_no_sns():
-    from player_selection import submit_selection
+    import importlib.util
+
+    _ps_path = EXT / "lambdas" / "football_operations" / "player_selection.py"
+    _ps_spec = importlib.util.spec_from_file_location(
+        "football_operations_player_selection", _ps_path
+    )
+    football_player_selection = importlib.util.module_from_spec(_ps_spec)
+    assert _ps_spec.loader is not None
+    _ps_spec.loader.exec_module(football_player_selection)
 
     ops.lambda_handler(
         _event(
@@ -250,7 +258,7 @@ def test_budget_helper_invoke_failure_safe_no_write_no_sns():
     error = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "Invoke")
     with patch("boto3.client") as mock_client:
         mock_client.return_value.invoke.side_effect = error
-        body, err = submit_selection("Ron Ben Ari")
+        body, err = football_player_selection.submit_selection("Ron Ben Ari")
     os.environ["SCOUTMATCH_WORKFLOW_INPROCESS"] = "true"
     assert not err
     assert body["status"] == "REJECTED"

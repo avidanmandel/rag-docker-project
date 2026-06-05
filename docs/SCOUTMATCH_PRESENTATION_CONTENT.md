@@ -31,15 +31,23 @@ Use this outline to build the course deck. **No final PPTX is committed** in thi
 Browser → EC2 Docker → Flask → boto3 retrieve(KB) → grounded answer + source cards
 ```
 
-**Recruitment Advisor (local / extension)**
+**Recruitment Advisor (four-Lambda final architecture)**
 
 ```
 Browser → Flask → bedrock-agent-runtime invoke_agent
-  → Agent + Knowledge Base (RAG)
-  → 4 user-facing Tools → Lambda → DynamoDB / S3 / SNS
+  → Agent + central Guardrail + Knowledge Base (ENABLED)
+  → 4 Action Groups (1 Tool each) → 4 dedicated Lambdas
+  → DynamoDB operational state / private S3 SVG / SNS
 ```
 
-Static policy and reports: **Knowledge Base**. Live budget, selections, lineups: **DynamoDB**.
+| Lambda | Tool |
+|--------|------|
+| `ScoutMatchPlanMatchTacticsAvidan` | `PlanMatchTactics` |
+| `ScoutMatchSubmitPlayerSelectionAvidan` | `SubmitPlayerSelectionToManagement` |
+| `ScoutMatchFinalizeCurrentLineupAvidan` | `FinalizeCurrentLineup` |
+| `ScoutMatchGenerateLineupBoardAvidan` | `GenerateCurrentLineupBoard` |
+
+Static policy and reports: **Knowledge Base**. Live opponent, budget, selections, lineups: **DynamoDB**.
 
 ## 5. Live Demo
 
@@ -52,8 +60,8 @@ See `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md`.
 
 ## 6. Challenges and Next Steps
 
-- **Challenges:** Bedrock 10-API quota → simplified four-tool design; separating static KB from dynamic state; confirmation/idempotency for budget reservations.
-- **Next steps:** Approved `--apply` for simplified Agent attach; capture dynamic screenshots; optional Advisor history persistence; cleanup after explicit approval (`docs/SCOUTMATCH_AWS_CLEANUP_PLAN.md`).
+- **Challenges:** Bedrock Action Group quota → four dedicated Lambdas (no router); separating static KB from dynamic DynamoDB state; confirmation/idempotency for budget and lineup writes; IAM limits on dedicated football-ops table.
+- **Next steps:** Capture dynamic console screenshots; optional public EC2 Advisor cutover (`scripts/deploy_recruitment_advisor_ec2.sh`); manual SNS email subscription; optional Advisor history persistence; cleanup after explicit approval (`docs/SCOUTMATCH_AWS_CLEANUP_PLAN.md`).
 
 ## PPTX status
 

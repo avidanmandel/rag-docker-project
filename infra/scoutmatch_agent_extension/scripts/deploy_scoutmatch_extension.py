@@ -982,7 +982,14 @@ class Deployer:
         update_if_exists: bool = True,
         require_confirmation: bool | None = None,
     ) -> None:
-        schema = _schemas()[function_name]
+        schema_lookup = _schemas()
+        try:
+            from deploy_final_four_lambda import final_four_schemas
+
+            schema_lookup = {**schema_lookup, **final_four_schemas()}
+        except ImportError:
+            pass
+        schema = schema_lookup[function_name]
         if require_confirmation is not None:
             schema = _function_schema(
                 schema["name"],
@@ -1325,7 +1332,7 @@ class Deployer:
                 bucket = ""
         return bucket
 
-    def ensure_dynamodb_table(self, table_name: str) -> None:
+    def ensure_dynamodb_table(self, table_name: str, *, hash_key: str = "candidate_key") -> None:
         self.plan.append(f"Create DynamoDB table (on-demand): {table_name}")
         if not self.apply:
             return
@@ -1338,20 +1345,23 @@ class Deployer:
             code = exc.response["Error"]["Code"]
             if code not in {"ResourceNotFoundException", "AccessDeniedException"}:
                 raise
+            if code == "AccessDeniedException":
+                self.present.append(f"DynamoDB table may already exist: {table_name}")
+                return
         try:
             ddb.create_table(
-            TableName=table_name,
-            AttributeDefinitions=[{"AttributeName": "candidate_key", "AttributeType": "S"}],
-            KeySchema=[{"AttributeName": "candidate_key", "KeyType": "HASH"}],
-            BillingMode="PAY_PER_REQUEST",
-            Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
+                TableName=table_name,
+                AttributeDefinitions=[{"AttributeName": hash_key, "AttributeType": "S"}],
+                KeySchema=[{"AttributeName": hash_key, "KeyType": "HASH"}],
+                BillingMode="PAY_PER_REQUEST",
+                Tags=[{"Key": k, "Value": v} for k, v in TAGS.items()],
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] == "ResourceInUseException":
                 self.present.append(f"DynamoDB table already exists: {table_name}")
                 return
             if exc.response["Error"]["Code"] == "AccessDeniedException":
-                self.already.append(f"DynamoDB table may already exist: {table_name}")
+                self.present.append(f"DynamoDB table may already exist: {table_name}")
                 return
             raise
         waiter = ddb.get_waiter("table_exists")
@@ -1660,7 +1670,7 @@ class Deployer:
 
     def plan_football_operations_extension(self, agent_id: str, bucket: str) -> None:
         self.log("\n=== DYNAMIC FOOTBALL OPERATIONS (PLAN) ===")
-        self.ensure_dynamodb_table(FOOTBALL_OPS_TABLE)
+        self.ensure_dynamodb_table(FOOTBALL_OPS_TABLE, hash_key="entity_key")
         sns_arn = self.ensure_sns_topic()
         self._audit_agent_function_quota(agent_id)
         self.plan.append(f"Extend native router Lambda: ScoutMatchNativeToolsAvidan")
@@ -1761,24 +1771,11 @@ class Deployer:
             native_arns[name] = self.ensure_lambda(name, meta["folder"], tools_role)
             if self.apply:
                 self.ensure_lambda_env(name, native_env)
-                if meta.get("attach_to_agent", True):
-                    self.allow_agent_invoke(
-                        name,
-                        agent_arn,
-                        f"bedrock-native-{agent_id}-{meta['action_group']}"[:80],
-                    )
-                    self.ensure_native_action_group(
-                        agent_id,
-                        native_arns[name],
-                        meta["action_group"],
-                        meta["functions"],
-                        meta["description"],
-                    )
-                else:
-                    self.present.append(f"Lambda deployed without agent attach: {name}")
+            self.present.append(f"Support/rollback lambda preserved without Agent attach: {name}")
 
+        kb_id, ds_id = self.resolve_kb()
+        self.apply_final_four_architecture(agent_id, agent_arn, bucket, kb_id, ds_id)
         self.plan_football_operations_extension(agent_id, bucket)
-        self.update_agent_instruction_native(agent_id)
         if self.apply:
             self.prepare_agent(agent_id)
             new_alias = self._publish_agent_alias(agent_id)
@@ -1883,25 +1880,8 @@ class Deployer:
         self.associate_kb(agent_id, kb_id)
 
         agent_arn = f"arn:aws:bedrock:{REGION}:{self.account_id}:agent/{agent_id}"
-        football_present = self._football_action_groups_present(agent_id) if agent_id else set()
         for name, meta in LAMBDAS.items():
-            preserve = meta["action_group"] in football_present
-            if not preserve:
-                self.ensure_action_group(
-                    agent_id,
-                    lambda_arns[name],
-                    meta["action_group"],
-                    meta["function"],
-                    meta["description"],
-                    update_if_exists=True,
-                )
-            else:
-                self.present.append(f"Preserved football action group: {meta['action_group']}")
-            self.allow_agent_invoke(
-                name,
-                agent_arn,
-                f"bedrock-agent-{agent_id}-{meta['action_group']}"[:80],
-            )
+            self.present.append(f"Legacy rollback lambda preserved without Agent attach: {name}")
 
         self.prepare_agent(agent_id)
         alias_id = self.ensure_agent_alias(agent_id)
@@ -1945,6 +1925,14 @@ def main() -> int:
     args = parser.parse_args()
     apply = bool(args.apply)
     return Deployer(apply=apply).run()
+
+
+try:
+    from deploy_final_four_lambda import patch_deployer
+
+    patch_deployer(Deployer)
+except ImportError:
+    pass
 
 
 if __name__ == "__main__":

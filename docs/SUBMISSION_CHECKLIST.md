@@ -31,16 +31,21 @@ Use before the lecturer submission ZIP. Cleanup remains **deferred** until scree
 
 - [x] `submission_evidence/final_v14/` — 11 PNGs (see `submission_evidence/README.md`)
 
-### Dynamic extension (planned / missing)
+### Dynamic extension (manual capture still required)
 
-- [ ] Agent KB association ENABLED
-- [ ] Four user-facing Tools only
+- [ ] Agent KB association ENABLED (live validation PASS)
+- [ ] Four dedicated Lambdas + four Action Groups (live validation PASS)
 - [ ] Sporting-director chat, confirmation, DynamoDB, SNS, inline SVG lineup
 - [ ] See `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`
 
 ## Verification
 
-- [ ] `python -m pytest tests/test_scoutmatch.py tests/test_bedrock_agent_advisor.py infra/scoutmatch_agent_extension/tests -q`
+- [x] `python -m compileall .`
+- [x] `python -m pytest infra/scoutmatch_agent_extension/tests -q` (80 passed)
+- [x] `python -m pytest tests/test_bedrock_flow_extension.py tests/test_bedrock_agent_advisor.py -q`
+- [x] `python -m pytest tests/test_scoutmatch.py -q` (256 passed)
+- [x] `python infra/scoutmatch_agent_extension/scripts/validate_four_lambda_final.py` → `BLOCKERS=0`
+- [ ] Full suite: 366 passed / 2 pre-existing `test_baseline_seed_tooling.py` soak failures (non-demo)
 - [ ] Production: http://3.239.47.249/api/health and `/api/status` → `ready: true`, `rag_backend: aws_kb`
 - [ ] `docs/COURSE_REQUIREMENTS_COMPLIANCE_MATRIX.md` reviewed
 

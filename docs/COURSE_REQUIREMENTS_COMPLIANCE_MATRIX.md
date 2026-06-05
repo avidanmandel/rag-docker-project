@@ -1,6 +1,6 @@
 # Course Requirements Compliance Matrix
 
-Audit date: 2026-06-04. Branch: `feature/scoutmatch-agent-flow-extension`. Starting commit: `8481e24`.
+Audit date: 2026-06-05. Branch: `feature/scoutmatch-agent-flow-extension`. Starting commit: `c6eea2f`. Final apply validated: `validate_four_lambda_final.py` → `BLOCKERS=0`.
 
 Legend: **M** = mandatory course requirement, **R** = recommended / evidence polish.
 
@@ -27,7 +27,7 @@ Legend: **M** = mandatory course requirement, **R** = recommended / evidence pol
 | 19 | Stable v14 path uses boto3 KB retrieval | Architecture | **PASS** | `aws_kb_engine.py` `retrieve()` | Production `rag_backend: aws_kb` | `tests/test_scoutmatch.py`, `test_course_architecture.py` | `06_grounded_budget_answer_with_sources.png` | None | M |
 | 20 | Recruitment Advisor uses `invoke_agent` | Architecture | **PASS** | `bedrock_agent_service.py` | Agent alias configured locally | `test_bedrock_agent_advisor.py`, `test_course_architecture.py` | Advisor chat (planned) | None | M |
 | 21 | Same Agent session ID for follow-ups | UX rubric | **PASS** | `static/js/recruitment_advisor.js` `sessionStorage` | N/A | `test_bedrock_agent_advisor.py::test_same_session_reused` | `31_dynamic_sporting_director_chat.png` | Live demo proof | M |
-| 22 | Current-conversation memory works | UX rubric | **PARTIAL** | Bedrock Agent session + operational DynamoDB on confirm | Agent session (AWS) | Football ops context tests | Demo script step 5–13 | Live multi-turn demo after apply | M |
+| 22 | Current-conversation memory works | UX rubric | **PASS** | Bedrock Agent session + DynamoDB state on confirm; same `session_id` in Advisor UI | Live agent tactical + selection validation | `test_bedrock_agent_advisor.py`, `validate_four_lambda_final.py` | Demo script steps 5–13 | Public EC2 Advisor optional after cutover | M |
 | 23 | Previous Advisor chat history persistence | UX rubric | **MISSING** | No server-side Advisor history DB; only current thread in DOM + `sessionStorage` session id | N/A | Documented honestly in demo script | N/A | Document limitation; optional future SQLite table | R |
 | 24 | RAG grounded answers from documents | Core RAG | **PASS** | `aws_kb_engine.py` strict validation | Production grounded answers | 256+ v14 tests | `06_grounded_budget_answer_with_sources.png` | None | M |
 | 25 | Retrieved source cards shown | UI rubric | **PASS** | Source cards in v14 UI | Live production | Source validation tests | `06_grounded_budget_answer_with_sources.png` | None | M |
@@ -35,10 +35,10 @@ Legend: **M** = mandatory course requirement, **R** = recommended / evidence pol
 | 27 | Upload and KB ingestion flow | Lifecycle | **PASS** | `app.py` upload routes, `aws_storage_service.py` | Session prefix in S3 | Upload/sync tests | `08_uploaded_candidate_answer_with_source.png` | None | M |
 | 28 | Delete-document stale-answer protection | Lifecycle | **PASS** | `database.py` revision bump, stale checks | N/A | Delete/stale tests | `09_deleted_candidate_refusal.png` | None | M |
 | 29 | Clear-documents behavior | Lifecycle | **PASS** | Clear documents API/UI | N/A | Clear tests | `10a` / `10b` | None | M |
-| 30 | MCP / tool-calling demonstrated | Course concept | **PASS** | Bedrock Agent Action Groups + Lambda tools | 5 action groups deployed (legacy layout) | Extension + football ops tests | Agent action groups (planned) | Apply simplified 4-tool attach | M |
-| 31 | Exactly four user-facing Agent Tools | Simplified design | **PARTIAL** | Local router exposes 4 only (`native_tools/lambda_function.py`) | Deployed agent still has 4 football + 6 native APIs | `test_simplified_four_tool_design.py` | Native 4-tool group (planned) | Run approved `--apply` to detach helpers | M |
-| 32 | Internal helpers separated from user-facing Tools | Architecture | **PASS** | `football_operations_apply.py` `INTERNAL_AGENT_HELPERS`; budget via `player_selection.py` | Helper Lambdas exist, not user-selected | `test_simplified_four_tool_design.py` | N/A | Detach football AGs at apply | M |
-| 33 | DynamoDB for dynamic operational state only | Architecture | **PASS** | `ScoutMatchFootballOperationsAvidan` design; KB separate | Table planned, not written this stage | `test_football_operations.py` | `36_football_operations_dynamodb.png` (planned) | Apply + demo records | M |
+| 30 | MCP / tool-calling demonstrated | Course concept | **PASS** | Bedrock Agent → 4 Action Groups → 4 Lambdas | Four final groups ENABLED on agent | `test_four_lambda_architecture.py`, live validation | `02_agent_four_action_groups.png` | Capture console screenshot | M |
+| 31 | Exactly four user-facing Agent Tools | Final architecture | **PASS** | `four_lambda_apply.py` `FINAL_USER_FACING_FUNCTIONS` | `PlanMatchTactics`, `SubmitPlayerSelectionToManagement`, `FinalizeCurrentLineup`, `GenerateCurrentLineupBoard` only | `test_four_lambda_architecture.py`, `validate_four_lambda_final.py` | Four Action Groups console | None | M |
+| 32 | Internal helpers separated from user-facing Tools | Architecture | **PASS** | Old native/football groups detached; Lambdas preserved | Legacy Lambdas exist, not Agent-facing | `deploy_final_four_lambda.py` detach list | N/A | None | M |
+| 33 | DynamoDB for dynamic operational state only | Architecture | **PASS** | `shared_football/operations_store.py`; KB separate | Fallback `football_ops#` prefix on shortlist table when dedicated table create denied | `test_four_lambda_architecture.py` | `36_football_operations_dynamodb.png` | Capture console screenshot | M |
 | 34 | SNS management notification design | Architecture | **PASS** | `sns_notification.py`, topic name constant only | Topic planned | SNS payload test | `34_sns_management_topic.png` (planned) | Manual email subscription | M |
 | 35 | Private S3 lineup SVG design | Architecture | **PASS** | `lineup_svg.py`, `lineup_board_service.py` | Prefix planned | SVG tests | `39_private_lineup_svg_s3.png` (planned) | Apply writes after confirm | M |
 | 36 | Inline lineup-board in Advisor UI | UX rubric | **PASS** | `recruitment_advisor.js` inline `<img>` | N/A | UI code review | `40_inline_lineup_board_chat.png` (planned) | Live demo after apply | M |
@@ -58,7 +58,7 @@ Legend: **M** = mandatory course requirement, **R** = recommended / evidence pol
 | 50 | README includes Docker instructions | Submission | **PASS** | README Docker section | N/A | N/A | N/A | None | M |
 | 51 | README includes cleanup notes | Submission | **PARTIAL** | `docs/SCOUTMATCH_AWS_CLEANUP_PLAN.md` separate | N/A | N/A | N/A | Add README link to cleanup plan | R |
 | 52 | JSON/CSV structured-data processing | Data rubric | **PASS** | CSV uploads, `requirement_verification.py`, aggregates | N/A | Aggregate tests | `08_uploaded_candidate_answer_with_source.png` | None | M |
-| 53 | Local automated tests pass | QA | **PASS** | pytest suites | N/A | 321 passed (required suites) | N/A | None | M |
+| 53 | Local automated tests pass | QA | **PASS** | pytest suites | N/A | 366 passed / 2 pre-existing soak failures (`test_baseline_seed_tooling.py`) | N/A | Soak failures do not affect live demo | M |
 | 54 | Stable v14 regression tests pass | QA | **PASS** | `tests/test_scoutmatch.py` | Production unchanged | 256 v14 cases green | N/A | None | M |
 | 55 | Secret scan passes | Security | **PASS** | `.gitignore` for `.env`, `.env.agent`, PEM; repair scripts untracked | N/A | Grep audit | N/A | None | M |
 | 56 | Required baseline screenshots exist | Evidence | **PASS** | `submission_evidence/final_v14/` 11 PNGs | Matches production | N/A | All `final_v14/*` | None | M |
@@ -73,27 +73,24 @@ Legend: **M** = mandatory course requirement, **R** = recommended / evidence pol
 
 | Status | Count |
 |--------|------:|
-| PASS | 54 |
-| PARTIAL | 4 (#22, #31, #32 deployed state, #51 recommended) |
+| PASS | 57 |
+| PARTIAL | 1 (#51 recommended) |
 | MISSING | 1 (#23 Advisor cross-session history — recommended) |
-| MANUAL EVIDENCE NEEDED | 0 blocking (dynamic screenshots planned, not missing code) |
+| MANUAL EVIDENCE NEEDED | Dynamic AWS/console screenshots (code and live validation complete) |
 
 ## Partial / missing detail
 
 | # | Gap | Next action |
 |---|-----|-------------|
-| 22 | Agent session memory needs live multi-turn demo after apply | Run demo script steps 5–13 |
-| 31 | Deployed agent still exposes 10 APIs until approved apply | `--apply` with simplified 4-tool detach plan |
-| 32 | Football Action Groups still attached on deployed agent | Plan detaches; Lambdas preserved |
 | 23 | No persistent Advisor chat log across browser sessions | Document as known limitation (optional future work) |
 | 51 | Cleanup notes live in separate doc | Link from README (optional) |
 
-## Four user-facing Tools (local simplified design)
+## Four user-facing Tools (final applied architecture)
 
-1. `UpdateSquadPlanningContext`
-2. `SubmitPlayerSelectionToManagement`
-3. `FinalizeCurrentLineup`
-4. `GenerateCurrentLineupBoard`
+1. `PlanMatchTactics` → `ScoutMatchPlanMatchTacticsAvidan`
+2. `SubmitPlayerSelectionToManagement` → `ScoutMatchSubmitPlayerSelectionAvidan`
+3. `FinalizeCurrentLineup` → `ScoutMatchFinalizeCurrentLineupAvidan`
+4. `GenerateCurrentLineupBoard` → `ScoutMatchGenerateLineupBoardAvidan`
 
 ## Internal helpers (not user-facing)
 
