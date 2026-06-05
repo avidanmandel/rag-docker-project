@@ -98,9 +98,11 @@ def test_lineup_proxy_requires_s3_get_and_list():
     assert "list_objects_v2" in service
     assert "get_object" in service
     doc = json.loads(TEMPLATE.read_text(encoding="utf-8"))
-    s3_stmt = doc["Statement"][1]
-    actions = s3_stmt["Action"]
-    assert "s3:GetObject" in actions
-    assert "s3:ListBucket" in actions
-    ddb_stmt = doc["Statement"][2]
+    list_stmt = doc["Statement"][1]
+    get_stmt = doc["Statement"][2]
+    assert list_stmt["Action"] == ["s3:ListBucket"]
+    assert "Condition" in list_stmt
+    assert get_stmt["Action"] == ["s3:GetObject"]
+    assert "Condition" not in get_stmt
+    ddb_stmt = doc["Statement"][3]
     assert "dynamodb:GetItem" in ddb_stmt["Action"]
