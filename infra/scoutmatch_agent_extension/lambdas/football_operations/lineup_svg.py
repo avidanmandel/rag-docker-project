@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from budget_ledger import available_budget_from_context
 from lineup_store import get_current_lineup
-from validation import assign_formation_slots, slug_name
+from operations_store import get_item
+from validation import assign_formation_slots, normalize_name, slug_name
 
 LINEUP_PREFIX = os.getenv(
     "SCOUTMATCH_LINEUP_S3_PREFIX", "scoutmatch/football-operations/lineups/"
@@ -77,6 +78,23 @@ def _use_local() -> bool:
     )
 
 
+def _remaining_budget_for_lineup(lineup: dict) -> int:
+    ctx_id = str(lineup.get("planning_context_id") or "").strip()
+    remaining, _ = available_budget_from_context(planning_context_id=ctx_id or None)
+    for starter in lineup.get("starting_xi") or []:
+        if starter.get("status") != "PENDING_MANAGEMENT_APPROVAL":
+            continue
+        selection = get_item(f"player_selection#{normalize_name(starter.get('name', ''))}")
+        if not selection or selection.get("reservation_status") != "RESERVED_PENDING_APPROVAL":
+            continue
+        selection_ctx = str(selection.get("planning_context_id") or "").strip()
+        if ctx_id and selection_ctx and selection_ctx != ctx_id:
+            continue
+        if selection.get("remaining_budget_eur") is not None:
+            return int(selection["remaining_budget_eur"])
+    return int(remaining or 0)
+
+
 def generate_board() -> tuple[dict | None, str]:
     lineup = get_current_lineup()
     if not lineup:
@@ -97,9 +115,7 @@ def generate_board() -> tuple[dict | None, str]:
             Body=svg.encode("utf-8"),
             ContentType="image/svg+xml",
         )
-    remaining, _ = available_budget_from_context(
-        planning_context_id=lineup.get("planning_context_id")
-    )
+    remaining = _remaining_budget_for_lineup(lineup)
     return {
         "status": "RENDERED",
         "lineup_id": lineup_id,

@@ -170,6 +170,41 @@ def test_repeated_confirmation_is_idempotent_for_budget():
     assert len(reservations) == 1
 
 
+def test_legacy_ledger_without_context_uses_matching_selection_scope():
+    ops.lambda_handler(
+        _event(
+            "UpdateSquadPlanningContext",
+            {"opponent": "Barcelona", "preferred_formation": "4-3-3", "available_budget_eur": 100000},
+        ),
+        None,
+    )
+    selection = _body(
+        ops.lambda_handler(
+            _event("SubmitPlayerSelectionToManagement", {"candidate_name": "Ron Ben Ari"}, True),
+            None,
+        )
+    )
+    from operations_store import list_by_prefix, put_item
+
+    for entry in list_by_prefix("budget_ledger#"):
+        if entry.get("entry_type") == "RESERVATION":
+            legacy = {
+                k: v
+                for k, v in entry.items()
+                if k not in {"entity_key", "item_type", "updated_at", "planning_context_id"}
+            }
+            put_item(entity_key=entry["entity_key"], item_type="BUDGET_LEDGER", payload=legacy)
+            break
+    xi = (
+        "Avi Cohen:GK;Ron Ben Ari:RB;Yossi Bar:CB;Michael Ross:CB;Tal Amar:LB;"
+        "Noam Sharon:CM;Ido Katz:CM;Eran Blum:CM;Lior Dan:RW;Amit Peretz:ST;Guy Navon:LW"
+    )
+    ops.lambda_handler(_event("FinalizeCurrentLineup", {"starting_xi": xi}, True), None)
+    board = _body(ops.lambda_handler(_event("GenerateCurrentLineupBoard", {}), None))
+    assert selection["remaining_budget_eur"] == 57000
+    assert board["remaining_budget_eur"] == 57000
+
+
 def test_deny_does_not_reserve_budget():
     ops.lambda_handler(
         _event(

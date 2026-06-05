@@ -14,24 +14,55 @@ def _assistant_count(page) -> int:
     return page.locator(".message--assistant").count()
 
 
-def _wait_for_new_assistant(page, before: int, timeout_ms: int = 300000) -> None:
+def _wait_for_response_complete(page, before: int, timeout_ms: int = 300000) -> None:
     page.wait_for_function(
         f"document.querySelectorAll('.message--assistant').length > {before}",
         timeout=timeout_ms,
     )
-    page.wait_for_timeout(2500)
+    try:
+        page.wait_for_function(
+            "document.getElementById('typingIndicator') === null",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        pass
+    page.wait_for_timeout(3000)
+
+
+def _last_assistant_text(page) -> str:
+    return page.locator(".message--assistant").last.inner_text()
+
+
+def _send_message(page, text: str) -> None:
+    before = _assistant_count(page)
+    page.locator("#chatInput").fill(text)
+    page.locator("#sendBtn").click()
+    _wait_for_response_complete(page, before)
+
+
+def _maybe_answer_planning_clarification(page) -> None:
+    text = _last_assistant_text(page).lower()
+    if any(token in text for token in ("opponent", "squad context", "formation", "playing style")):
+        _send_message(
+            page,
+            "Opponent is Barcelona. Squad context is the opening season demo with weak right-back depth. "
+            "Preferred formation is 4-3-3.",
+        )
 
 
 def _send_step(page, step: str) -> None:
-    before = _assistant_count(page)
     if step == "__confirm__":
+        before = _assistant_count(page)
         confirm = page.locator(".confirm-card__btn--confirm").last
-        confirm.wait_for(timeout=120000)
-        confirm.click()
+        try:
+            confirm.wait_for(state="visible", timeout=60000)
+            confirm.click()
+        except Exception:
+            page.locator("#chatInput").fill("Confirm")
+            page.locator("#sendBtn").click()
+        _wait_for_response_complete(page, before)
     else:
-        page.locator("#chatInput").fill(step)
-        page.locator("#sendBtn").click()
-    _wait_for_new_assistant(page, before)
+        _send_message(page, step)
 
 
 def main() -> int:
@@ -56,7 +87,9 @@ def main() -> int:
             page.wait_for_timeout(1500)
 
         steps = [
+            "Show me the current proposed lineup.",
             "Plan match tactics for opening season with budget 100000 EUR.",
+            "__clarify__",
             "I choose Ron Ben Ari because he is the more aggressive right-back option. Submit the player recommendation to management.",
             "__confirm__",
             "Save the proposed demo 4-3-3 lineup with Ron Ben Ari at right-back for head-coach review.",
@@ -64,6 +97,9 @@ def main() -> int:
             "Show me the current proposed lineup.",
         ]
         for step in steps:
+            if step == "__clarify__":
+                _maybe_answer_planning_clarification(page)
+                continue
             _send_step(page, step)
 
         board = page.locator(".lineup-board-card").last

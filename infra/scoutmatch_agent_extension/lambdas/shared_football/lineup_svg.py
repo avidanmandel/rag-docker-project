@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 from budget_ledger import available_budget_from_context
 from lineup_store import get_current_lineup
-from operations_store import put_item
-from validation import assign_formation_slots, slug_name
+from operations_store import get_item, put_item
+from validation import assign_formation_slots, normalize_name, slug_name
 
 LINEUP_PREFIX = os.getenv(
     "SCOUTMATCH_LINEUP_S3_PREFIX", "scoutmatch/football-operations/lineups/"
@@ -114,9 +114,7 @@ def generate_board(lineup_id: str = "") -> tuple[dict | None, str]:
             "opponent": lineup.get("opponent"),
         },
     )
-    remaining, _ = available_budget_from_context(
-        planning_context_id=lineup.get("planning_context_id")
-    )
+    remaining = _remaining_budget_for_lineup(lineup)
     return {
         "status": "LINEUP_BOARD_GENERATED",
         "lineup_id": resolved_id,

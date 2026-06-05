@@ -23,6 +23,22 @@ def _active_planning_context_id() -> str:
     return str(ctx.get("planning_context_id") or "").strip()
 
 
+def _reservation_in_context(entry: dict, active_ctx: str) -> bool:
+    if not active_ctx:
+        return True
+    entry_ctx = str(entry.get("planning_context_id") or "").strip()
+    if entry_ctx:
+        return entry_ctx == active_ctx
+    candidate = str(entry.get("candidate_name") or "").strip().lower()
+    if not candidate:
+        return False
+    selection = get_item(f"player_selection#{candidate}")
+    if not selection or not _in_active_demo_season(selection):
+        return False
+    selection_ctx = str(selection.get("planning_context_id") or "").strip()
+    return not selection_ctx or selection_ctx == active_ctx
+
+
 def sum_reserved_amounts(*, planning_context_id: str | None = None) -> int:
     active_ctx = (planning_context_id or _active_planning_context_id()).strip()
     total = 0
@@ -31,10 +47,8 @@ def sum_reserved_amounts(*, planning_context_id: str | None = None) -> int:
             continue
         if not _in_active_demo_season(entry):
             continue
-        if active_ctx:
-            entry_ctx = str(entry.get("planning_context_id") or "").strip()
-            if entry_ctx != active_ctx:
-                continue
+        if not _reservation_in_context(entry, active_ctx):
+            continue
         total += int(entry.get("reserved_amount_eur") or 0)
     return total
 

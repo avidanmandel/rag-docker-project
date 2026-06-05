@@ -16,16 +16,30 @@ def _active_planning_context_id() -> str:
     return str(ctx.get("planning_context_id") or "").strip()
 
 
+def _reservation_in_context(entry: dict, active_ctx: str) -> bool:
+    if not active_ctx:
+        return True
+    entry_ctx = str(entry.get("planning_context_id") or "").strip()
+    if entry_ctx:
+        return entry_ctx == active_ctx
+    candidate = str(entry.get("candidate_name") or "").strip().lower()
+    if not candidate:
+        return False
+    selection = get_item(f"player_selection#{candidate}")
+    if not selection:
+        return False
+    selection_ctx = str(selection.get("planning_context_id") or "").strip()
+    return not selection_ctx or selection_ctx == active_ctx
+
+
 def sum_reserved_amounts(*, planning_context_id: str | None = None) -> int:
     active_ctx = (planning_context_id or _active_planning_context_id()).strip()
     total = 0
     for entry in list_by_prefix("budget_ledger#"):
         if entry.get("entry_type") != "RESERVATION":
             continue
-        if active_ctx:
-            entry_ctx = str(entry.get("planning_context_id") or "").strip()
-            if entry_ctx != active_ctx:
-                continue
+        if not _reservation_in_context(entry, active_ctx):
+            continue
         total += int(entry.get("reserved_amount_eur") or 0)
     return total
 
@@ -43,7 +57,11 @@ def available_budget_from_context(*, planning_context_id: str | None = None) -> 
 def existing_selection_reservation(candidate_name: str) -> dict | None:
     key = f"player_selection#{candidate_name.strip().lower()}"
     record = get_item(key)
+    active_ctx = _active_planning_context_id()
     if record and record.get("reservation_status") == "RESERVED_PENDING_APPROVAL":
+        record_ctx = str(record.get("planning_context_id") or "").strip()
+        if active_ctx and record_ctx and record_ctx != active_ctx:
+            return None
         return record
     return None
 
