@@ -1,7 +1,8 @@
 # ScoutMatch Submission Readiness Report
 
-**Date:** 2026-06-05  
+**Date:** 2026-06-06  
 **Branch:** `feature/scoutmatch-agent-flow-extension`  
+**Latest commit:** `15d0d62` (landing UI fix deployed to EC2)  
 **Package status:** **DRAFT** (manual Console screenshots and SNS topic still required)
 
 ---
@@ -40,8 +41,8 @@
 |-------|--------|
 | Public health `/api/health` | VERIFIED 200 |
 | Four-tool alias validation | VERIFIED BLOCKERS=0 |
-| Live rehearsal A–G | VERIFIED PASS |
-| Live rehearsal H (product UI) | VERIFIED PASS (isolated HTTP); script may need retry after long Agent run |
+| Landing UI (hero + quick-start cards) | VERIFIED — CSS fix deployed to http://3.239.47.249/ |
+| Live rehearsal A–H | VERIFIED PASS (BLOCKERS=0) |
 | Guardrail live regression | VERIFIED BLOCKERS=0 |
 | SNS Lambda publish | TOPIC_MISSING (NotFoundException) — topic not created |
 

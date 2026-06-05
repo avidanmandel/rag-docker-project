@@ -273,6 +273,14 @@ def test_homepage_has_collapsed_sidebar_groups():
     assert "AWS Bedrock KB connected" not in html
 
 
+def test_landing_layout_css_prevents_card_and_image_clipping():
+    css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+    assert "Landing layout stabilization" in css
+    assert ".messages--landing .home-hero .suggestions" in css
+    assert "object-fit: contain" in css
+    assert "max-height: 132px" not in css.split("Opening-season stabilization")[-1]
+
+
 def test_opening_season_counts_api():
     import app as flask_app
 
