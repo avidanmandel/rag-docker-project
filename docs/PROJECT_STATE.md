@@ -2,33 +2,39 @@
 
 | Field | Value |
 |-------|-------|
-| **Branch** | `feature/session-scoped-documents` |
-| **Release commit** | `1978bb3` |
-| **Production image** | `scoutmatch-ai:baseline-club-v14` |
-| **Rollback image** | `scoutmatch-ai:baseline-club-v13` |
+| **Branch** | `feature/scoutmatch-agent-flow-extension` |
 | **Public URL** | http://3.239.47.249/ |
-| **Production container** | `scoutmatch-ai` |
-| **Baseline set (production)** | `production` (10 managed documents) |
-| **Last QA** | 2026-06-03 (UTC) |
+| **Primary demo route** | `/` (polished root UI) |
+| **Production image** | `scoutmatch-ai:agent-extension-v15` |
+| **Rollback image** | `scoutmatch-ai:baseline-club-v14` |
+| **Runtime** | `agent_extension_enabled=true`, `chat_backend=bedrock_agent` |
+| **Last QA** | 2026-06-04 (UTC) |
 
-## v14 lifecycle and document-delete fixes
+## Production checks
 
 | Check | Result |
 |-------|--------|
-| Unit tests (`test_scoutmatch` + `test_baseline_club_knowledge`) | **273 passed** |
-| Targeted preflight (Eyal Mor delete, clear docs, partial budget combo) | **BLOCKERS 0** |
-| Public post-cutover verification | **HTTP 200**, `ready=true`, `baseline_ready=true` |
-| Production `baseline_ready` | **true** |
-| Bedrock sync (scoutmatch-player-documents) | **COMPLETE**, 0 failed, 0 warnings |
+| Public homepage | HTTP 200 |
+| `/api/health` | HTTP 200 |
+| `/api/status` | `ready=true` |
+| Four-tool Agent architecture | Live validation BLOCKERS=0 |
+| Automated tests | 437+ passed |
+| Submission ZIP | READY_FOR_MANUAL_SCREENSHOTS |
 
-## Knowledge scopes
+## Architecture (current)
 
-- **Baseline (read-only):** `scoutmatch/knowledge-base/baseline/production/`
-- **Session candidates:** `scoutmatch/knowledge-base/sessions/<session_id>/`
+```
+Browser → EC2 → Docker → Flask → Bedrock Agent → KB + Guardrail
+  → 4 Action Groups → 4 dedicated Lambdas
+  → DynamoDB operational state → private S3 lineup SVG → Flask proxy → inline board
+```
+
+Legacy helper Lambdas remain for rollback only and are **not** public Agent-facing tools.
 
 ## Notes
 
-- v14 fixes stale facts after single-document delete, clear-documents listing, and partial budget combo fall-through.
-- Hebrew synonym routing remains deterministic for baseline-only and registry-backed candidate intents.
-- Final submission screenshots live in `submission_evidence/final_v14/`.
-- AWS cleanup `--apply` not executed. EC2 and Bedrock KB remain active pending post-submission teardown approval.
+- Primary user persona: **Scout / Professional Analyst** (not Sporting Director).
+- SNS is an optional future extension — not required for course submission.
+- Baseline v14 screenshots: `submission_evidence/final_v14/`.
+- Agent extension screenshots: `submission_evidence/agent_flow_extension/` (5 required).
+- AWS cleanup deferred until post-submission approval (`docs/SCOUTMATCH_AWS_CLEANUP_PLAN.md`).

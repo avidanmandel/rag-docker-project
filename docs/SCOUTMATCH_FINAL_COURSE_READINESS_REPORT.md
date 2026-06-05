@@ -25,6 +25,37 @@ DynamoDB is the source of truth for submitted recommendations. Status after Conf
 
 ---
 
+## Requirement categories
+
+### Core course requirements (READY)
+
+- Meaningful football recruitment RAG topic
+- Document-backed Bedrock Knowledge Base
+- Flask application with boto3
+- Docker + EC2 public deployment
+- Browser-accessible polished root UI at http://3.239.47.249/
+- Grounded answers with source cards
+- README, tests, cleanup instructions
+- Baseline v14 screenshots (`submission_evidence/final_v14/`)
+
+### Implemented bonus Agent features (READY)
+
+- Bedrock Agent with exactly four public tools
+- DynamoDB management-review queue and budget reservations
+- Explicit Confirm/Deny write gates
+- Private S3 lineup SVG + Flask proxy
+- Central Guardrail (live regression BLOCKERS=0)
+
+### Mandatory manual screenshots (5 new)
+
+See `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md` — KB association, four Action Groups, four Lambdas, confirmation card, inline lineup board.
+
+### Optional future extensions (not blockers)
+
+- SNS management notification (frozen, non-blocking)
+
+---
+
 ## Course requirements audit
 
 | Assignment requirement | Where implemented | Evidence available | Live validation | Screenshot required | Status |
@@ -79,7 +110,7 @@ Command: `python scripts/final_course_readiness_rehearsal.py`
 
 ## What remains before final submission
 
-1. Capture **8–10 manual AWS Console and browser screenshots** (see `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`).
+1. Capture **five required manual screenshots** (see `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`).
 2. Rehearse the **5–7 minute live demo** once with screenshots as backup.
 3. Mark submission ZIP **FINAL** only after screenshots are stored under `submission_evidence/agent_flow_extension/`.
 

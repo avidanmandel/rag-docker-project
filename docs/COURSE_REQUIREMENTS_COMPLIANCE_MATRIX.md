@@ -7,7 +7,7 @@ Legend: **M** = mandatory course requirement, **R** = recommended / evidence pol
 | # | Requirement | Source | Status | Repo evidence | AWS read-only evidence | Automated tests | Screenshot | Remaining action | M/R |
 |---|-------------|--------|--------|---------------|------------------------|-----------------|------------|------------------|-----|
 | 1 | Clear AI application topic | README, project brief | **PASS** | `README.md` — football recruitment assistant | N/A | N/A | `05_public_scoutmatch_homepage.png` | None | M |
-| 2 | Clear user persona | Course / dynamic ops plan | **PASS** | Sporting director persona in `docs/SCOUTMATCH_DYNAMIC_FOOTBALL_OPERATIONS_PLAN.md` | N/A | N/A | `31_dynamic_sporting_director_chat.png` (planned) | Capture Advisor demo screenshot | M |
+| 2 | Clear user persona | Course / README | **PASS** | Scout / Professional Analyst in README and polished root UI | N/A | N/A | `player_selection_confirmation.png` (planned) | Capture root UI demo screenshot | M |
 | 3 | Clear problem statement | README | **PASS** | `README.md` grounded recruitment from uploaded docs | N/A | N/A | `06_grounded_budget_answer_with_sources.png` | None | M |
 | 4 | Flask web application | Course stack | **PASS** | `app.py`, Flask routes | N/A | `tests/test_scoutmatch.py` | `05_public_scoutmatch_homepage.png` | None | M |
 | 5 | Home page | UI rubric | **PASS** | `templates/index.html` | Public URL HTTP 200 | UI tests via API | `05_public_scoutmatch_homepage.png` | None | M |

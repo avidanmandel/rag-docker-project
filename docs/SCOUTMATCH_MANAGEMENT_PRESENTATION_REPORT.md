@@ -11,7 +11,7 @@
 
 ## 2. Primary user
 
-**VERIFIED:** Scouts / recruitment analysts / professional assistants preparing opening-match decisions.
+**VERIFIED:** Scouts / Professional Analysts preparing opening-match recruitment and lineup recommendations.
 
 ## 3. Business problem
 
@@ -19,7 +19,7 @@
 
 ## 4. Opening-season storyline
 
-**VERIFIED:** Before the opening match, the sporting director reviews 15 current squad players, 8 pre-scouted external candidates, squad weakness analysis, a right-back comparison, a goalkeeper-injury coach brief, a management-ready player recommendation, a head-coach lineup review, and a visual lineup board.
+**VERIFIED:** Before the opening match, the analyst reviews 15 current squad players, 8 pre-scouted external candidates, squad weakness analysis, a right-back comparison, a goalkeeper-injury coach brief, a management-ready player recommendation, a head-coach lineup review, and a visual lineup board.
 
 ## 5. Main user journey
 

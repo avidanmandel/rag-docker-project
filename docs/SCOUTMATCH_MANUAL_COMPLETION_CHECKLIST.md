@@ -9,10 +9,9 @@ Use this checklist after automated pre-manual preparation. Do not delete AWS res
 
 ### Remaining manual boundaries
 
-1. **SNS topic verify** — AWS Console → SNS → confirm `ScoutMatchManagementNotificationsAvidan` exists in **us-east-1** (same account as Lambdas). Local IAM cannot list/create/publish SNS; run `python scripts/configure_sns_lambda_env.py` after verification.
-2. **SNS live publish** — optional; course demo does not depend on SNS. Lambda publish currently returns `NotFoundException` until topic is reachable.
-3. **SNS email subscription** — optional; see `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`.
-4. **Viewport + Console screenshots** — see `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`.
+1. **Five presentation screenshots** — see `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md` (SNS not required).
+2. **Live demo rehearsal** — `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md` using http://3.239.47.249/ root UI only.
+3. **SNS** — optional future extension only; not a course blocker.
 
 ---
 
@@ -102,9 +101,9 @@ The script:
 |-------|----------|
 | http://3.239.47.249/api/health | `ok: true` |
 | http://3.239.47.249/api/status | `ready: true`, `rag_backend: aws_kb` |
-| http://3.239.47.249/ | homepage loads |
-| http://3.239.47.249/recruitment-advisor | Advisor UI loads |
-| http://3.239.47.249/api/recruitment-advisor/status | `enabled: true` |
+| http://3.239.47.249/ | **Primary demo** — homepage loads |
+| http://3.239.47.249/api/status | `agent_extension_enabled: true`, `chat_backend: bedrock_agent` |
+| http://3.239.47.249/recruitment-advisor | Diagnostic route only |
 
 ### A9. Rollback command (if needed)
 
