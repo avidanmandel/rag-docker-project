@@ -425,7 +425,7 @@ Sporting-director squad planning through **one Bedrock Agent**, **one central Gu
 | Tool | Action Group | Lambda |
 |------|--------------|--------|
 | `PlanMatchTactics` | `ScoutMatchTacticsActionsAvidan` | `ScoutMatchPlanMatchTacticsAvidan` |
-| `SubmitPlayerSelectionToManagement` | `ScoutMatchPlayerSelectionActionsAvidan` | `ScoutMatchSubmitPlayerSelectionAvidan` |
+| `SubmitPlayerSelectionToManagement` | `ScoutMatchSelectionAgAvidan` | `ScoutMatchSubmitPlayerSelectionAvidan` |
 | `FinalizeCurrentLineup` | `ScoutMatchLineupActionsAvidan` | `ScoutMatchFinalizeCurrentLineupAvidan` |
 | `GenerateCurrentLineupBoard` | `ScoutMatchLineupBoardActionsAvidan` | `ScoutMatchGenerateLineupBoardAvidan` |
 

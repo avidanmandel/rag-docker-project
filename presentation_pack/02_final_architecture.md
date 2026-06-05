@@ -29,7 +29,7 @@ Sporting Director chat
 | Action Group | Lambda | Function |
 |--------------|--------|----------|
 | ScoutMatchTacticsActionsAvidan | ScoutMatchPlanMatchTacticsAvidan | PlanMatchTactics |
-| ScoutMatchPlayerSelectionActionsAvidan | ScoutMatchSubmitPlayerSelectionAvidan | SubmitPlayerSelectionToManagement |
+| ScoutMatchSelectionAgAvidan | ScoutMatchSubmitPlayerSelectionAvidan | SubmitPlayerSelectionToManagement |
 | ScoutMatchLineupActionsAvidan | ScoutMatchFinalizeCurrentLineupAvidan | FinalizeCurrentLineup |
 | ScoutMatchLineupBoardActionsAvidan | ScoutMatchGenerateLineupBoardAvidan | GenerateCurrentLineupBoard |
 

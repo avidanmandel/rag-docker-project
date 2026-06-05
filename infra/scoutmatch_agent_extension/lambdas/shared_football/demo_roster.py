@@ -13,12 +13,11 @@ DEMO_RECORD_SCOPE = "DEMO"
 BUDGET_HELPER_LAMBDA = "ScoutMatchBudgetImpactAvidan"
 
 
-def _roster_file_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "demo_data"
-        / "scoutmatch_demo_roster.json"
-    )
+def _roster_file_path() -> Path | None:
+    parts = Path(__file__).resolve().parents
+    if len(parts) < 4:
+        return None
+    return parts[3] / "demo_data" / "scoutmatch_demo_roster.json"
 
 
 _EMBEDDED_DEMO_ROSTER: dict = {
@@ -44,7 +43,7 @@ _EMBEDDED_DEMO_ROSTER: dict = {
 
 def load_demo_roster_from_file() -> dict:
     path = _roster_file_path()
-    if path.is_file():
+    if path is not None and path.is_file():
         with path.open(encoding="utf-8") as handle:
             return json.load(handle)
     return dict(_EMBEDDED_DEMO_ROSTER)
@@ -52,8 +51,14 @@ def load_demo_roster_from_file() -> dict:
 
 def build_demo_starting_xi(*, ron_at_right_back: bool = True) -> list[dict]:
     """Return exactly 11 own-team starters for the sanitized 4-3-3 demo."""
-    record = get_item(DEMO_ROSTER_ENTITY_KEY) or load_demo_roster_from_file()
-    players = list(record.get("players") or [])
+    record = get_item(DEMO_ROSTER_ENTITY_KEY)
+    players = list((record or {}).get("players") or [])
+    if len(players) != 11:
+        record = load_demo_roster_from_file()
+        players = list(record.get("players") or [])
+    if len(players) != 11:
+        record = dict(_EMBEDDED_DEMO_ROSTER)
+        players = list(record.get("players") or [])
     if len(players) != 11:
         raise ValueError("Demo roster must contain exactly 11 players.")
     if ron_at_right_back:

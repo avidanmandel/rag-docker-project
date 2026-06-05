@@ -1580,8 +1580,26 @@ class Deployer:
         self.state["state_machine_arn"] = sm_arn
         return sm_arn
 
-    def _publish_agent_alias(self, agent_id: str) -> str:
-        """Reuse existing alias (quota-safe) and point routing at the latest prepared version."""
+    def _draft_enabled_group_names(self, agent_id: str) -> set[str]:
+        names: set[str] = set()
+        for summary in self.agent.list_agent_action_groups(
+            agentId=agent_id, agentVersion="DRAFT"
+        ).get("actionGroupSummaries", []):
+            if summary.get("actionGroupState") == "ENABLED":
+                names.add(str(summary.get("actionGroupName", "")))
+        return names
+
+    def _version_enabled_group_names(self, agent_id: str, version: str) -> set[str]:
+        names: set[str] = set()
+        for summary in self.agent.list_agent_action_groups(
+            agentId=agent_id, agentVersion=version
+        ).get("actionGroupSummaries", []):
+            if summary.get("actionGroupState") == "ENABLED":
+                names.add(str(summary.get("actionGroupName", "")))
+        return names
+
+    def _publish_agent_alias(self, agent_id: str, *, snapshot_draft: bool = False) -> str:
+        """Reuse existing alias (quota-safe) and point routing at a prepared version."""
         alias_id = self.state.get("agent_alias_id") or self._find_agent_alias_id(agent_id)
         if not alias_id:
             self.blockers.append(
@@ -1610,18 +1628,61 @@ class Deployer:
             token = page.get("nextToken")
             if not token:
                 break
-        if not versions:
-            self.blockers.append("No numbered agent version found after prepare")
-            return ""
-        latest = str(max(int(v) for v in versions))
-        self.plan.append(f"Update agent alias routing to version {latest}")
+        if versions and not snapshot_draft:
+            latest = str(max(int(v) for v in versions))
+            if self._draft_enabled_group_names(agent_id) != self._version_enabled_group_names(
+                agent_id, latest
+            ):
+                snapshot_draft = True
+                self.present.append(
+                    f"Draft action groups differ from version {latest}; snapshot DRAFT as new version"
+                )
+        if versions and not snapshot_draft:
+            latest = str(max(int(v) for v in versions))
+            self.plan.append(f"Update agent alias routing to version {latest}")
+            self.agent.update_agent_alias(
+                agentId=agent_id,
+                agentAliasId=alias_id,
+                agentAliasName=alias_name,
+                routingConfiguration=[{"agentVersion": latest}],
+            )
+            self.present.append(f"Published agent alias {alias_name} to version {latest}")
+            return alias_id
+        self.plan.append(
+            f"Update agent alias {alias_name} without routing to snapshot DRAFT as new version"
+        )
         self.agent.update_agent_alias(
             agentId=agent_id,
             agentAliasId=alias_id,
             agentAliasName=alias_name,
-            routingConfiguration=[{"agentVersion": latest}],
+            aliasInvocationState="ACCEPT_INVOCATIONS",
         )
-        self.present.append(f"Published agent alias {alias_name} to version {latest}")
+        deadline = time.time() + 180
+        published_version = ""
+        while time.time() < deadline:
+            alias_detail = self.agent.get_agent_alias(
+                agentId=agent_id, agentAliasId=alias_id
+            )["agentAlias"]
+            status = alias_detail.get("agentAliasStatus", "")
+            routing = alias_detail.get("routingConfiguration") or []
+            if status == "PREPARED" and routing:
+                published_version = str(routing[0].get("agentVersion", ""))
+                break
+            if status == "FAILED":
+                reasons = alias_detail.get("failureReasons") or []
+                self.blockers.append(
+                    f"Agent alias {alias_name} publish FAILED: {reasons[:2]}"
+                )
+                return ""
+            time.sleep(5)
+        if not published_version or not published_version.isdigit():
+            self.blockers.append(
+                "No numbered agent version created after alias update without routing"
+            )
+            return ""
+        self.present.append(
+            f"Published agent alias {alias_name} to new version {published_version}"
+        )
         return alias_id
 
     def _audit_agent_function_quota(self, agent_id: str) -> None:

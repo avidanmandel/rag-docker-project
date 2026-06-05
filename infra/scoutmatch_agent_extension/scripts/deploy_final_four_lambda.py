@@ -403,15 +403,24 @@ def patch_deployer(Deployer: type) -> None:
 
         if self.apply:
             detail = self.agent.get_agent(agentId=agent_id)["agent"]
-            self.agent.update_agent(
-                agentId=agent_id,
-                agentName=detail["agentName"],
-                agentResourceRoleArn=detail["agentResourceRoleArn"],
-                foundationModel=detail.get("foundationModel")
+            update_kwargs: dict = {
+                "agentId": agent_id,
+                "agentName": detail["agentName"],
+                "agentResourceRoleArn": detail["agentResourceRoleArn"],
+                "foundationModel": detail.get("foundationModel")
                 or "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0",
-                instruction=AGENT_INSTRUCTION_FINAL,
-                idleSessionTTLInSeconds=detail.get("idleSessionTTLInSeconds", 600),
-            )
+                "instruction": AGENT_INSTRUCTION_FINAL,
+                "idleSessionTTLInSeconds": detail.get("idleSessionTTLInSeconds", 600),
+            }
+            guard = detail.get("guardrailConfiguration") or {}
+            gid = str(self.state.get("guardrail_id") or guard.get("guardrailIdentifier") or "").strip()
+            gver = str(self.state.get("guardrail_version") or guard.get("guardrailVersion") or "1").strip()
+            if gid:
+                update_kwargs["guardrailConfiguration"] = {
+                    "guardrailIdentifier": gid,
+                    "guardrailVersion": gver,
+                }
+            self.agent.update_agent(**update_kwargs)
             self.present.append("Updated agent instruction for final four-Lambda architecture")
 
     Deployer._ddb_table_arn = _ddb_table_arn

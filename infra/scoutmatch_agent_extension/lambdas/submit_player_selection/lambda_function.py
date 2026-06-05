@@ -14,7 +14,7 @@ from bedrock_response import build_function_response, handle_action_errors, opti
 from player_selection import submit_selection  # noqa: E402
 from write_confirmation import is_write_confirmed, pending_confirmation_response  # noqa: E402
 
-ACTION_GROUP = "ScoutMatchPlayerSelectionActionsAvidan"
+ACTION_GROUP = "ScoutMatchSelectionAgAvidan"
 FUNCTION_NAME = "SubmitPlayerSelectionToManagement"
 
 

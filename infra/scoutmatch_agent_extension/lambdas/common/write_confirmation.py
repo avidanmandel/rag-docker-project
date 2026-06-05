@@ -56,10 +56,11 @@ def is_write_confirmed(event: dict[str, Any]) -> bool:
             "confirmed",
         }:
             return True
+    # Native Bedrock confirmation must include an explicit confirm state — never infer from invocationId alone.
     if (
         os.getenv("SCOUTMATCH_BEDROCK_NATIVE_CONFIRMATION", "").lower() in {"1", "true", "yes"}
         and (event.get("function") or "") in WRITE_ACTIONS
-        and event.get("invocationId")
+        and state in {"CONFIRM", "CONFIRMED", "ACCEPT", "ACCEPTED"}
     ):
         return True
     return False

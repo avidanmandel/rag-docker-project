@@ -213,10 +213,13 @@ def handle_action_errors(
             message=str(exc),
             event=event,
         )
-    except Exception:
+    except Exception as exc:
         return build_failure(
             action_group=action_group,
             function_name=function_name,
-            message="The recruitment tool could not complete this request.",
+            message=(
+                "The recruitment tool could not complete this request. "
+                f"({type(exc).__name__})"
+            ),
             event=event,
         )

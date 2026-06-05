@@ -20,7 +20,8 @@ FINAL_FOUR_LAMBDAS = {
     },
     "ScoutMatchSubmitPlayerSelectionAvidan": {
         "folder": "submit_player_selection",
-        "action_group": "ScoutMatchPlayerSelectionActionsAvidan",
+        # Bedrock toolSpec.name is actionGroup__function (max 64 chars).
+        "action_group": "ScoutMatchSelectionAgAvidan",
         "function": "SubmitPlayerSelectionToManagement",
         "role": "ScoutMatchSubmitPlayerSelectionRoleAvidan",
         "description": "Reserve budget and notify management after player selection.",
@@ -46,6 +47,7 @@ FINAL_USER_FACING_FUNCTIONS = [
 ]
 
 ACTION_GROUPS_DETACHED_AT_FINAL_APPLY = [
+    "ScoutMatchPlayerSelectionActionsAvidan",
     "ScoutMatchNativeActionsAvidan",
     "ScoutMatchBudgetActionsAvidan",
     "ScoutMatchRightBackActionsAvidan",

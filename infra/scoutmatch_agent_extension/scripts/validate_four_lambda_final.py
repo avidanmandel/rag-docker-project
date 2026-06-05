@@ -102,7 +102,7 @@ def main() -> int:
             "ScoutMatchSubmitPlayerSelectionAvidan",
             {
                 "function": "SubmitPlayerSelectionToManagement",
-                "actionGroup": "ScoutMatchPlayerSelectionActionsAvidan",
+                "actionGroup": "ScoutMatchSelectionAgAvidan",
                 "parameters": [
                     {"name": "candidate_name", "value": "Ron Ben Ari"},
                     {"name": "target_role", "value": "right-back"},
@@ -119,7 +119,7 @@ def main() -> int:
             "ScoutMatchSubmitPlayerSelectionAvidan",
             {
                 "function": "SubmitPlayerSelectionToManagement",
-                "actionGroup": "ScoutMatchPlayerSelectionActionsAvidan",
+                "actionGroup": "ScoutMatchSelectionAgAvidan",
                 "parameters": [
                     {"name": "candidate_name", "value": "Ron Ben Ari"},
                     {"name": "target_role", "value": "right-back"},
