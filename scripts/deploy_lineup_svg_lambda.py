@@ -17,8 +17,7 @@ def main() -> int:
     import boto3
 
     client = boto3.client("lambda", region_name="us-east-1")
-    for spec in FINAL_FOUR_LAMBDAS.values():
-        name = spec["name"]
+    for name, spec in FINAL_FOUR_LAMBDAS.items():
         folder = spec["folder"]
         payload = zip_final_lambda(folder)
         client.update_function_code(FunctionName=name, ZipFile=payload)
