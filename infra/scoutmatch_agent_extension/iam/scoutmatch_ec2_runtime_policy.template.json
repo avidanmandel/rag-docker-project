@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeScoutMatchAgentAliasOnly",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeAgent"],
+      "Resource": ["{{AGENT_ALIAS_ARN}}"]
+    },
+    {
+      "Sid": "ReadPrivateLineupSvgPrefixOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::{{BUCKET_NAME}}/scoutmatch/football-operations/lineups/*",
+        "arn:aws:s3:::{{BUCKET_NAME}}"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["scoutmatch/football-operations/lineups/*"]
+        }
+      }
+    }
+  ]
+}

@@ -55,7 +55,23 @@ scp -i "C:\Users\avida\Downloads\key-user5.pem" ".env.agent" ubuntu@3.239.47.249
 
 Never commit `.env.agent`.
 
-### A6. Run the safe deploy script on EC2
+### A6. Apply EC2 InvokeAgent IAM (if chat returns HTTP 503)
+
+From a machine with IAM permission to update `ScoutMatch-EC2-Role`:
+
+```bash
+python scripts/apply_ec2_invoke_agent_iam.py
+```
+
+This adds inline policy `ScoutMatchEC2InvokeAgentAvidan` with:
+- `bedrock:InvokeAgent` scoped to the current ScoutMatch Agent alias only
+- scoped `s3:GetObject` + `s3:ListBucket` for private lineup SVG prefix only
+
+If blocked, use AWS Console → IAM → Roles → `ScoutMatch-EC2-Role` → Add inline policy from
+`infra/scoutmatch_agent_extension/iam/scoutmatch_ec2_runtime_policy.template.json`
+(replace `{{AGENT_ALIAS_ARN}}` and `{{BUCKET_NAME}}` placeholders only).
+
+### A7. Run the safe deploy script on EC2
 
 After SSH login:
 
@@ -72,7 +88,7 @@ The script:
 - validates on `127.0.0.1:5002` first
 - cuts over only if health/status/advisor checks pass
 
-### A7. Public routes to test after cutover
+### A8. Public routes to test after cutover
 
 | Route | Expected |
 |-------|----------|
@@ -82,13 +98,13 @@ The script:
 | http://3.239.47.249/recruitment-advisor | Advisor UI loads |
 | http://3.239.47.249/api/recruitment-advisor/status | `enabled: true` |
 
-### A8. Rollback command (if needed)
+### A9. Rollback command (if needed)
 
 On EC2:
 
 ```bash
 sudo docker rm -f scoutmatch-ai
-sudo docker run -d --name scoutmatch-ai -p 0.0.0.0:5000:5000 \
+sudo docker run -d --name scoutmatch-ai -p 0.0.0.0:80:5000 \
   --env-file /home/ubuntu/scoutmatch-ai-session-docs-release/.env \
   -v /home/ubuntu/scoutmatch-ai-runtime:/app/runtime \
   -e DATABASE_PATH=/app/runtime/chat.db \

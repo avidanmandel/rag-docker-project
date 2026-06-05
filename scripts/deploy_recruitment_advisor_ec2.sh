@@ -86,7 +86,7 @@ echo "=== CUTOVER ==="
 sudo docker rm -f "${PROD_CONTAINER}" >/dev/null 2>&1 || true
 sudo docker run -d \
   --name "${PROD_CONTAINER}" \
-  -p 0.0.0.0:5000:5000 \
+  -p 0.0.0.0:80:5000 \
   --env-file "${APP_DIR}/.env" \
   --env-file "${APP_DIR}/.env.agent" \
   -v "${RUNTIME_DIR}:/app/runtime" \
@@ -98,14 +98,14 @@ sudo docker run -d \
   "${IMAGE_TAG}"
 
 for i in $(seq 1 40); do
-  curl -fsS http://127.0.0.1:5000/api/health >/dev/null 2>&1 && break
+  curl -fsS http://127.0.0.1:80/api/health >/dev/null 2>&1 && break
   sleep 3
 done
-curl -fsS http://127.0.0.1:5000/api/health
+curl -fsS http://127.0.0.1:80/api/health
 echo
-curl -fsS -o /dev/null -w "public_advisor_http=%{http_code}\n" http://127.0.0.1:5000/recruitment-advisor
+curl -fsS -o /dev/null -w "public_advisor_http=%{http_code}\n" http://127.0.0.1:80/recruitment-advisor
 sudo docker rm -f "${CANDIDATE}" >/dev/null 2>&1 || true
 rm -rf "${CAND_RUNTIME}"
 
 echo "CUTOVER_OK image=${IMAGE_TAG}"
-echo "ROLLBACK: sudo docker rm -f ${PROD_CONTAINER}; sudo docker run -d --name ${PROD_CONTAINER} -p 0.0.0.0:5000:5000 --env-file ${APP_DIR}/.env -v ${RUNTIME_DIR}:/app/runtime -e DATABASE_PATH=/app/runtime/chat.db -e BASELINE_KNOWLEDGE_ENABLED=true -e AWS_BASELINE_SET_ID=production --restart unless-stopped ${ROLLBACK_TAG}"
+echo "ROLLBACK: sudo docker rm -f ${PROD_CONTAINER}; sudo docker run -d --name ${PROD_CONTAINER} -p 0.0.0.0:80:5000 --env-file ${APP_DIR}/.env -v ${RUNTIME_DIR}:/app/runtime -e DATABASE_PATH=/app/runtime/chat.db -e BASELINE_KNOWLEDGE_ENABLED=true -e AWS_BASELINE_SET_ID=production --restart unless-stopped ${ROLLBACK_TAG}"
