@@ -3763,8 +3763,11 @@ kbd {
 }
 
 .lineup-board-card__image {
+    display: block;
     width: 100%;
-    max-width: 720px;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
     border-radius: var(--radius-sm);
     background: #14532d;
 }
@@ -4141,7 +4144,7 @@ kbd {
     align-items: center;
     justify-content: center;
     min-height: 0;
-    height: 100%;
+    overflow: hidden;
     align-self: stretch;
 }
 
@@ -4213,24 +4216,21 @@ kbd {
 }
 
 .messages.messages--landing .dashboard-stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    max-height: min(460px, calc(100vh - 220px));
-    padding: 8px 10px;
+    display: block;
+    width: min(100%, calc(100vh - 220px));
+    aspect-ratio: 1090 / 1095;
+    max-height: calc(100vh - 220px);
+    height: auto;
+    margin: 0 auto;
+    padding: 5px;
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .messages.messages--landing .dashboard-stage__panel-img {
     display: block;
     width: 100%;
     height: 100%;
-    max-width: 100%;
-    max-height: 100%;
-    min-height: 0;
     object-fit: contain;
     object-position: center center;
     border-radius: 12px;
@@ -4247,7 +4247,8 @@ kbd {
     }
 
     .messages.messages--landing .dashboard-stage {
-        max-height: min(340px, calc(100vh - 232px));
+        width: min(100%, calc(100vh - 232px));
+        max-height: calc(100vh - 232px);
     }
 
     .messages.messages--landing .hero-copy__headline {
@@ -4269,7 +4270,8 @@ kbd {
 
 @media (min-height: 860px) {
     .messages.messages--landing .dashboard-stage {
-        max-height: min(500px, calc(100vh - 210px));
+        width: min(100%, calc(100vh - 210px));
+        max-height: calc(100vh - 210px);
     }
 
     .messages.messages--landing .hero-copy__headline {
@@ -4283,7 +4285,8 @@ kbd {
 
 @media (min-height: 980px) {
     .messages.messages--landing .dashboard-stage {
-        max-height: min(560px, calc(100vh - 200px));
+        width: min(100%, calc(100vh - 200px));
+        max-height: calc(100vh - 200px);
     }
 
     .messages.messages--landing {
@@ -4298,6 +4301,7 @@ kbd {
     }
 
     .messages.messages--landing .dashboard-stage {
-        max-height: min(580px, calc(100vh - 190px));
+        width: min(100%, calc(100vh - 190px));
+        max-height: calc(100vh - 190px);
     }
 }

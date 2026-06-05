@@ -170,9 +170,19 @@ function sanitizeRenderedHtml(html) {
     return template.innerHTML;
 }
 
+function normalizeMarkdownInput(text) {
+    let normalized = String(text || "").replace(/\r\n/g, "\n");
+    normalized = normalized.replace(/([.!?:)\]"'])\s*(#{1,4})(\s*)/g, (_, before, hashes, space) => (
+        `${before}\n${hashes}${space || " "}`
+    ));
+    normalized = normalized.replace(/([^\n#\s])(#{1,4})(?=\s)/g, "$1\n$2");
+    normalized = normalized.replace(/^(#{1,4})([^\s#\n])/gm, "$1 $2");
+    return normalized;
+}
+
 function renderMarkdown(text) {
     if (!text) return "";
-    const lines = String(text).replace(/\r\n/g, "\n").split("\n");
+    const lines = normalizeMarkdownInput(text).split("\n");
     const out = [];
     let inTable = false;
     let tableRows = [];
@@ -219,9 +229,16 @@ function renderMarkdown(text) {
             out.push("<br>");
             continue;
         }
-        if (/^#{1,4}\s+/.test(line)) {
-            const level = line.match(/^#+/)[0].length;
-            out.push(`<h${level}>${escapeHtml(line.replace(/^#{1,4}\s+/, "").replace(/\*\*/g, ""))}</h${level}>`);
+        const headingMatch = line.match(/^(#{1,4})\s+(.+)$/);
+        if (headingMatch) {
+            const level = Math.min(4, headingMatch[1].length);
+            const title = headingMatch[2].replace(/\*\*/g, "").trim();
+            if (title) {
+                out.push(`<h${level}>${escapeHtml(title)}</h${level}>`);
+            }
+            continue;
+        }
+        if (/^#{1,4}\s*$/.test(line)) {
             continue;
         }
         if (/^>\s?/.test(line)) {
@@ -255,7 +272,10 @@ function stripInternalDetails(text) {
         .replace(/\bnotify management via sns\b/gi, "notify management")
         .replace(/\bSNS\b/g, "management notification")
         .replace(/\bctx-[A-Za-z0-9]+\b/gi, "")
-        .replace(/\s{2,}/g, " ")
+        .replace(/^\s*View:\s*\/api\/[^\s]+\s*$/gim, "")
+        .replace(/\bView:\s*\/api\/recruitment-advisor\/[^\s]+/gi, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]{2,}/g, " ")
         .trim();
 }
 
