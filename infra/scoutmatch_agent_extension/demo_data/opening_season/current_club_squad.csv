@@ -1,0 +1,16 @@
+player_id,name,club_status,squad_role,primary_position,secondary_position,salary,availability,strengths,weaknesses,aggressiveness,build_up_ability,pressing_ability,defensive_positioning,preferred_system,notes
+club-gk-01,Avi Cohen,current_club,likely_starter,Goalkeeper,GK,52000,available,Shot-stopping reflexes; vocal organisation,Inconsistent distribution under high press,medium,medium,low,high,4-3-3,Starting goalkeeper for opening match
+club-gk-02,Daniel Park,current_club,rotation,Goalkeeper,GK,28000,available,Reliable backup; calm 1v1,Less commanding on crosses,low,medium,low,medium,4-3-3,Reserve goalkeeper
+club-cb-01,Michael Ross,current_club,likely_starter,Centre-back,CB,48000,available,Aerial duels; leadership,Can be slow to recover in transition,medium,low,medium,high,4-3-3,Starting centre-back
+club-cb-02,Yossi Bar,current_club,likely_starter,Centre-back,CB,45000,available,Composed passing; line control,Limited pace against fast forwards,low,medium,medium,high,4-3-3,Starting centre-back
+club-cb-03,Noam Harari,current_club,rotation,Centre-back,CB,32000,available,Solid backup; good positioning,Lacks top-flight experience,low,low,medium,high,4-3-3,Third centre-back rotation
+club-fb-01,Tal Amar,current_club,likely_starter,Left-back,LB,44000,available,Reliable crossing; disciplined defending,Can be caught high when team loses shape,medium,medium,medium,high,4-3-3,Starting left-back
+club-fb-02,Daniel Levy,current_club,likely_starter,Right-back,RB,46000,fitness_concern,Overlapping runs; aggressive duels,Recovery speed reduced after minor knock,high,medium,high,medium,4-3-3,Starting right-back; may miss opening match
+club-fb-03,Guy Netzer,current_club,rotation,Wing-back,WB,30000,available,Energy and width,Inconsistent final ball,high,medium,high,medium,3-5-2,Rotation wing-back
+club-cm-01,Noam Sharon,current_club,likely_starter,Central midfielder,CM,47000,available,Press resistance; progressive passing,Can overcommit in duels,medium,high,high,medium,4-3-3,Starting central midfielder
+club-cm-02,Ido Katz,current_club,likely_starter,Central midfielder,CM,43000,available,Tempo control; defensive cover,Limited creativity in final third,low,medium,high,high,4-3-3,Starting holding midfielder
+club-cm-03,Eran Blum,current_club,likely_starter,Central midfielder,CM,41000,available,Box-to-box work rate,Decision-making under pressure varies,medium,medium,high,medium,4-3-3,Starting box-to-box midfielder
+club-cm-04,Lior Geva,current_club,rotation,Attacking midfielder,AM,35000,available,Creative link play,Defensive work rate inconsistent,medium,high,medium,low,4-3-3,Rotation attacking midfielder
+club-at-01,Lior Dan,current_club,likely_starter,Right winger,RW,49000,available,Direct dribbling; aggressive runs,Can force low-percentage shots,high,medium,high,low,4-3-3,Starting right winger
+club-at-02,Guy Navon,current_club,likely_starter,Left winger,LW,46000,available,Width and crossing,Needs better end product,medium,medium,medium,low,4-3-3,Starting left winger
+club-at-03,Amit Peretz,current_club,likely_starter,Striker,ST,55000,available,Aggressive pressing; strong hold-up,Can drift wide and leave centre exposed,high,low,high,low,4-3-3,Lone striker; aggressive pressing forward
