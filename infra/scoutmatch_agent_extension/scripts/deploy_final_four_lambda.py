@@ -372,6 +372,7 @@ def patch_deployer(Deployer: type) -> None:
                     "SCOUTMATCH_FOOTBALL_OPS_TABLE": ops_table,
                     "SCOUTMATCH_FOOTBALL_OPS_HASH_KEY": ops_hash_key,
                     "SCOUTMATCH_FOOTBALL_OPS_KEY_PREFIX": ops_prefix,
+                    "SCOUTMATCH_DEMO_SEASON_ID": "opening-season-demo-v1",
                     "SCOUTMATCH_LINEUP_BUCKET": bucket,
                     "SCOUTMATCH_LINEUP_S3_PREFIX": LINEUP_S3_PREFIX,
                     "SCOUTMATCH_MANAGEMENT_SNS_TOPIC": SNS_TOPIC_NAME,

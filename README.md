@@ -2,7 +2,7 @@
 
 **AI-Powered Football Recruitment Assistant**
 
-ScoutMatch AI helps **Scouts / Recruitment Analysts / Professional Assistants** prepare evidence-based recommendations for management and proposed lineups for head-coach review. Upload player CVs and scouting reports, then ask natural-language questions in Hebrew or English. The polished root UI uses the **Amazon Bedrock Agent** with **Knowledge Base grounding**, four dedicated Lambda Tools, and strict source validation.
+ScoutMatch AI is an **opening-season scouting workspace** for **Scouts / Recruitment Analysts / Professional Assistants**. Every new conversation starts with 15 current club players, 8 pre-scouted recruitment candidates, and preloaded club knowledge. Upload additional CVs per session, compare candidates, respond to coach briefs, and prepare grounded recommendations for management and proposed lineups for head-coach review.
 
 ---
 

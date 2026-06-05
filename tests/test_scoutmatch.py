@@ -1730,9 +1730,10 @@ class SessionDocumentApiTests(unittest.TestCase):
         database.add_session_document(s2["id"], f"{SCOUT_PREFIX}sessions/{s2['id']}/b.txt", "b.txt", "TXT")
         resp = self.client.get(f"/api/sessions/{s1['id']}/documents")
         self.assertEqual(resp.status_code, 200)
-        docs = resp.get_json()["documents"]
-        self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]["display_name"], "a.txt")
+        payload = resp.get_json()
+        session_docs = payload.get("session_uploads") or payload.get("candidate_documents") or []
+        self.assertEqual(len(session_docs), 1)
+        self.assertEqual(session_docs[0]["display_name"], "a.txt")
 
     def test_clear_documents_works_without_admin_token_and_deletes_sidecars(self):
         session = self._create_session()
@@ -2080,7 +2081,9 @@ class SessionDocumentApiTests(unittest.TestCase):
         key = upload.get_json()["key"]
         self.assertIn(f"session_uploads/{session['id']}/", key)
         listed = self.client.get(f"/api/sessions/{session['id']}/documents")
-        self.assertEqual(len(listed.get_json()["documents"]), 1)
+        payload = listed.get_json()
+        session_docs = payload.get("session_uploads") or payload.get("candidate_documents") or []
+        self.assertEqual(len(session_docs), 1)
         with patch.object(self.flask_app, "_reindex_engine_background", return_value=None):
             cleared = self.client.post(f"/api/sessions/{session['id']}/documents/clear")
         self.assertEqual(cleared.status_code, 200)
@@ -2099,7 +2102,8 @@ class UISmokeTests(unittest.TestCase):
         self.assertIn("ScoutMatch AI", html)
         self.assertIn("Upload CV", html)
         self.assertIn("Clear documents", html)
-        self.assertIn("Grounded answers only", html)
+        self.assertIn("Recruitment Candidate Pool", html)
+        self.assertIn("Opening-season scouting workspace", html)
 
     def test_frontend_uses_session_scoped_document_endpoints(self):
         js = (PROJECT_ROOT / "static/js/app.js").read_text(encoding="utf-8")

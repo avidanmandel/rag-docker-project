@@ -35,10 +35,17 @@ Generated: 2026-06-05 14:55 UTC
 - Script: `C:/Users/avida/amdocs/lesson 5/Lesson 5-20260517T130502Z-3-001/Lesson 5/Avidan_RAG_Docker_Project/scripts/cleanup_demo_football_ops_records.py`
 - Requires explicit confirmation phrase before any operator action.
 
+## Demo-season namespace (opening-season)
+
+- Active demo scope: `opening-season-demo-v1`
+- New budget reservations are tagged with `demo_season_id`
+- Old `football_ops#` records without the active season tag do not pollute opening-season budget calculations
+
 ## Known demo budget side effect
 
-- Prior live browser tests reserved approximately **129,000 EUR** against a **100,000 EUR** cap.
-- Live Confirm-path validation should wait until manual cleanup is approved.
+- Prior live browser tests reserved approximately **129,000 EUR** against a **100,000 EUR** cap in legacy demo records.
+- Opening-season demo uses isolated namespace; legacy records remain untouched.
+- Live Confirm-path validation should wait until manual cleanup is approved for legacy records.
 
 ## Audit limitation
 
