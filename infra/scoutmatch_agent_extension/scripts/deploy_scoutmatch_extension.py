@@ -70,10 +70,13 @@ NATIVE_AGENT_ACTION_GROUP = "ScoutMatchNativeActionsAvidan"
 try:
     from football_operations_apply import (  # noqa: E402
         AGENT_INSTRUCTION_DYNAMIC_ADDENDUM,
+        FOOTBALL_ACTION_GROUPS_DETACHED_AT_APPLY,
         FOOTBALL_OPS_TABLE,
         FOOTBALL_OPS_WRITE_CONFIRM,
+        INTERNAL_AGENT_HELPERS,
         LINEUP_S3_PREFIX,
         NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT,
+        NATIVE_AGENT_FUNCTIONS_SIMPLIFIED,
         NATIVE_AGENT_FUNCTIONS_V3,
         SNS_TOPIC_NAME,
     )
@@ -81,20 +84,16 @@ except ImportError:
     FOOTBALL_OPS_TABLE = "ScoutMatchFootballOperationsAvidan"
     SNS_TOPIC_NAME = "ScoutMatchManagementNotificationsAvidan"
     LINEUP_S3_PREFIX = "scoutmatch/football-operations/lineups/"
-    NATIVE_AGENT_FUNCTIONS_V3 = [
+    NATIVE_AGENT_FUNCTIONS_SIMPLIFIED = [
         "UpdateSquadPlanningContext",
         "SubmitPlayerSelectionToManagement",
         "FinalizeCurrentLineup",
         "GenerateCurrentLineupBoard",
-        "AddCandidateToShortlist",
-        "StartCandidateReviewWorkflow",
     ]
-    NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT = [
-        "ListShortlistCandidates",
-        "RemoveCandidateFromShortlist",
-        "CreateRecruitmentBrief",
-        "GetRecruitmentBrief",
-    ]
+    NATIVE_AGENT_FUNCTIONS_V3 = list(NATIVE_AGENT_FUNCTIONS_SIMPLIFIED)
+    INTERNAL_AGENT_HELPERS = []
+    FOOTBALL_ACTION_GROUPS_DETACHED_AT_APPLY = []
+    NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT = []
     FOOTBALL_OPS_WRITE_CONFIRM = frozenset(
         {
             "SubmitPlayerSelectionToManagement",
@@ -104,7 +103,8 @@ except ImportError:
     )
     AGENT_INSTRUCTION_DYNAMIC_ADDENDUM = ""
 
-NATIVE_AGENT_FUNCTIONS = list(NATIVE_AGENT_FUNCTIONS_V3)
+NATIVE_AGENT_FUNCTIONS = list(NATIVE_AGENT_FUNCTIONS_SIMPLIFIED)
+SIMPLIFIED_USER_FACING_TOOL_COUNT = 4
 BEDROCK_AGENT_FUNCTION_QUOTA = 10
 
 NATIVE_LAMBDAS = {
@@ -1598,18 +1598,27 @@ class Deployer:
         names = [g.get("actionGroupName", "") for g in groups.get("actionGroupSummaries", [])]
         football_count = sum(1 for n in names if n in {m["action_group"] for m in LAMBDAS.values()})
         native_count = len(NATIVE_AGENT_FUNCTIONS)
-        total = football_count + native_count
-        self.present.append(f"Bedrock quota audit: {len(names)} action groups on agent draft")
+        total_deployed = football_count + sum(
+            6 for n in names if n == NATIVE_AGENT_ACTION_GROUP
+        )  # current native group may still expose 6 APIs until apply
+        self.present.append(f"Bedrock quota audit: {len(names)} action groups on agent draft (deployed)")
         self.present.append(
-            f"Bedrock quota audit: {football_count} football + {native_count} native = {total} "
-            f"proposed enabled APIs (max {BEDROCK_AGENT_FUNCTION_QUOTA})"
+            f"Simplified plan: {SIMPLIFIED_USER_FACING_TOOL_COUNT} user-facing tools in "
+            f"{NATIVE_AGENT_ACTION_GROUP} only"
         )
-        if total > BEDROCK_AGENT_FUNCTION_QUOTA:
+        self.present.append(
+            f"Deployed legacy exposure estimate: {football_count} football action groups + native group"
+        )
+        if native_count > BEDROCK_AGENT_FUNCTION_QUOTA:
             self.blockers.append(
-                f"Proposed function count {total} exceeds Bedrock quota {BEDROCK_AGENT_FUNCTION_QUOTA}"
+                f"Proposed function count {native_count} exceeds Bedrock quota {BEDROCK_AGENT_FUNCTION_QUOTA}"
             )
+        for group in FOOTBALL_ACTION_GROUPS_DETACHED_AT_APPLY:
+            self.plan.append(f"Detach football action group from agent (Lambda preserved): {group}")
         for removed in NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT:
-            self.present.append(f"Quota plan: {removed} remains direct-Lambda only (not on agent)")
+            self.present.append(f"Internal helper only (not user-facing): {removed}")
+        for helper in INTERNAL_AGENT_HELPERS[:8]:
+            self.present.append(f"Internal helper preserved: {helper}")
 
     def ensure_sns_topic(self) -> str:
         self.plan.append(f"Create SNS topic (if missing): {SNS_TOPIC_NAME}")
@@ -1634,7 +1643,11 @@ class Deployer:
         sns_arn = self.ensure_sns_topic()
         self._audit_agent_function_quota(agent_id)
         self.plan.append(f"Extend native router Lambda: ScoutMatchNativeToolsAvidan")
-        self.plan.append(f"Update native action group with quota-safe function set ({len(NATIVE_AGENT_FUNCTIONS)} APIs)")
+        self.plan.append(
+            f"Update native action group with simplified user-facing set "
+            f"({len(NATIVE_AGENT_FUNCTIONS)} APIs only)"
+        )
+        self.plan.append("Preserve Agent Knowledge Base association (ENABLED, no disconnect)")
         self.plan.append(f"Scoped S3 lineup prefix: {LINEUP_S3_PREFIX}")
         self.plan.append("Add Flask proxy route: GET /api/recruitment-advisor/lineups/<lineup_id>/image")
         self.plan.append("Update agent instruction with dynamic sporting-director addendum")

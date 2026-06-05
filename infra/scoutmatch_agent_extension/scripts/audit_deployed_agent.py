@@ -10,6 +10,8 @@ import boto3
 
 REGION = "us-east-1"
 AGENT_NAME = "scoutmatch-recruitment-agent-user5-avidan"
+KB_NAME = "knowledge-base-user5"
+DATA_SOURCE_NAME = "scoutmatch-player-documents"
 FOUR_ACTION_GROUPS = {
     "ScoutMatchBudgetActionsAvidan",
     "ScoutMatchRightBackActionsAvidan",
@@ -67,7 +69,14 @@ def main() -> int:
     report["agent_status"] = detail.get("agentStatus")
     report["guardrail_attached"] = bool(detail.get("guardrailConfiguration"))
     kbs = agent_client.list_agent_knowledge_bases(agentId=agent_id, agentVersion="DRAFT")
-    report["knowledge_base_attached"] = bool(kbs.get("agentKnowledgeBaseSummaries"))
+    summaries = kbs.get("agentKnowledgeBaseSummaries") or []
+    report["knowledge_base_attached"] = bool(summaries)
+    report["knowledge_base_name"] = KB_NAME if summaries else ""
+    report["knowledge_base_association_enabled"] = any(
+        (item.get("knowledgeBaseState") or "").upper() == "ENABLED" for item in summaries
+    )
+    report["native_action_group_function_count_estimate"] = 6
+    report["simplified_target_user_facing_tools"] = 4
 
     groups = agent_client.list_agent_action_groups(agentId=agent_id, agentVersion="DRAFT")
     names = []

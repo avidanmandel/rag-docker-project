@@ -410,6 +410,14 @@ Documentation: `docs/SCOUTMATCH_AGENT_EXTENSION.md`, `docs/SCOUTMATCH_FLOW_EXTEN
 Screenshots: `infra/scoutmatch_agent_extension/evidence/SCREENSHOT_CHECKLIST.md`.  
 Production EC2 was **not** modified by this extension.
 
+### Course compliance audit
+
+- Matrix: `docs/COURSE_REQUIREMENTS_COMPLIANCE_MATRIX.md`
+- Demo script: `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md`
+- Screenshot guide: `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`
+- Presentation outline: `docs/SCOUTMATCH_PRESENTATION_CONTENT.md`
+- Submission ZIP: `docs/SUBMISSION_CHECKLIST.md`
+
 ### Dynamic football operations (plan — branch `feature/scoutmatch-agent-flow-extension`)
 
 Sporting-director squad planning: operational DynamoDB state, budget reservations, SNS management notifications, and SVG lineup boards in the Recruitment Advisor UI. **Plan only** until approved `--apply`.

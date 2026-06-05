@@ -14,17 +14,45 @@ FOOTBALL_OPS_WRITE_CONFIRM = frozenset(
     }
 )
 
-# Quota-safe agent-native function set (6 slots) — replaces four read/write recruitment helpers.
-NATIVE_AGENT_FUNCTIONS_V3 = [
+# Simplified course design: exactly four user-facing Agent Tools.
+NATIVE_AGENT_FUNCTIONS_SIMPLIFIED = [
     "UpdateSquadPlanningContext",
     "SubmitPlayerSelectionToManagement",
     "FinalizeCurrentLineup",
     "GenerateCurrentLineupBoard",
+]
+
+# Backward-compatible alias used by deploy script imports.
+NATIVE_AGENT_FUNCTIONS_V3 = list(NATIVE_AGENT_FUNCTIONS_SIMPLIFIED)
+
+INTERNAL_AGENT_HELPERS = [
+    "CalculateBudgetImpact",
+    "EvaluateRightBackFit",
+    "EvaluateBelowStrikerFit",
+    "EvaluateForwardFit",
     "AddCandidateToShortlist",
+    "ListShortlistCandidates",
+    "RemoveCandidateFromShortlist",
     "StartCandidateReviewWorkflow",
+    "GetCandidateReviewWorkflowStatus",
+    "GetCandidateReviewResult",
+    "CreateRecruitmentBrief",
+    "GetRecruitmentBrief",
+    "ListRecruitmentBriefs",
+    "RecordPlayerAvailabilityChange",
+    "AnalyzeSquadDepthGaps",
+]
+
+FOOTBALL_ACTION_GROUPS_DETACHED_AT_APPLY = [
+    "ScoutMatchBudgetActionsAvidan",
+    "ScoutMatchRightBackActionsAvidan",
+    "ScoutMatchBelowStrikerActionsAvidan",
+    "ScoutMatchForwardActionsAvidan",
 ]
 
 NATIVE_AGENT_FUNCTIONS_REMOVED_FROM_AGENT = [
+    "AddCandidateToShortlist",
+    "StartCandidateReviewWorkflow",
     "ListShortlistCandidates",
     "RemoveCandidateFromShortlist",
     "CreateRecruitmentBrief",

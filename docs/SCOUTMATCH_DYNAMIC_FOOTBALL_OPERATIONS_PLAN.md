@@ -84,17 +84,18 @@ Native Bedrock `requireConfirmation` on apply; `write_confirmed` for direct test
 
 `SubmitPlayerSelectionToManagement` uses a planning-context idempotency key. Repeated CONFIRM returns `ALREADY_RESERVED` without a second ledger entry.
 
-## Bedrock 10-API quota strategy
+## Simplified four-tool course design (final)
 
-| Layer | Count |
-|-------|------:|
-| Football Action Groups (unchanged) | 4 |
-| Native consolidated group (proposed) | 6 |
-| **Total** | **10** |
+The Sporting Director sees **exactly four** user-facing Agent Tools in `ScoutMatchNativeActionsAvidan`:
 
-**Proposed native APIs:** `UpdateSquadPlanningContext`, `SubmitPlayerSelectionToManagement`, `FinalizeCurrentLineup`, `GenerateCurrentLineupBoard`, `AddCandidateToShortlist`, `StartCandidateReviewWorkflow`.
+1. `UpdateSquadPlanningContext`
+2. `SubmitPlayerSelectionToManagement`
+3. `FinalizeCurrentLineup`
+4. `GenerateCurrentLineupBoard`
 
-**Removed from agent attach (direct Lambda only):** `ListShortlistCandidates`, `RemoveCandidateFromShortlist`, `CreateRecruitmentBrief`, `GetRecruitmentBrief`.
+At approved `--apply`, the plan **detaches** the four football Action Groups from the Agent (Lambdas preserved for internal `boto3`/`lambda` invoke). Recruitment shortlist/workflow/brief APIs are **internal helpers only**.
+
+**Deployed state (pre-apply):** Agent draft still shows legacy 4 football + 6 native APIs — documented as PARTIAL in `docs/COURSE_REQUIREMENTS_COMPLIANCE_MATRIX.md`.
 
 ## Sample demo conversation
 

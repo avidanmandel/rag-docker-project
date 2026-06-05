@@ -1,70 +1,59 @@
 # ScoutMatch AI — Submission Checklist
 
-Use this checklist before submitting the lesson project ZIP.
+Use before the lecturer submission ZIP. Cleanup remains **deferred** until screenshots, ZIP review, live demo, and explicit user approval.
 
 ## Required source files
 
 - [ ] `app.py`
 - [ ] `requirements.txt`
 - [ ] `Dockerfile`
+- [ ] `.dockerignore`
 - [ ] `README.md`
-- [ ] `templates/` (UI)
-- [ ] `static/` (CSS, JS, images)
-- [ ] `aws_kb_engine.py`
-- [ ] `aws_storage_service.py`
-- [ ] `database.py`
-- [ ] `requirement_verification.py`
-- [ ] `sample_scout_data/` (demo player CVs and reports)
-- [ ] `docs/` (project state, lifecycle, runbook, QA report, limitations, this checklist)
-- [ ] `tests/test_scoutmatch.py`
+- [ ] `templates/` and `static/`
+- [ ] `aws_kb_engine.py`, `aws_storage_service.py`, `database.py`, `requirement_verification.py`
+- [ ] `bedrock_agent_service.py`, `lineup_board_service.py` (Advisor extension)
+- [ ] `sample_scout_data/`
+- [ ] `infra/scoutmatch_agent_extension/` (Lambdas, deploy scripts, tests)
+- [ ] `docs/` including `COURSE_REQUIREMENTS_COMPLIANCE_MATRIX.md`, `SCOUTMATCH_FINAL_DEMO_SCRIPT.md`
+- [ ] `tests/test_scoutmatch.py`, `tests/test_bedrock_agent_advisor.py`, extension tests
 
-## Screenshots (for report / demo)
+## Exclude from ZIP
 
-Capture from production or candidate UI:
+- [ ] `.env`, `.env.agent`, `.aws/`, `*.pem`, `*.key`
+- [ ] `chat.db`, `runtime/`, `artifacts/logs/`, `__pycache__/`, `.venv/`
+- [ ] `infra/scoutmatch_agent_extension/.local/` (state, validation JSON)
+- [ ] `fix_agent_model.py`, `repair_agent_runtime.py` (untracked repair helpers)
+- [ ] Generated submission ZIP file itself
 
-- [ ] Home dashboard
-- [ ] Upload panel with documents listed
-- [ ] Grounded English answer with source cards
-- [ ] Grounded Hebrew answer
-- [ ] Refusal (out-of-domain) with no sources
-- [ ] Stale-answer badge after document delete
-- [ ] Clear documents / session isolation (optional)
+## Screenshots
 
-Store screenshots outside `artifacts/logs/` or exclude from ZIP if not required by rubric.
+### Baseline v14 (captured)
 
-## README
+- [x] `submission_evidence/final_v14/` — 11 PNGs (see `submission_evidence/README.md`)
 
-- [ ] Architecture section matches AWS KB production path
-- [ ] Environment variables documented (no secret values)
-- [ ] Local vs production mode explained
-- [ ] Link or reference to `docs/DEPLOYMENT_RUNBOOK.md`
+### Dynamic extension (planned / missing)
 
-## Clean ZIP
+- [ ] Agent KB association ENABLED
+- [ ] Four user-facing Tools only
+- [ ] Sporting-director chat, confirmation, DynamoDB, SNS, inline SVG lineup
+- [ ] See `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`
 
-Before zipping:
+## Verification
 
-- [ ] **Exclude** `.env`, `*.pem`, `*.key`, `chat.db`, `runtime/`, `.aws/`
-- [ ] **Exclude** `artifacts/logs/`, `*.log`
-- [ ] **Exclude** `__pycache__/`, `.venv/`, `.pytest_cache/`
-- [ ] **Exclude** local preview PNGs unless required (`home-preview-*.png`)
-- [ ] **Exclude** one-off audit/deploy scripts (`scripts/deploy_session_docs_v3.sh` … `v7`, `scripts/audit_*.py`) unless instructor requires full history
-- [ ] **Include** `docs/FINAL_QA_REPORT.md` and `docs/PROJECT_STATE.md`
+- [ ] `python -m pytest tests/test_scoutmatch.py tests/test_bedrock_agent_advisor.py infra/scoutmatch_agent_extension/tests -q`
+- [ ] Production: http://3.239.47.249/api/health and `/api/status` → `ready: true`, `rag_backend: aws_kb`
+- [ ] `docs/COURSE_REQUIREMENTS_COMPLIANCE_MATRIX.md` reviewed
 
-Suggested ZIP root: project folder name `Avidan_RAG_Docker_Project` with no nested duplicate folders.
+## Cleanup (deferred)
 
-## AWS cleanup after screenshots / demo
+Do **not** delete AWS resources, production Docker, or KB content until:
 
-After capturing demo evidence:
+1. Screenshots captured  
+2. Final ZIP reviewed  
+3. Live demo completed or evidence stored  
+4. User explicitly approves (`docs/SCOUTMATCH_AWS_CLEANUP_PLAN.md`)
 
-- [ ] Delete disposable test sessions via UI or API (`delete_documents: true`)
-- [ ] Run `python scripts/reconcile_session_documents.py --dry-run` on EC2 — expect no orphan keys for production sessions
-- [ ] Confirm no leftover keys under `scoutmatch/knowledge-base/sessions/<test-session-id>/`
-- [ ] Remove any loopback candidate containers and temp runtime dirs
-- [ ] Do **not** delete production runtime `chat.db` or unrelated AWS resources
+## Presentation
 
-## Pre-submit verification
-
-- [ ] `python -m pytest tests/test_scoutmatch.py -q` passes locally
-- [ ] Production URL responds HTTP 200 on `/`, `/api/health`, `/api/status`
-- [ ] `docs/FINAL_QA_REPORT.md` reflects latest strict candidate audit
-- [ ] Git branch `feature/session-scoped-documents` pushed; release commit documented in `docs/PROJECT_STATE.md`
+- [ ] Build PPTX from `docs/SCOUTMATCH_PRESENTATION_CONTENT.md` (not in repo yet)
+- [ ] Rehearse `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md`
