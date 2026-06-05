@@ -49,8 +49,8 @@ See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, 
 | 4 | `four_action_groups_enabled.png` | Four final Action Groups only |
 | 5 | `four_dedicated_lambdas.png` | Four dedicated Lambdas |
 | 6 | `dynamodb_fallback_operational_state.png` | `football_ops#` operational record (sanitized) |
-| 7 | `34_sns_management_topic.png` | SNS topic exists |
-| 8 | `sns_confirmed_email_subscription.png` | Email subscription **Confirmed** (blur email) |
+| 7 | `34_sns_management_topic.png` | SNS topic exists (**optional** — not required for course submission) |
+| 8 | `sns_confirmed_email_subscription.png` | Email subscription **Confirmed** (blur email; **optional**) |
 | 9 | `33_player_selection_confirmation.png` | Confirmation prompt in Advisor chat |
 | 10 | `remaining_budget_after_confirm.png` | Remaining budget after confirm |
 | 11 | `39_private_lineup_svg_s3.png` | Private S3 SVG under lineup prefix |

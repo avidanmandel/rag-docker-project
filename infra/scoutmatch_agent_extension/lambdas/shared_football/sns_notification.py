@@ -45,7 +45,8 @@ def publish_management_notification(selection: dict, budget_decision: str) -> di
     try:
         import boto3
 
-        resp = boto3.client("sns").publish(
+        region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
+        resp = boto3.client("sns", region_name=region).publish(
             TopicArn=topic, Message=message, Subject="ScoutMatch selection"
         )
         return {"published": True, "message_id": resp.get("MessageId", "")}

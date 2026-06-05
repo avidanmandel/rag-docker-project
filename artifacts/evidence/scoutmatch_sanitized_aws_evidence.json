@@ -1,0 +1,90 @@
+{
+  "region": "us-east-1",
+  "checks": {
+    "agent_status": "PREPARED",
+    "agent_name": "scoutmatch-recruitment-agent-user5-avidan",
+    "knowledge_base_associations": [
+      {
+        "description": "ScoutMatch KB",
+        "status": "ENABLED",
+        "kb_suffix": "KOHOL1843O"
+      }
+    ],
+    "action_group_count": 10,
+    "action_group_names": [
+      "ScoutMatchBelowStrikerActionsAvidan",
+      "ScoutMatchBudgetActionsAvidan",
+      "ScoutMatchForwardActionsAvidan",
+      "ScoutMatchLineupActionsAvidan",
+      "ScoutMatchLineupBoardActionsAvidan",
+      "ScoutMatchNativeActionsAvidan",
+      "ScoutMatchPlayerSelectionActionsAvidan",
+      "ScoutMatchRightBackActionsAvidan",
+      "ScoutMatchSelectionAgAvidan",
+      "ScoutMatchTacticsActionsAvidan"
+    ],
+    "alias_name": "scoutmatch-demo-stable-v2",
+    "alias_status": "PREPARED",
+    "alias_routing_version": "22",
+    "guardrail_suffix": "3gsuafc8ziay",
+    "guardrail_version": "11",
+    "guardrail_filters": [
+      {
+        "type": "VIOLENCE",
+        "input": "NONE"
+      },
+      {
+        "type": "PROMPT_ATTACK",
+        "input": "NONE"
+      },
+      {
+        "type": "MISCONDUCT",
+        "input": "NONE"
+      },
+      {
+        "type": "HATE",
+        "input": "NONE"
+      },
+      {
+        "type": "SEXUAL",
+        "input": "LOW"
+      },
+      {
+        "type": "INSULTS",
+        "input": "LOW"
+      }
+    ],
+    "final_lambda_count": 4,
+    "final_lambdas": [
+      {
+        "name": "ScoutMatchPlanMatchTacticsAvidan",
+        "state": "Active",
+        "sns_configured": false
+      },
+      {
+        "name": "ScoutMatchSubmitPlayerSelectionAvidan",
+        "state": "Active",
+        "sns_configured": true
+      },
+      {
+        "name": "ScoutMatchFinalizeCurrentLineupAvidan",
+        "state": "Active",
+        "sns_configured": false
+      },
+      {
+        "name": "ScoutMatchGenerateLineupBoardAvidan",
+        "state": "Active",
+        "sns_configured": false
+      }
+    ],
+    "dynamodb_error": "ClientError",
+    "sns_topic_suffix": "ScoutMatchManagementNotificationsAvidan",
+    "sns_topic_verified": "MANUAL_REQUIRED"
+  },
+  "manual_validation_required": [
+    "SNS topic exists in Console (local IAM lacks SNS read/create)",
+    "SNS email subscription confirmed in inbox",
+    "Private S3 lineup SVG object (Console or EC2 runtime)",
+    "AWS Console screenshots for presentation slides"
+  ]
+}

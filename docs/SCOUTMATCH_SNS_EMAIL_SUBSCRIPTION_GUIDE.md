@@ -6,9 +6,17 @@
 
 ## When this is required
 
-After four-Lambda `--apply`, `ScoutMatchSubmitPlayerSelectionAvidan` / `SubmitPlayerSelectionToManagement` publishes sanitized management notifications to SNS only after explicit user confirmation. **SNS publish can succeed even when no email subscription exists**, but **no email will be received** until a subscription is created and confirmed.
+**SNS is an optional bonus extension.** The course-facing live demo does not depend on SNS or email delivery. DynamoDB is the source of truth for submitted recommendations.
 
-Manual email subscription is required for the live email demo.
+After four-Lambda `--apply`, `ScoutMatchSubmitPlayerSelectionAvidan` / `SubmitPlayerSelectionToManagement` attempts a sanitized SNS publish only after explicit user confirmation. **SNS publish can succeed even when no email subscription exists**, but **no email will be received** until a subscription is created and confirmed.
+
+Manual email subscription is required only for a live email demo.
+
+## Topic verification
+
+1. Confirm topic `ScoutMatchManagementNotificationsAvidan` exists in **us-east-1** under the same AWS account as ScoutMatch Lambdas.
+2. Run `python scripts/configure_sns_lambda_env.py` (configures `ScoutMatchSubmitPlayerSelectionAvidan` only).
+3. Re-test Confirm flow. If publish still fails with `NotFoundException`, the topic is missing or in a different account/region.
 
 ## Important safety notes
 

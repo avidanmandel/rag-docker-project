@@ -11,6 +11,7 @@ from budget_ledger import (
     record_reservation,
     sum_reserved_amounts,
 )
+from operations_store import put_item
 from budget_rules import evaluate_budget
 from sns_notification import publish_management_notification
 from validation import resolve_transfer_candidate
@@ -48,7 +49,7 @@ def submit_selection(
             "target_role": existing.get("target_role", role),
             "reserved_amount_eur": existing.get("reserved_amount_eur"),
             "remaining_budget_eur": existing.get("remaining_budget_eur"),
-            "management_notified": True,
+            "management_notified": bool(existing.get("management_notified")),
             "idempotent": True,
         }, ""
 
@@ -93,13 +94,24 @@ def submit_selection(
     if selection_reason:
         selection["selection_reason"] = selection_reason[:500]
     sns_result = publish_management_notification(selection, decision)
+    notified = bool(sns_result.get("published"))
+    put_item(
+        entity_key=selection["entity_key"],
+        item_type="PLAYER_SELECTION",
+        payload={
+            k: v
+            for k, v in selection.items()
+            if k not in {"entity_key", "item_type", "updated_at"}
+        }
+        | {"management_notified": notified},
+    )
     return {
         "status": "PENDING_MANAGEMENT_APPROVAL",
         "selected_player": candidate["display_name"],
         "target_role": role or candidate["target_role"],
         "reserved_amount_eur": salary,
         "remaining_budget_eur": remaining,
-        "management_notified": bool(sns_result.get("published")),
+        "management_notified": notified,
         "budget_decision": decision,
         "sns": sns_result,
         "idempotent": False,

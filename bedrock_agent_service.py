@@ -141,23 +141,23 @@ def _is_confirmation_input(question: str) -> bool:
 
 def _format_selection_success(body: dict) -> str:
     player = body.get("selected_player") or body.get("candidate_name") or "the candidate"
+    reserved = body.get("reserved_amount_eur")
     remaining = body.get("remaining_budget_eur")
     notified = body.get("management_notified")
     if notified is None:
         sns = body.get("sns") or {}
         notified = bool(sns.get("published"))
     lines = [
-        "Recommendation submitted to management.",
-        "Status: PENDING_MANAGEMENT_APPROVAL",
+        "Recommendation submitted for management review.",
+        "Status: Pending management approval.",
+        f"Selected player: {player}",
     ]
+    if reserved is not None:
+        lines.append(f"Reserved budget: {int(reserved):,} EUR")
     if remaining is not None:
         lines.append(f"Remaining budget: {int(remaining):,} EUR")
-    lines.append(f"Selected player: {player}")
-    lines.append(
-        "Management notification: sent"
-        if notified
-        else "Management notification: queued (email subscription may be required)"
-    )
+    if notified:
+        lines.append("Management notification sent.")
     return "\n".join(lines)
 
 

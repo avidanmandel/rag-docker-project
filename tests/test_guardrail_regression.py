@@ -43,11 +43,12 @@ def test_internal_ids_hidden_from_selection_success():
         }
     )
     assert "ctx-" not in text
-    assert "PENDING_MANAGEMENT_APPROVAL" in text
-    assert "Management notification: sent" in text
+    assert "Pending management approval" in text
+    assert "Management notification sent." in text
+    assert "SNS" not in text
 
 
-def test_management_notification_queued_when_not_sent():
+def test_management_notification_omitted_when_not_sent():
     text = advisor._format_selection_success(
         {
             "selected_player": "Ron Ben Ari",
@@ -55,4 +56,6 @@ def test_management_notification_queued_when_not_sent():
             "management_notified": False,
         }
     )
-    assert "queued" in text.lower()
+    assert "Management notification sent." not in text
+    assert "SNS" not in text
+    assert "queued" not in text.lower()

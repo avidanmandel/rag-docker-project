@@ -237,7 +237,7 @@ def test_format_selection_success_hides_internal_ids():
     text = advisor._format_selection_success(
         {"selected_player": "Ron Ben Ari", "remaining_budget_eur": 57000}
     )
-    assert "PENDING_MANAGEMENT_APPROVAL" in text
+    assert "Pending management approval" in text
     assert "ctx-" not in text
 
 
