@@ -14,22 +14,23 @@ JS = ROOT / "static" / "js" / "app.js"
 HTML = ROOT / "templates" / "index.html"
 
 
-def test_homepage_hero_uses_aspect_ratio_and_contain():
+def test_homepage_hero_uses_full_column_height_and_contain():
     css = CSS.read_text(encoding="utf-8")
     repair = css.split("Homepage visual repair")[-1]
     assert ".messages.messages--landing .dashboard-stage" in repair
-    assert "aspect-ratio: 1090 / 1095" in repair
     assert "object-fit: contain" in repair
     stage_block = repair.split(".messages.messages--landing .dashboard-stage {", 1)[1].split("}", 1)[0]
-    assert "aspect-ratio: 1090 / 1095" in stage_block
-    assert "height: 100%" not in stage_block
+    assert "height: 100%" in stage_block
+    img_block = repair.split(".messages.messages--landing .dashboard-stage__panel-img {", 1)[1].split("}", 1)[0]
+    assert "transform: scale(" in img_block
+    assert "object-position: center 42%" in img_block
 
 
-def test_homepage_hero_stage_sizes_to_viewport_not_oversized_frame():
+def test_homepage_hero_stage_fills_right_column_not_fixed_poster_frame():
     css = CSS.read_text(encoding="utf-8")
     repair = css.split("Homepage visual repair")[-1]
-    assert "width: min(100%, calc(100vh - 220px))" in repair
-    assert "max-height: calc(100vh - 220px)" in repair
+    assert "align-items: stretch" in repair.split(".messages.messages--landing .hero-right")[1].split("}", 1)[0]
+    assert "align-self: stretch" in repair.split(".messages.messages--landing .dashboard-stage")[1].split("}", 1)[0]
 
 
 def test_homepage_quick_start_grid_and_five_buttons_template():

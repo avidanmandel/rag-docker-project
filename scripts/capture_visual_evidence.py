@@ -40,8 +40,11 @@ def _capture_chat_flow(browser) -> list[str]:
         suggestion = page.locator(".suggestion").first
     suggestion.click()
 
-    page.wait_for_selector(".message--assistant .message__content", timeout=180000)
-    page.wait_for_timeout(2000)
+    page.wait_for_selector(".message--assistant .message__content--markdown h3, .message--assistant .message__content--markdown table, .message--assistant .message__content--markdown p", timeout=240000)
+    page.wait_for_timeout(3000)
+    content_text = page.locator(".message--assistant .message__content--markdown").last.inner_text(timeout=5000)
+    if "###" in content_text:
+        raise RuntimeError("literal markdown heading markers still visible in chat response")
 
     assistant = page.locator(".message--assistant").last
     assistant.scroll_into_view_if_needed()
