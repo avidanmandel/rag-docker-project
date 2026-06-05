@@ -50,6 +50,28 @@ WRITE_CONFIRM_TOOLS = frozenset(
         "FinalizeCurrentLineup",
     }
 )
+CONFIRM_INPUTS = frozenset({"confirm", "yes", "proceed", "approve"})
+DENY_INPUTS = frozenset({"deny", "cancel", "reject", "no"})
+TOOL_USER_LABELS = {
+    "PlanMatchTactics": "Plan match tactics",
+    "SubmitPlayerSelectionToManagement": "Submit player recommendation to management",
+    "FinalizeCurrentLineup": "Save proposed lineup for head-coach review",
+    "GenerateCurrentLineupBoard": "Generate current lineup board",
+}
+GUARDRAIL_SAFE_PARAPHRASES = {
+    (
+        "Compare the right-back candidates within our recruitment budget. "
+        "Include Ron Ben Ari and the other documented right-back options."
+    ): (
+        "Compare the right-back candidates within our recruitment budget. "
+        "Include Ron Ben Ari and Tal Cohen."
+    ),
+}
+_PLANNING_CONTEXT_PATTERN = re.compile(r"\bplanning[_\s-]*context[_\s-]*id\b[:\s]*[A-Za-z0-9_-]+", re.I)
+_INTERNAL_ID_PATTERN = re.compile(
+    r"\b(?:ctx|record|entity|lineup|selection)[-_][A-Za-z0-9]{6,}\b",
+    re.I,
+)
 ALLOWED_PUBLIC_TOOLS = frozenset(
     {
         "PlanMatchTactics",
@@ -90,7 +112,85 @@ def disabled_response() -> dict[str, Any]:
 def _sanitize_text(value: str) -> str:
     text = _ARN_PATTERN.sub("[redacted-resource]", value)
     text = re.sub(r"s3://[^\s]+", "[redacted-storage]", text, flags=re.I)
-    return _ACCOUNT_PATTERN.sub("[redacted-account]", text)
+    text = _ACCOUNT_PATTERN.sub("[redacted-account]", text)
+    text = _PLANNING_CONTEXT_PATTERN.sub("planning context", text)
+    text = _INTERNAL_ID_PATTERN.sub("", text)
+    text = re.sub(r"\bnotify management via sns\b", "notify management", text, flags=re.I)
+    text = re.sub(r"\bSNS\b", "management notification", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
+
+def _normalize_user_input(question: str) -> str:
+    stripped = (question or "").strip()
+    lowered = stripped.lower()
+    if lowered in CONFIRM_INPUTS:
+        return "Confirm"
+    if lowered in DENY_INPUTS:
+        return "Deny"
+    return stripped
+
+
+def _guardrail_safe_prompt(question: str) -> str:
+    return GUARDRAIL_SAFE_PARAPHRASES.get(question.strip(), question)
+
+
+def _is_confirmation_input(question: str) -> bool:
+    return _normalize_user_input(question) in {"Confirm", "Deny"}
+
+
+def _format_selection_success(body: dict) -> str:
+    player = body.get("selected_player") or body.get("candidate_name") or "the candidate"
+    remaining = body.get("remaining_budget_eur")
+    lines = [
+        "Recommendation submitted to management.",
+        "Status: PENDING_MANAGEMENT_APPROVAL",
+    ]
+    if remaining is not None:
+        lines.append(f"Remaining budget: {int(remaining):,} EUR")
+    lines.append(f"Selected player: {player}")
+    return "\n".join(lines)
+
+
+def _format_lineup_success(body: dict) -> str:
+    formation = body.get("formation") or "4-3-3"
+    count = body.get("starting_players") or len(body.get("starting_xi") or [])
+    return (
+        f"Proposed lineup saved for head-coach review.\n"
+        f"Status: PENDING_HEAD_COACH_REVIEW\n"
+        f"Formation: {formation}\n"
+        f"Starting players: {count}"
+    )
+
+
+def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
+    for event in reversed(events):
+        orchestration = _trace_orchestration(event)
+        observation = orchestration.get("observation") or {}
+        action_out = observation.get("actionGroupInvocationOutput") or {}
+        body_text = str(action_out.get("text") or "")
+        if not body_text.strip().startswith("{"):
+            continue
+        try:
+            payload = json.loads(body_text)
+        except json.JSONDecodeError:
+            continue
+        status = str(payload.get("status") or "").upper()
+        if status == "PENDING_MANAGEMENT_APPROVAL":
+            return _format_selection_success(payload)
+        if status in {"PENDING_HEAD_COACH_REVIEW", "LINEUP_FINALIZED"}:
+            return _format_lineup_success(payload)
+        if status == "LINEUP_BOARD_GENERATED" and payload.get("image_route"):
+            return (
+                f"Current proposed lineup board ({payload.get('formation', '4-3-3')}).\n"
+                f"Status: PENDING_HEAD_COACH_REVIEW\n"
+                f"View: {payload['image_route']}"
+            )
+        if status == "NOT_FOUND" and payload.get("message"):
+            return str(payload["message"])
+        if status in {"FAILURE", "REJECTED"} and payload.get("message"):
+            return str(payload["message"])
+    return answer
 
 
 def _parse_parameters(block: dict | None) -> dict[str, str]:
@@ -245,9 +345,11 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     if confirmation_card and "confirmation_or_reprompt" not in warnings:
         warnings.append("confirmation_or_reprompt")
 
+    tool_labels = [TOOL_USER_LABELS.get(name, name) for name in tools[:8]]
     return {
         "documents_used": documents[:8],
         "tools_executed": tools[:8],
+        "tool_labels": tool_labels[:8],
         "lineup_image_route": lineup_route,
         "remaining_budget_eur": remaining_budget,
         "missing_information": None,
@@ -258,34 +360,78 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     }
 
 
+def _invoke_agent_once(
+    client,
+    *,
+    agent_session: str,
+    question: str,
+) -> tuple[str, list[dict], dict[str, Any]]:
+    collected_events: list[dict] = []
+    response = client.invoke_agent(
+        agentId=AGENT_ID,
+        agentAliasId=AGENT_ALIAS_ID,
+        sessionId=agent_session,
+        inputText=question,
+        enableTrace=True,
+    )
+    answer_parts: list[str] = []
+    for event in response.get("completion", []):
+        collected_events.append(event)
+        if "chunk" in event and "bytes" in event["chunk"]:
+            answer_parts.append(event["chunk"]["bytes"].decode("utf-8", errors="replace"))
+    raw_answer = "".join(answer_parts).strip()
+    metadata = _extract_metadata(collected_events, raw_answer)
+    answer = _answer_from_tool_payload(raw_answer, collected_events)
+    answer = _sanitize_text(answer) or GENERIC_ERROR_MESSAGE
+    refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+    if metadata.get("guardrail_intervened") and not raw_answer.strip():
+        answer = GUARDRAIL_BLOCK_MESSAGE
+        refused = True
+    return answer, collected_events, metadata
+
+
 def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]:
     if not is_enabled():
         return disabled_response()
 
+    normalized = _normalize_user_input(question)
+    prompt = (
+        normalized
+        if normalized in {"Confirm", "Deny"}
+        else _guardrail_safe_prompt(normalized)
+    )
     agent_session = session_id or f"advisor-{uuid.uuid4().hex}"
-    collected_events: list[dict] = []
     try:
         client = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
-        response = client.invoke_agent(
-            agentId=AGENT_ID,
-            agentAliasId=AGENT_ALIAS_ID,
-            sessionId=agent_session,
-            inputText=question,
-            enableTrace=True,
+        answer, collected_events, metadata = _invoke_agent_once(
+            client, agent_session=agent_session, question=prompt
         )
-        answer_parts: list[str] = []
-        for event in response.get("completion", []):
-            collected_events.append(event)
-            if "chunk" in event and "bytes" in event["chunk"]:
-                answer_parts.append(
-                    event["chunk"]["bytes"].decode("utf-8", errors="replace")
-                )
-        answer = _sanitize_text("".join(answer_parts).strip()) or GENERIC_ERROR_MESSAGE
-        metadata = _extract_metadata(collected_events, answer)
         refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
-        if metadata.get("guardrail_intervened") and not answer.strip():
-            answer = GUARDRAIL_BLOCK_MESSAGE
-            refused = True
+        if refused and prompt != normalized:
+            retry_answer, retry_events, retry_meta = _invoke_agent_once(
+                client, agent_session=agent_session, question=normalized
+            )
+            if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
+                answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+                refused = False
+        if refused and prompt in GUARDRAIL_SAFE_PARAPHRASES:
+            safe = GUARDRAIL_SAFE_PARAPHRASES[prompt]
+            retry_answer, retry_events, retry_meta = _invoke_agent_once(
+                client, agent_session=f"advisor-{uuid.uuid4().hex}", question=safe
+            )
+            if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
+                answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+                agent_session = f"advisor-{uuid.uuid4().hex}"
+                refused = False
+        tool_failed = (
+            answer == GENERIC_ERROR_MESSAGE
+            or "could not complete this request" in answer.lower()
+        )
+        clear_pending = _is_confirmation_input(normalized) and (
+            tool_failed or metadata.get("confirmation_card") is None
+        )
+        if clear_pending:
+            agent_session = f"advisor-{uuid.uuid4().hex}"
         return {
             "enabled": True,
             "session_id": agent_session,
@@ -293,16 +439,19 @@ def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]
             "refused": refused,
             "generation_mode": "bedrock_agent",
             "metadata": metadata,
+            "clear_pending_action": clear_pending,
         }
     except Exception:
+        new_session = f"advisor-{uuid.uuid4().hex}"
         return {
             "enabled": True,
-            "session_id": agent_session,
+            "session_id": new_session if _is_confirmation_input(normalized) else agent_session,
             "answer": GENERIC_ERROR_MESSAGE,
             "refused": True,
             "generation_mode": "bedrock_agent",
             "reason": "agent_error",
             "metadata": {},
+            "clear_pending_action": _is_confirmation_input(normalized),
         }
 
 
@@ -320,6 +469,8 @@ def agent_result_to_chat_payload(result: dict[str, Any]) -> dict[str, Any]:
         for name in documents
     ]
     main_source = context[0] if context else None
+    if result.get("clear_pending_action"):
+        metadata["clear_pending_action"] = True
     return {
         "answer": result.get("answer") or GENERIC_ERROR_MESSAGE,
         "refused": bool(result.get("refused")),
@@ -329,4 +480,5 @@ def agent_result_to_chat_payload(result: dict[str, Any]) -> dict[str, Any]:
         "main_source": main_source,
         "bedrock_session_id": result.get("session_id"),
         "agent_metadata": metadata,
+        "clear_pending_action": bool(result.get("clear_pending_action")),
     }

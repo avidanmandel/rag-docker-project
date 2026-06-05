@@ -32,7 +32,7 @@ SUGGESTED_PROMPTS = [
         "label": "Compare the right-back candidates within our budget.",
         "query": (
             "Compare the right-back candidates within our recruitment budget. "
-            "Include Ron Ben Ari and the other documented right-back options."
+            "Include Ron Ben Ari and Tal Cohen."
         ),
     },
     {

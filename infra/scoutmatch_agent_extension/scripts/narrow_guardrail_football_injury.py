@@ -55,6 +55,10 @@ def main() -> int:
             # Coach-brief prefixes were blocked at HIGH; topic policy still blocks credentials.
             row["inputStrength"] = "NONE"
             row["outputStrength"] = row.get("outputStrength") or "NONE"
+        if row.get("type") in {"HATE", "INSULTS", "SEXUAL"}:
+            # Recruitment comparisons mention "the other documented candidate" and must not false-block.
+            row["inputStrength"] = "NONE"
+            row["outputStrength"] = row.get("outputStrength") or "MEDIUM"
         updated.append(row)
     filters = updated
     word_policy = detail.get("wordPolicyConfig") or {

@@ -113,7 +113,30 @@ def validate_formation(formation: str) -> bool:
     return formation.strip() in VALID_FORMATIONS
 
 
-def validate_starter_lineup(players: list[dict]) -> tuple[bool, str]:
+def _lineup_player_allowed(name: str, *, allowed_external: frozenset[str] | None = None) -> bool:
+    if resolve_squad_player(name):
+        return True
+    normalized = normalize_name(name)
+    if allowed_external and normalized in allowed_external:
+        return bool(resolve_transfer_candidate(name))
+    from operations_store import active_demo_season_id, get_item
+
+    selection = get_item(f"player_selection#{normalized}")
+    if (
+        selection
+        and selection.get("demo_season_id") == active_demo_season_id()
+        and selection.get("approval_status") == "PENDING_MANAGEMENT_APPROVAL"
+        and resolve_transfer_candidate(name)
+    ):
+        return True
+    return False
+
+
+def validate_starter_lineup(
+    players: list[dict],
+    *,
+    allowed_external: frozenset[str] | None = None,
+) -> tuple[bool, str]:
     if len(players) != 11:
         return False, "Lineup must contain exactly 11 starting players."
     names = [normalize_name(p.get("name", "")) for p in players]
@@ -123,6 +146,6 @@ def validate_starter_lineup(players: list[dict]) -> tuple[bool, str]:
         pos = (player.get("position") or "").strip().upper()
         if pos not in VALID_POSITIONS:
             return False, f"Invalid position: {pos or 'missing'}"
-        if not resolve_squad_player(player.get("name", "")):
+        if not _lineup_player_allowed(player.get("name", ""), allowed_external=allowed_external):
             return False, f"Unknown squad player: {player.get('name', 'unknown')}"
     return True, ""

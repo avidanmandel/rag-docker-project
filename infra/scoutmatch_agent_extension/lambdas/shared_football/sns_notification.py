@@ -14,13 +14,7 @@ _TOPIC_ARN = os.getenv("SCOUTMATCH_MANAGEMENT_SNS_TOPIC_ARN", "")
 def _topic_arn() -> str:
     if _TOPIC_ARN.strip():
         return _TOPIC_ARN.strip()
-    import boto3
-
-    client = boto3.client("sns")
-    topics = client.list_topics().get("Topics", [])
-    for topic in topics:
-        if topic["TopicArn"].endswith(f":{SNS_TOPIC_NAME}"):
-            return topic["TopicArn"]
+    # Do not call SNS ListTopics from Lambda — least privilege and graceful degrade when ARN unset.
     return ""
 
 
@@ -48,7 +42,16 @@ def publish_management_notification(selection: dict, budget_decision: str) -> di
             "mode": "topic_missing",
             "message": "SNS topic not configured. Manual subscription required.",
         }
-    import boto3
+    try:
+        import boto3
 
-    resp = boto3.client("sns").publish(TopicArn=topic, Message=message, Subject="ScoutMatch selection")
-    return {"published": True, "message_id": resp.get("MessageId", "")}
+        resp = boto3.client("sns").publish(
+            TopicArn=topic, Message=message, Subject="ScoutMatch selection"
+        )
+        return {"published": True, "message_id": resp.get("MessageId", "")}
+    except Exception as exc:
+        return {
+            "published": False,
+            "mode": "publish_error",
+            "message": type(exc).__name__,
+        }

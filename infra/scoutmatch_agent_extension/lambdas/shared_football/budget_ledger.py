@@ -18,13 +18,23 @@ def _in_active_demo_season(record: dict) -> bool:
     return season == active_demo_season_id()
 
 
-def sum_reserved_amounts() -> int:
+def _active_planning_context_id() -> str:
+    ctx = get_context_budget() or {}
+    return str(ctx.get("planning_context_id") or "").strip()
+
+
+def sum_reserved_amounts(*, planning_context_id: str | None = None) -> int:
+    active_ctx = (planning_context_id or _active_planning_context_id()).strip()
     total = 0
     for entry in list_by_prefix("budget_ledger#"):
         if entry.get("entry_type") != "RESERVATION":
             continue
         if not _in_active_demo_season(entry):
             continue
+        if active_ctx:
+            entry_ctx = str(entry.get("planning_context_id") or "").strip()
+            if entry_ctx != active_ctx:
+                continue
         total += int(entry.get("reserved_amount_eur") or 0)
     return total
 
@@ -41,11 +51,15 @@ def available_budget_from_context() -> tuple[int | None, str]:
 def existing_selection_reservation(candidate_name: str) -> dict | None:
     key = f"player_selection#{candidate_name.strip().lower()}"
     record = get_item(key)
+    active_ctx = _active_planning_context_id()
     if (
         record
         and record.get("reservation_status") == "RESERVED_PENDING_APPROVAL"
         and _in_active_demo_season(record)
     ):
+        record_ctx = str(record.get("planning_context_id") or "").strip()
+        if active_ctx and record_ctx != active_ctx:
+            return None
         return record
     return None
 
@@ -60,6 +74,7 @@ def record_reservation(
     remaining_after: int,
     idempotency_key: str,
 ) -> dict:
+    planning_context_id = _active_planning_context_id()
     selection = put_item(
         entity_key=f"player_selection#{candidate_name.strip().lower()}",
         item_type="PLAYER_SELECTION",
@@ -73,6 +88,7 @@ def record_reservation(
             "reservation_status": "RESERVED_PENDING_APPROVAL",
             "approval_status": "PENDING_MANAGEMENT_APPROVAL",
             "idempotency_key": idempotency_key,
+            "planning_context_id": planning_context_id,
         },
     )
     put_item(
@@ -84,6 +100,7 @@ def record_reservation(
             "reserved_amount_eur": reserved_amount,
             "status": "RESERVED_PENDING_APPROVAL",
             "idempotency_key": idempotency_key,
+            "planning_context_id": planning_context_id,
         },
     )
     return selection

@@ -92,7 +92,7 @@ def _use_local() -> bool:
 def generate_board(lineup_id: str = "") -> tuple[dict | None, str]:
     lineup = get_current_lineup()
     if not lineup:
-        return None, "No finalized lineup found. Finalize the current lineup first."
+        return None, "No proposed lineup has been saved for head-coach review yet."
 
     svg = build_svg(lineup)
     stamp = _now()

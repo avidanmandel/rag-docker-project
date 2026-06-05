@@ -387,7 +387,7 @@ See `docs/SUBMISSION_CHECKLIST.md` and `docs/DEPLOYMENT_RUNBOOK.md`.
 
 ## Optional ScoutMatch Bedrock Agent and Flow Extension
 
-ScoutMatch AI **v14 production RAG is unchanged** (same Flask session chat, EC2 Docker image, S3 baseline, and Knowledge Base).
+ScoutMatch AI **opening-season workspace** uses the Bedrock Agent path on the polished root UI. **v14 production RAG rollback** remains available. (same Flask session chat, EC2 Docker image, S3 baseline, and Knowledge Base).
 
 This repository adds an **optional**, isolated Bedrock extension under `infra/scoutmatch_agent_extension/`:
 

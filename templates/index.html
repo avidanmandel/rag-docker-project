@@ -52,36 +52,51 @@
             </div>
 
             <div class="sidebar__kb">
-                <div class="sidebar__label sidebar__label--row">
-                    <span>Club Knowledge</span>
-                    <span class="document-list__readonly" title="Preloaded club data">Preloaded</span>
-                </div>
-                <div class="document-list document-list--baseline" id="baselineDocumentList"></div>
+                <details class="sidebar-group" id="clubKnowledgeGroup">
+                    <summary class="sidebar-group__summary">
+                        <span class="sidebar-group__title">Club Knowledge</span>
+                        <span class="sidebar-group__hint">Preloaded club data</span>
+                    </summary>
+                    <div class="sidebar-group__meta" id="clubKnowledgeMeta">
+                        Current squad data — <strong id="sidebarSquadCount">15</strong> players loaded
+                    </div>
+                    <div class="document-list document-list--baseline" id="baselineDocumentList"></div>
+                </details>
 
-                <div class="sidebar__label sidebar__label--row sidebar__label--spaced">
-                    <span>Recruitment Candidate Pool</span>
-                    <span class="document-list__readonly" title="Preloaded scouting reports">Preloaded</span>
-                </div>
-                <div class="document-list document-list--pool" id="candidatePoolList"></div>
+                <details class="sidebar-group" id="candidatePoolGroup">
+                    <summary class="sidebar-group__summary">
+                        <span class="sidebar-group__title">Recruitment Candidate Pool</span>
+                        <span class="sidebar-group__hint">Preloaded scouting reports</span>
+                    </summary>
+                    <div class="sidebar-group__meta" id="candidatePoolMeta">
+                        Candidate profiles — <strong id="sidebarCandidateCount">8</strong> loaded
+                    </div>
+                    <div class="document-list document-list--pool" id="candidatePoolList"></div>
+                </details>
 
-                <div class="sidebar__label sidebar__label--row sidebar__label--spaced">
-                    <span>Uploaded Candidate Documents</span>
-                    <button type="button" class="upload-btn" id="uploadBtn" title="Upload CV or scouting report">
-                        Upload CV
+                <details class="sidebar-group" id="sessionUploadsGroup">
+                    <summary class="sidebar-group__summary">
+                        <span class="sidebar-group__title">Uploaded Candidate Documents</span>
+                        <span class="sidebar-group__hint">Session uploads</span>
+                    </summary>
+                    <div class="sidebar-group__actions">
+                        <button type="button" class="upload-btn" id="uploadBtn" title="Upload CV or scouting report">
+                            Upload CV
+                        </button>
+                        <input
+                            type="file"
+                            id="uploadInput"
+                            accept=".txt,.md,.html,.pdf,.doc,.docx,.csv,.xls,.xlsx"
+                            hidden
+                        />
+                    </div>
+                    <div class="upload-card__status" id="uploadStatus" hidden></div>
+                    <div class="sync-status" id="syncStatus" hidden></div>
+                    <div class="document-list document-list--session" id="documentList"></div>
+                    <button type="button" class="clear-documents" id="clearDocumentsBtn">
+                        Clear documents
                     </button>
-                    <input
-                        type="file"
-                        id="uploadInput"
-                        accept=".txt,.md,.html,.pdf,.doc,.docx,.csv,.xls,.xlsx"
-                        hidden
-                    />
-                </div>
-                <div class="upload-card__status" id="uploadStatus" hidden></div>
-                <div class="sync-status" id="syncStatus" hidden></div>
-                <div class="document-list document-list--session" id="documentList"></div>
-                <button type="button" class="clear-documents" id="clearDocumentsBtn">
-                    Clear documents
-                </button>
+                </details>
             </div>
 
             <div class="sidebar__label">Recent</div>

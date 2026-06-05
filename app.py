@@ -1411,8 +1411,9 @@ def _send_message_via_bedrock_agent(
         document_revision_at_answer=int(session.get("document_revision") or 0),
         agent_metadata=result.get("agent_metadata"),
     )
-    if result.get("bedrock_session_id"):
-        database.update_bedrock_session_id(session_id, result["bedrock_session_id"])
+    next_session = result.get("bedrock_session_id")
+    if next_session or result.get("clear_pending_action"):
+        database.update_bedrock_session_id(session_id, next_session)
     if session.get("title") == "New conversation":
         new_title = question[:60] + ("..." if len(question) > 60 else "")
         database.update_session_title(session_id, new_title)

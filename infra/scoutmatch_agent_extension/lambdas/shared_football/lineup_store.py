@@ -5,13 +5,24 @@ from __future__ import annotations
 import json
 
 from demo_roster import build_demo_starting_xi, is_demo_lineup_request
-from operations_store import get_item, put_item
+from operations_store import active_demo_season_id, get_item, put_item
 from squad_context import get_current_context
-from validation import normalize_name, resolve_squad_player, validate_formation, validate_starter_lineup
+from validation import (
+    normalize_name,
+    resolve_squad_player,
+    validate_formation,
+    validate_starter_lineup,
+)
 
 
 def get_current_lineup() -> dict | None:
-    return get_item("lineup#current")
+    record = get_item("lineup#current")
+    if not record:
+        return None
+    season = (record.get("demo_season_id") or "").strip()
+    if season and season != active_demo_season_id():
+        return None
+    return record
 
 
 def parse_starting_xi(raw: str) -> list[dict]:
@@ -53,7 +64,14 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
             "Starting lineup is incomplete. Provide all 11 starters explicitly, "
             "or request the demo lineup if you want the sanitized 4-3-3 template."
         )
-    ok, err = validate_starter_lineup(starters)
+    allowed_external: frozenset[str] = frozenset()
+    if demo_mode:
+        allowed_external = frozenset(
+            normalize_name(p["name"])
+            for p in starters
+            if not resolve_squad_player(p.get("name", ""))
+        )
+    ok, err = validate_starter_lineup(starters, allowed_external=allowed_external)
     if not ok:
         return None, err
 
@@ -78,6 +96,7 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
         payload={
             "lineup_id": "current",
             "planning_context_id": ctx.get("planning_context_id"),
+            "demo_season_id": active_demo_season_id(),
             "formation": formation,
             "opponent": (params.get("opponent") or ctx.get("opponent") or "").strip(),
             "starting_xi": enriched,

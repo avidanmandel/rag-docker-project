@@ -148,6 +148,117 @@ const REFUSAL_MARKERS = [
     "אין לי מספיק מידע במסמכי השחקנים",
 ];
 
+const TOOL_USER_LABELS = {
+    PlanMatchTactics: "Plan match tactics",
+    SubmitPlayerSelectionToManagement: "Submit player recommendation to management",
+    FinalizeCurrentLineup: "Save proposed lineup for head-coach review",
+    GenerateCurrentLineupBoard: "Generate current lineup board",
+};
+
+function sanitizeRenderedHtml(html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    template.content.querySelectorAll("script, style, iframe, object, embed, link").forEach(node => node.remove());
+    template.content.querySelectorAll("*").forEach(node => {
+        [...node.attributes].forEach(attr => {
+            const name = attr.name.toLowerCase();
+            if (name.startsWith("on") || name === "src" || name === "href") {
+                node.removeAttribute(attr.name);
+            }
+        });
+    });
+    return template.innerHTML;
+}
+
+function renderMarkdown(text) {
+    if (!text) return "";
+    const lines = String(text).replace(/\r\n/g, "\n").split("\n");
+    const out = [];
+    let inTable = false;
+    let tableRows = [];
+
+    const flushTable = () => {
+        if (!tableRows.length) return;
+        const rows = tableRows
+            .map(row => row.split("|").map(cell => cell.trim()).filter(Boolean))
+            .filter(cells => cells.length);
+        if (!rows.length) {
+            tableRows = [];
+            inTable = false;
+            return;
+        }
+        const header = rows[0];
+        const body = rows.slice(rows[1]?.every(c => /^-+$/.test(c)) ? 2 : 1);
+        out.push("<table><thead><tr>");
+        header.forEach(cell => {
+            out.push(`<th>${escapeHtml(cell.replace(/\*\*/g, ""))}</th>`);
+        });
+        out.push("</tr></thead><tbody>");
+        body.forEach(cells => {
+            out.push("<tr>");
+            cells.forEach(cell => {
+                const safe = escapeHtml(cell.replace(/\*\*/g, ""));
+                out.push(`<td>${safe}</td>`);
+            });
+            out.push("</tr>");
+        });
+        out.push("</tbody></table>");
+        tableRows = [];
+        inTable = false;
+    };
+
+    for (const raw of lines) {
+        const line = raw.trimEnd();
+        if (/^\s*\|.+\|\s*$/.test(line)) {
+            inTable = true;
+            tableRows.push(line);
+            continue;
+        }
+        if (inTable) flushTable();
+        if (!line.trim()) {
+            out.push("<br>");
+            continue;
+        }
+        if (/^#{1,4}\s+/.test(line)) {
+            const level = line.match(/^#+/)[0].length;
+            out.push(`<h${level}>${escapeHtml(line.replace(/^#{1,4}\s+/, "").replace(/\*\*/g, ""))}</h${level}>`);
+            continue;
+        }
+        if (/^>\s?/.test(line)) {
+            out.push(`<blockquote>${escapeHtml(line.replace(/^>\s?/, ""))}</blockquote>`);
+            continue;
+        }
+        if (/^[-*]\s+/.test(line)) {
+            out.push(`<li>${formatInlineMarkdown(line.replace(/^[-*]\s+/, ""))}</li>`);
+            continue;
+        }
+        if (/^---+$/.test(line)) {
+            out.push("<hr>");
+            continue;
+        }
+        out.push(`<p>${formatInlineMarkdown(line)}</p>`);
+    }
+    if (inTable) flushTable();
+    return sanitizeRenderedHtml(out.join(""));
+}
+
+function formatInlineMarkdown(text) {
+    let safe = escapeHtml(text);
+    safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    return safe;
+}
+
+function stripInternalDetails(text) {
+    return String(text || "")
+        .replace(/\bplanning[_\s-]*context[_\s-]*id\b[:\s]*[A-Za-z0-9_-]+/gi, "")
+        .replace(/\bnotify management via sns\b/gi, "notify management")
+        .replace(/\bSNS\b/g, "management notification")
+        .replace(/\bctx-[A-Za-z0-9]+\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+}
+
 function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text ?? "";
@@ -295,8 +406,12 @@ async function loadOpeningSeasonWorkspace() {
         if (els.candidateCountLabel) {
             els.candidateCountLabel.textContent = String(ws.candidate_pool_count || 8);
         }
-        renderBaselineDocuments(ws.club_knowledge || []);
-        renderCandidatePool(ws.candidate_pool || []);
+        const sidebarSquad = document.getElementById("sidebarSquadCount");
+        const sidebarCandidates = document.getElementById("sidebarCandidateCount");
+        if (sidebarSquad) sidebarSquad.textContent = String(ws.club_player_count || 15);
+        if (sidebarCandidates) sidebarCandidates.textContent = String(ws.candidate_pool_count || 8);
+        renderBaselineDocuments(ws.club_knowledge || [], ws.club_player_count || 15);
+        renderCandidatePool(ws.candidate_pool || [], ws.candidate_pool_count || 8);
         renderSuggestedPrompts(ws.suggested_prompts || [], ws.secondary_prompts || []);
         renderSystemStatus(ws.system_status || {});
     } catch {
@@ -330,13 +445,17 @@ function renderSystemStatus(status) {
         .join("");
 }
 
-function renderCandidatePool(docs) {
+function renderCandidatePool(docs, totalCount = 8) {
     if (!els.candidatePoolList) return;
+    const meta = document.getElementById("candidatePoolMeta");
+    if (meta) {
+        meta.innerHTML = `Candidate profiles — <strong>${totalCount}</strong> loaded`;
+    }
     els.candidatePoolList.innerHTML = "";
     if (!docs.length) {
         const empty = document.createElement("div");
         empty.className = "document-list__empty";
-        empty.textContent = "8 preloaded candidates";
+        empty.textContent = `${totalCount} preloaded candidates`;
         els.candidatePoolList.appendChild(empty);
         return;
     }
@@ -354,8 +473,14 @@ function renderCandidatePool(docs) {
     });
 }
 
-function renderBaselineDocuments(docs) {
+function renderBaselineDocuments(docs, squadCount = 15) {
     if (!els.baselineDocumentList) return;
+    const meta = document.getElementById("clubKnowledgeMeta");
+    if (meta) {
+        meta.innerHTML =
+            `Current squad data — <strong>${squadCount}</strong> players loaded<br>` +
+            `Club documents — <strong>${docs.length || 7}</strong> loaded`;
+    }
     els.baselineDocumentList.innerHTML = "";
     if (!docs.length) {
         const empty = document.createElement("div");
@@ -801,15 +926,26 @@ function formatCoachBriefLabel(content) {
     return String(content || "").replace(/^\s*coach\s+brief\s*:\s*/i, "").trim();
 }
 
-function renderToolChips(tools) {
+function renderToolChips(tools, labels) {
     const wrap = document.createElement("div");
     wrap.className = "agent-tools";
-    for (const tool of tools || []) {
-        const chip = document.createElement("span");
+    const items = tools || [];
+    const friendly = labels || items.map(name => TOOL_USER_LABELS[name] || name);
+    items.forEach((tool, idx) => {
+        const chip = document.createElement("div");
         chip.className = "agent-tools__chip";
-        chip.textContent = `Tool executed: ${tool}`;
+        const primary = document.createElement("span");
+        primary.className = "agent-tools__primary";
+        primary.textContent = `Automation executed: ${friendly[idx] || tool}`;
+        chip.appendChild(primary);
+        if (tool && friendly[idx] !== tool) {
+            const secondary = document.createElement("span");
+            secondary.className = "agent-tools__secondary";
+            secondary.textContent = `Tool: ${tool}`;
+            chip.appendChild(secondary);
+        }
         wrap.appendChild(chip);
-    }
+    });
     return wrap;
 }
 
@@ -879,7 +1015,7 @@ function renderAgentExtras(msg) {
     if (!meta || typeof meta !== "object") return null;
     const frag = document.createDocumentFragment();
     if (Array.isArray(meta.tools_executed) && meta.tools_executed.length) {
-        frag.appendChild(renderToolChips(meta.tools_executed));
+        frag.appendChild(renderToolChips(meta.tools_executed, meta.tool_labels));
     }
     const card = renderConfirmationCard(meta.confirmation_card);
     if (card) frag.appendChild(card);
@@ -923,6 +1059,10 @@ function renderMessage(msg) {
     if (msg.role === "user" && isCoachBriefMessage(msg.content)) {
         wrap.classList.add("message--coach-brief");
         content.innerHTML = `<span class="coach-brief__label">Coach brief</span>${escapeHtml(formatCoachBriefLabel(msg.content))}`;
+    } else if (msg.role === "assistant") {
+        const cleaned = stripInternalDetails(msg.content);
+        content.classList.add("message__content--markdown");
+        content.innerHTML = renderMarkdown(cleaned);
     } else {
         content.textContent = msg.content;
     }
