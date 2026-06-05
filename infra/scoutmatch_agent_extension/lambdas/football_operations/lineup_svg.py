@@ -97,7 +97,9 @@ def generate_board() -> tuple[dict | None, str]:
             Body=svg.encode("utf-8"),
             ContentType="image/svg+xml",
         )
-    remaining, _ = available_budget_from_context()
+    remaining, _ = available_budget_from_context(
+        planning_context_id=lineup.get("planning_context_id")
+    )
     return {
         "status": "RENDERED",
         "lineup_id": lineup_id,

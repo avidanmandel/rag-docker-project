@@ -26,6 +26,10 @@ def main() -> int:
         page = browser.new_page(viewport={"width": 1440, "height": 900, "device_scale_factor": 1})
         page.goto(URL, wait_until="networkidle", timeout=90000)
         page.wait_for_timeout(1500)
+        new_chat = page.locator("#newChatBtn, .new-chat").first
+        if new_chat.count():
+            new_chat.click()
+            page.wait_for_timeout(1000)
 
         steps = [
             "Plan match tactics for opening season with budget 100000 EUR.",

@@ -75,13 +75,17 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
     if not ok:
         return None, err
 
+    active_ctx = str(ctx.get("planning_context_id") or "").strip()
     enriched = []
     for starter in starters:
         squad = resolve_squad_player(starter["name"]) or {}
         status = "AVAILABLE"
         selection = get_item(f"player_selection#{normalize_name(starter['name'])}")
         if selection and selection.get("approval_status") == "PENDING_MANAGEMENT_APPROVAL":
-            status = "PENDING_MANAGEMENT_APPROVAL"
+            sel_ctx = str(selection.get("planning_context_id") or "").strip()
+            same_scope = selection.get("demo_season_id") == active_demo_season_id()
+            if same_scope and (not active_ctx or sel_ctx == active_ctx):
+                status = "PENDING_MANAGEMENT_APPROVAL"
         enriched.append(
             {
                 "name": squad.get("display_name", starter["name"]),

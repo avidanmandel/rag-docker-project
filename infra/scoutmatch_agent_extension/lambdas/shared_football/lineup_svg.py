@@ -114,7 +114,9 @@ def generate_board(lineup_id: str = "") -> tuple[dict | None, str]:
             "opponent": lineup.get("opponent"),
         },
     )
-    remaining, _ = available_budget_from_context()
+    remaining, _ = available_budget_from_context(
+        planning_context_id=lineup.get("planning_context_id")
+    )
     return {
         "status": "LINEUP_BOARD_GENERATED",
         "lineup_id": resolved_id,

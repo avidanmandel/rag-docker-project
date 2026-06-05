@@ -39,12 +39,13 @@ def sum_reserved_amounts(*, planning_context_id: str | None = None) -> int:
     return total
 
 
-def available_budget_from_context() -> tuple[int | None, str]:
+def available_budget_from_context(*, planning_context_id: str | None = None) -> tuple[int | None, str]:
     ctx = get_context_budget()
     if not ctx:
         return None, "Squad planning context is missing. Save the current plan first."
     base = int(ctx.get("available_budget_eur") or 0)
-    reserved = sum_reserved_amounts()
+    active_ctx = (planning_context_id or _active_planning_context_id()).strip() or None
+    reserved = sum_reserved_amounts(planning_context_id=active_ctx)
     return max(base - reserved, 0), ""
 
 
