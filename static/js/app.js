@@ -97,6 +97,7 @@ const state = {
     activeSessionId: null,
     messages: [],
     engineReady: false,
+    agentMode: false,
     isSending: false,
     awsMode: false,
     kbSyncInProgress: false,
@@ -448,10 +449,14 @@ async function pollEngineStatus() {
             return;
         }
 
-        if (s.ready) {
+        state.agentMode = s.agent_extension_enabled === true || s.chat_backend === "bedrock_agent";
+
+        if (s.ready || state.agentMode) {
             state.engineReady = true;
             els.statusDot.dataset.state = "ready";
-            if (state.awsMode) {
+            if (state.agentMode) {
+                els.statusText.textContent = "Bedrock Agent recruitment workspace ready";
+            } else if (state.awsMode) {
                 els.statusText.textContent = "AWS Bedrock KB ready";
             } else {
                 els.statusText.textContent = `Ready — ${s.chunks} chunks indexed`;
@@ -696,6 +701,107 @@ function isRefusalMessage(content) {
     return REFUSAL_MARKERS.some(m => lower.includes(m.toLowerCase()) || content.includes(m));
 }
 
+function isCoachBriefMessage(content) {
+    return /^\s*coach\s+brief\s*:/i.test(content || "");
+}
+
+function formatCoachBriefLabel(content) {
+    return String(content || "").replace(/^\s*coach\s+brief\s*:\s*/i, "").trim();
+}
+
+function renderToolChips(tools) {
+    const wrap = document.createElement("div");
+    wrap.className = "agent-tools";
+    for (const tool of tools || []) {
+        const chip = document.createElement("span");
+        chip.className = "agent-tools__chip";
+        chip.textContent = `Tool executed: ${tool}`;
+        wrap.appendChild(chip);
+    }
+    return wrap;
+}
+
+function renderConfirmationCard(card) {
+    if (!card || card.state !== "pending") return null;
+    const wrap = document.createElement("div");
+    wrap.className = "confirm-card";
+    const title = document.createElement("div");
+    title.className = "confirm-card__title";
+    title.textContent = "Action requires confirmation";
+    wrap.appendChild(title);
+
+    const params = card.parameters || {};
+    const rows = [];
+    if (params.candidate_name) rows.push(["Candidate", params.candidate_name]);
+    if (params.target_role) rows.push(["Target role", params.target_role]);
+    if (params.salary_eur) rows.push(["Salary", `${Number(params.salary_eur).toLocaleString()} EUR`]);
+    if (params.formation) rows.push(["Formation", params.formation]);
+    if (card.function === "FinalizeCurrentLineup") rows.push(["Players", "11"]);
+    rows.push(["Action", card.action_label || card.title || "Confirm write action"]);
+
+    const body = document.createElement("div");
+    body.className = "confirm-card__body";
+    for (const [label, value] of rows) {
+        const row = document.createElement("div");
+        row.className = "confirm-card__row";
+        row.innerHTML = `<span class="confirm-card__label">${escapeHtml(label)}</span><span class="confirm-card__value">${escapeHtml(String(value))}</span>`;
+        body.appendChild(row);
+    }
+    wrap.appendChild(body);
+
+    const actions = document.createElement("div");
+    actions.className = "confirm-card__actions";
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "confirm-card__btn confirm-card__btn--confirm";
+    confirmBtn.textContent = "Confirm";
+    confirmBtn.addEventListener("click", () => sendMessage("Confirm"));
+    const denyBtn = document.createElement("button");
+    denyBtn.type = "button";
+    denyBtn.className = "confirm-card__btn confirm-card__btn--deny";
+    denyBtn.textContent = "Deny";
+    denyBtn.addEventListener("click", () => sendMessage("Deny"));
+    actions.append(confirmBtn, denyBtn);
+    wrap.appendChild(actions);
+    return wrap;
+}
+
+function renderLineupBoard(route) {
+    if (!route || !route.startsWith("/")) return null;
+    const wrap = document.createElement("div");
+    wrap.className = "lineup-board-card";
+    const badge = document.createElement("div");
+    badge.className = "lineup-board-card__badge";
+    badge.textContent = "PROPOSED LINEUP — PENDING HEAD COACH REVIEW";
+    const img = document.createElement("img");
+    img.className = "lineup-board-card__image";
+    img.src = route;
+    img.alt = "Current proposed lineup board";
+    img.loading = "lazy";
+    wrap.append(badge, img);
+    return wrap;
+}
+
+function renderAgentExtras(msg) {
+    const meta = msg.agent_metadata;
+    if (!meta || typeof meta !== "object") return null;
+    const frag = document.createDocumentFragment();
+    if (Array.isArray(meta.tools_executed) && meta.tools_executed.length) {
+        frag.appendChild(renderToolChips(meta.tools_executed));
+    }
+    const card = renderConfirmationCard(meta.confirmation_card);
+    if (card) frag.appendChild(card);
+    const board = renderLineupBoard(meta.lineup_image_route);
+    if (board) frag.appendChild(board);
+    if (meta.remaining_budget_eur != null) {
+        const budget = document.createElement("div");
+        budget.className = "agent-budget";
+        budget.textContent = `Remaining budget: ${Number(meta.remaining_budget_eur).toLocaleString()} EUR`;
+        frag.appendChild(budget);
+    }
+    return frag.childNodes.length ? frag : null;
+}
+
 function renderMessage(msg) {
     const wrap = document.createElement("div");
     wrap.className = `message message--${msg.role}`;
@@ -705,18 +811,29 @@ function renderMessage(msg) {
 
     const avatar = document.createElement("div");
     avatar.className = "message__avatar";
-    avatar.textContent = msg.role === "user" ? "M" : "S";
+    avatar.textContent = msg.role === "user" ? "A" : "S";
 
     const body = document.createElement("div");
     body.className = "message__body";
 
     const role = document.createElement("div");
     role.className = "message__role";
-    role.textContent = msg.role === "user" ? "Manager" : "ScoutMatch AI";
+    if (msg.role === "user") {
+        role.textContent = isCoachBriefMessage(msg.content)
+            ? "Coach brief"
+            : "Professional Analyst";
+    } else {
+        role.textContent = "ScoutMatch AI";
+    }
 
     const content = document.createElement("div");
     content.className = "message__content";
-    content.textContent = msg.content;
+    if (msg.role === "user" && isCoachBriefMessage(msg.content)) {
+        wrap.classList.add("message--coach-brief");
+        content.innerHTML = `<span class="coach-brief__label">Coach brief</span>${escapeHtml(formatCoachBriefLabel(msg.content))}`;
+    } else {
+        content.textContent = msg.content;
+    }
 
     body.appendChild(role);
     body.appendChild(content);
@@ -745,6 +862,11 @@ function renderMessage(msg) {
         msg.context.length > 0
     ) {
         body.appendChild(renderContext(msg.context, msg.main_source));
+    }
+
+    if (msg.role === "assistant" && !isRefused) {
+        const extras = renderAgentExtras(msg);
+        if (extras) body.appendChild(extras);
     }
 
     wrap.appendChild(avatar);
@@ -889,8 +1011,12 @@ async function sendMessage(content) {
 
         const userIdx = state.messages.findIndex(m => m.id === tempUser.id);
         if (userIdx !== -1) state.messages[userIdx] = result.user_message;
-        state.messages.push(result.assistant_message);
-        appendMessageEphemeral(result.assistant_message);
+        const assistant = {
+            ...result.assistant_message,
+            agent_metadata: result.agent_metadata || result.assistant_message?.agent_metadata,
+        };
+        state.messages.push(assistant);
+        appendMessageEphemeral(assistant);
 
         await loadSessions();
         const updated = state.sessions.find(s => s.id === state.activeSessionId);
