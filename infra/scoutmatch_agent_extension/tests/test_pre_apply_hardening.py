@@ -39,6 +39,7 @@ from demo_roster import (  # noqa: E402
     load_demo_roster_from_file,
     seed_demo_roster_idempotent,
 )
+import operations_store as fo_operations_store_module  # noqa: E402
 from operations_store import clear_local_store, get_item, put_item  # noqa: E402
 from football_operations_apply import (  # noqa: E402
     ACTIVE_INTERNAL_HELPERS_AT_RUNTIME,
@@ -61,8 +62,30 @@ def _event(function, params, confirmed=False):
     }
 
 
+def _purge_shared_football_modules():
+    shared_root = str((EXT / "lambdas" / "shared_football").resolve()).replace("\\", "/")
+    for name in list(sys.modules):
+        mod = sys.modules.get(name)
+        mod_file = str(getattr(mod, "__file__", "") or "").replace("\\", "/")
+        if mod_file.startswith(shared_root):
+            sys.modules.pop(name, None)
+        elif name in {
+            "operations_store",
+            "budget_ledger",
+            "player_selection",
+            "budget_rules",
+            "tactical_planner",
+            "lineup_store",
+            "sns_notification",
+            "validation",
+            "demo_roster",
+        } and "shared_football" in mod_file:
+            sys.modules.pop(name, None)
+
+
 @pytest.fixture(autouse=True)
 def reset_store():
+    _purge_shared_football_modules()
     clear_local_store()
     yield
     clear_local_store()
@@ -236,16 +259,31 @@ def test_budget_helper_fail_path_no_reservation():
     assert get_item("player_selection#ron ben ari") is None
 
 
-def test_budget_helper_invoke_failure_safe_no_write_no_sns():
-    import importlib.util
+def _load_football_operations_player_selection():
+    _purge_shared_football_modules()
+    sys.modules["operations_store"] = fo_operations_store_module
+    fo = EXT / "lambdas" / "football_operations"
+    for internal, filename in (
+        ("budget_ledger", "budget_ledger.py"),
+        ("sns_notification", "sns_notification.py"),
+        ("validation", "validation.py"),
+    ):
+        sys.modules.pop(internal, None)
+        spec = importlib.util.spec_from_file_location(internal, fo / filename)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        sys.modules[internal] = module
+        spec.loader.exec_module(module)
+    sys.modules.pop("player_selection", None)
+    spec = importlib.util.spec_from_file_location("player_selection", fo / "player_selection.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
-    _ps_path = EXT / "lambdas" / "football_operations" / "player_selection.py"
-    _ps_spec = importlib.util.spec_from_file_location(
-        "football_operations_player_selection", _ps_path
-    )
-    football_player_selection = importlib.util.module_from_spec(_ps_spec)
-    assert _ps_spec.loader is not None
-    _ps_spec.loader.exec_module(football_player_selection)
+
+def test_budget_helper_invoke_failure_safe_no_write_no_sns():
+    football_player_selection = _load_football_operations_player_selection()
 
     ops.lambda_handler(
         _event(

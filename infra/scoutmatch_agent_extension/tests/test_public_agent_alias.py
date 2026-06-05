@@ -50,7 +50,38 @@ def _load_audit_module():
     return module
 
 
+def _purge_football_ops_module_pollution():
+    fo_root = str((LAMBDAS / "football_operations").resolve()).replace("\\", "/")
+    for name in (
+        "operations_store",
+        "budget_ledger",
+        "budget_rules",
+        "player_selection",
+        "sns_notification",
+        "validation",
+    ):
+        mod = sys.modules.get(name)
+        mod_file = str(getattr(mod, "__file__", "") or "").replace("\\", "/")
+        if mod is not None and mod_file.startswith(fo_root):
+            sys.modules.pop(name, None)
+
+
 def _load_submit_lambda():
+    _purge_football_ops_module_pollution()
+    shared = LAMBDAS / "shared_football"
+    for internal, filename in (
+        ("operations_store", "operations_store.py"),
+        ("budget_rules", "budget_rules.py"),
+        ("budget_ledger", "budget_ledger.py"),
+        ("validation", "validation.py"),
+        ("sns_notification", "sns_notification.py"),
+        ("player_selection", "player_selection.py"),
+    ):
+        spec = importlib.util.spec_from_file_location(internal, shared / filename)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        sys.modules[internal] = module
+        spec.loader.exec_module(module)
     path = LAMBDAS / "submit_player_selection" / "lambda_function.py"
     spec = importlib.util.spec_from_file_location("submit_player_selection", path)
     module = importlib.util.module_from_spec(spec)

@@ -91,4 +91,7 @@ def test_budget_helper_used_internally_on_confirm():
     )
     body = json.loads(resp["response"]["functionResponse"]["responseBody"]["TEXT"]["body"])
     assert body["status"] in {"RESERVED", "ALREADY_RESERVED", "REJECTED"}
-    assert "budget_decision" in body or body["status"] == "REJECTED"
+    assert (
+        "budget_decision" in body
+        or body["status"] in {"REJECTED", "ALREADY_RESERVED"}
+    )

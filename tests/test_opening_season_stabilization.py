@@ -11,25 +11,113 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "infra" / "scoutmatch_agent_extension" / "lambdas" / "shared_football"))
-sys.path.insert(0, str(ROOT / "infra" / "scoutmatch_agent_extension" / "lambdas" / "common"))
-sys.path.insert(0, str(ROOT / "infra" / "scoutmatch_agent_extension" / "scripts"))
+SHARED = ROOT / "infra" / "scoutmatch_agent_extension" / "lambdas" / "shared_football"
+COMMON = ROOT / "infra" / "scoutmatch_agent_extension" / "lambdas" / "common"
+SCRIPTS = ROOT / "infra" / "scoutmatch_agent_extension" / "scripts"
 
 os.environ["SCOUTMATCH_USE_LOCAL_STORE"] = "true"
 os.environ["SCOUTMATCH_DEMO_SEASON_ID"] = "opening-season-demo-v1"
 
+import importlib.util
+
 import bedrock_agent_service as advisor  # noqa: E402
 import database  # noqa: E402
-from demo_roster import build_demo_starting_xi  # noqa: E402
-from four_lambda_apply import FINAL_FOUR_LAMBDAS, FINAL_USER_FACING_FUNCTIONS  # noqa: E402
-from lineup_store import finalize_lineup, get_current_lineup  # noqa: E402
-from operations_store import clear_local_store, get_item, put_item  # noqa: E402
-from player_selection import submit_selection  # noqa: E402
-from sns_notification import publish_management_notification  # noqa: E402
-from tactical_planner import plan_match_tactics  # noqa: E402
-from validation import validate_starter_lineup  # noqa: E402
-from write_confirmation import is_write_confirmed  # noqa: E402
+
+
+_STAB_PREFIX = "stab_"
+_STAB_ALIASES = (
+    "operations_store",
+    "tactical_planner",
+    "lineup_store",
+    "player_selection",
+    "budget_ledger",
+    "budget_rules",
+    "validation",
+    "demo_roster",
+    "sns_notification",
+)
+
+
+def _ensure_shared_paths() -> None:
+    for path in (str(SHARED), str(COMMON), str(SCRIPTS), str(ROOT)):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+
+def _purge_stab_modules() -> None:
+    for name in _STAB_ALIASES:
+        sys.modules.pop(f"{_STAB_PREFIX}{name}", None)
+    for name in _STAB_ALIASES:
+        mod = sys.modules.get(name)
+        mod_file = getattr(mod, "__file__", "") or ""
+        if mod is not None and "shared_football" in str(mod_file).replace("\\", "/"):
+            sys.modules.pop(name, None)
+
+
+def _load_stab(internal_name: str, filename: str):
+    mod_key = f"{_STAB_PREFIX}{internal_name}"
+    spec = importlib.util.spec_from_file_location(mod_key, SHARED / filename)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[mod_key] = module
+    sys.modules[internal_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _bind_shared_modules() -> None:
+    global clear_local_store, get_item, put_item, plan_match_tactics
+    global finalize_lineup, get_current_lineup, submit_selection
+    global publish_management_notification, build_demo_starting_xi
+    global validate_starter_lineup, FINAL_FOUR_LAMBDAS, FINAL_USER_FACING_FUNCTIONS
+    global is_write_confirmed
+
+    _purge_stab_modules()
+    _ensure_shared_paths()
+
+    _ops = _load_stab("operations_store", "operations_store.py")
+    _load_stab("budget_rules", "budget_rules.py")
+    _load_stab("budget_ledger", "budget_ledger.py")
+    _validation = _load_stab("validation", "validation.py")
+    _sns = _load_stab("sns_notification", "sns_notification.py")
+    _demo = _load_stab("demo_roster", "demo_roster.py")
+    _load_stab("squad_context", "squad_context.py")
+    _tactical = _load_stab("tactical_planner", "tactical_planner.py")
+    _lineup = _load_stab("lineup_store", "lineup_store.py")
+    _selection = _load_stab("player_selection", "player_selection.py")
+
+    for name in _STAB_ALIASES:
+        sys.modules.pop(name, None)
+
+    clear_local_store = _ops.clear_local_store
+    get_item = _ops.get_item
+    put_item = _ops.put_item
+    plan_match_tactics = _tactical.plan_match_tactics
+    finalize_lineup = _lineup.finalize_lineup
+    get_current_lineup = _lineup.get_current_lineup
+    submit_selection = _selection.submit_selection
+    publish_management_notification = _sns.publish_management_notification
+    build_demo_starting_xi = _demo.build_demo_starting_xi
+    validate_starter_lineup = _validation.validate_starter_lineup
+
+    _spec = importlib.util.spec_from_file_location("four_lambda_apply", SCRIPTS / "four_lambda_apply.py")
+    _four = importlib.util.module_from_spec(_spec)
+    assert _spec.loader is not None
+    _spec.loader.exec_module(_four)
+    FINAL_FOUR_LAMBDAS = _four.FINAL_FOUR_LAMBDAS
+    FINAL_USER_FACING_FUNCTIONS = _four.FINAL_USER_FACING_FUNCTIONS
+
+    _wc_spec = importlib.util.spec_from_file_location("write_confirmation", COMMON / "write_confirmation.py")
+    _wc = importlib.util.module_from_spec(_wc_spec)
+    assert _wc_spec.loader is not None
+    _wc_spec.loader.exec_module(_wc)
+    is_write_confirmed = _wc.is_write_confirmed
+
+
+_bind_shared_modules()
+
+
+_SHARED_NAMES = _STAB_ALIASES + ("squad_context",)
 
 
 @pytest.fixture(autouse=True)
@@ -49,9 +137,11 @@ def _fresh_store(tmp_path, monkeypatch):
             pass
         del database._local.conn
     database.init_db()
+    _bind_shared_modules()
     clear_local_store()
     yield
     clear_local_store()
+    _purge_stab_modules()
 
 
 def _seed_planning_context() -> None:

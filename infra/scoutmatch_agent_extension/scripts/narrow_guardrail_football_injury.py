@@ -55,9 +55,12 @@ def main() -> int:
             # Coach-brief prefixes were blocked at HIGH; topic policy still blocks credentials.
             row["inputStrength"] = "NONE"
             row["outputStrength"] = row.get("outputStrength") or "NONE"
-        if row.get("type") in {"HATE", "INSULTS", "SEXUAL"}:
-            # Recruitment comparisons mention "the other documented candidate" and must not false-block.
+        if row.get("type") == "HATE":
+            # False-positive on "the other documented right-back options" in recruitment comparisons.
             row["inputStrength"] = "NONE"
+            row["outputStrength"] = row.get("outputStrength") or "MEDIUM"
+        if row.get("type") in {"INSULTS", "SEXUAL"}:
+            row["inputStrength"] = "LOW"
             row["outputStrength"] = row.get("outputStrength") or "MEDIUM"
         updated.append(row)
     filters = updated

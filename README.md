@@ -22,6 +22,17 @@ Documents
     → public browser access
 ```
 
+## Final hardening pass (2026-06-05)
+
+| Item | Status |
+|------|--------|
+| Full pytest | `434 passed` (`python -m pytest -q --cache-clear`) |
+| Public four-tool validation | `BLOCKERS=0` |
+| Guardrail live regression | `BLOCKERS=0` (v11, alias v22) |
+| Live rehearsal script | `python scripts/final_hardening_live_rehearsal.py` |
+| SNS topic | **Manual Console step** — see `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md` |
+| Submission package | **DRAFT** — see `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md` |
+
 ## Current production release
 
 | Item | Value |

@@ -4,7 +4,14 @@ Use this checklist after automated pre-manual preparation. Do not delete AWS res
 
 **Production host:** `3.239.47.249`  
 **Branch:** `feature/scoutmatch-agent-flow-extension`  
-**Expected commit:** latest on `feature/scoutmatch-agent-flow-extension` after agent-extension v15 deploy
+**Expected commit:** latest on `feature/scoutmatch-agent-flow-extension` after final hardening pass  
+**Automated status (2026-06-05):** pytest `434 passed`; guardrail regression `BLOCKERS=0`; four-tool validation `BLOCKERS=0`
+
+### Remaining manual boundaries
+
+1. **SNS topic create** — AWS Console → SNS → Create `ScoutMatchManagementNotificationsAvidan` (local IAM user cannot create/list SNS).
+2. **SNS email subscription** — see `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`.
+3. **Viewport + Console screenshots** — see `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md`.
 
 ---
 

@@ -76,3 +76,19 @@ See `docs/SCOUTMATCH_SNS_EMAIL_SUBSCRIPTION_GUIDE.md`.
 1. AWS Console → Amazon Bedrock → Knowledge bases → `knowledge-base-user5`
 2. Data sources → `scoutmatch-player-documents` → Sync history → confirm COMPLETE after tactical upload
 3. Agents → `scoutmatch-recruitment-agent-user5-avidan` → Knowledge bases → **ENABLED**
+
+## MANUAL viewport validation (browser automation unavailable)
+
+Capture at **1366×768**, **1440×900**, and **1920×1080**. Save sanitized PNGs under `submission_evidence/agent_flow_extension/viewport/`.
+
+| File | Check |
+|------|-------|
+| `01_home_opening_season_1366x768.png` | No page-level vertical scrollbar; four opening prompts visible |
+| `02_sidebar_collapsed.png` | Groups collapsed; no full player/doc lists |
+| `03_sidebar_expanded.png` | Expanded group scrolls internally only |
+| `04_system_status_collapsed.png` | System status collapsed by default |
+| `05_system_status_expanded.png` | Expanded status shows sanitized labels only |
+
+**Verify:** composer visible, summary cards visible, Markdown rendered (no raw `**`), no internal IDs, no prominent AWS developer labels, chat scrolls inside message area only.
+
+**Automated text evidence:** `python scripts/collect_aws_sanitized_evidence.py` and `python scripts/final_hardening_live_rehearsal.py`.
