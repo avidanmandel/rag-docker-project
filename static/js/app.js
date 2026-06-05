@@ -175,12 +175,13 @@ function normalizeMarkdownInput(text) {
     normalized = normalized.replace(/([.!?:)\]"'])\s*(#{1,4})(\s*)/g, (_, before, hashes, space) => (
         `${before}\n${hashes}${space || " "}`
     ));
+    normalized = normalized.replace(/([^\n#])\s*(#{1,4})(?=\s)/g, "$1\n$2");
     normalized = normalized.replace(/([^\n#\s])(#{1,4})(?=\s)/g, "$1\n$2");
     normalized = normalized.replace(/^(#{1,4})([^\s#\n])/gm, "$1 $2");
     normalized = normalized.replace(/([^\n])(\d+\.\s+[A-Z][^\n]{2,}?(?:\s+—\s+|\s+-))/g, "$1\n$2");
     normalized = normalized.replace(/([^\n])([⚠️✅🧠]\s*[A-Z][^\n]{8,})/gu, "$1\n$2");
     normalized = normalized.replace(/([.!?])\s+(\*\*[⚠️✅🧠]?)/g, "$1\n$2");
-    return normalized;
+    return normalized.split("\n").map(line => line.replace(/([^\n#])\s*(#{1,4})(?=\s)/g, "$1\n$2")).join("\n");
 }
 
 function renderMarkdown(text) {
@@ -263,6 +264,19 @@ function renderMarkdown(text) {
         }
         if (/^---+$/.test(line)) {
             out.push("<hr>");
+            continue;
+        }
+        if (/#{1,4}\s+/.test(line)) {
+            line.split(/\s*(?=#{1,4}\s+)/).filter(Boolean).forEach(part => {
+                const heading = part.match(/^(#{1,4})\s+(.+)$/);
+                if (heading) {
+                    const level = Math.min(4, heading[1].length);
+                    const title = heading[2].replace(/\*\*/g, "").trim();
+                    if (title) out.push(`<h${level}>${escapeHtml(title)}</h${level}>`);
+                } else if (part.trim()) {
+                    out.push(`<p>${formatInlineMarkdown(part.trim())}</p>`);
+                }
+            });
             continue;
         }
         out.push(`<p>${formatInlineMarkdown(line)}</p>`);

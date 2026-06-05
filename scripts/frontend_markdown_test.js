@@ -109,6 +109,10 @@ assert(
   "rendered inline heading has no literal markers"
 );
 assert(
+  !renderMarkdown("Summary text ### Next section").includes("###"),
+  "spaced inline heading has no literal markers"
+);
+assert(
   renderMarkdown("Weaknesses.### Squad gaps").includes("<h3>"),
   "inline heading renders as h3"
 );
