@@ -88,7 +88,11 @@ def main() -> int:
 
         steps = [
             "Show me the current proposed lineup.",
-            "Plan match tactics for opening season with budget 100000 EUR.",
+            (
+                "Plan match tactics for opening season with budget 100000 EUR. "
+                "Opponent is Barcelona. Squad context is opening season demo with weak right-back depth. "
+                "Preferred formation is 4-3-3."
+            ),
             "__clarify__",
             "I choose Ron Ben Ari because he is the more aggressive right-back option. Submit the player recommendation to management.",
             "__confirm__",
@@ -96,11 +100,28 @@ def main() -> int:
             "__confirm__",
             "Show me the current proposed lineup.",
         ]
+        confirm_steps = 0
         for step in steps:
             if step == "__clarify__":
                 _maybe_answer_planning_clarification(page)
                 continue
             _send_step(page, step)
+            if step == "__confirm__":
+                confirm_steps += 1
+                if confirm_steps == 1:
+                    last_text = _last_assistant_text(page)
+                    budget_hint = (
+                        page.locator(".agent-budget").last.inner_text()
+                        if page.locator(".agent-budget").count()
+                        else ""
+                    )
+                    has_budget = "57,000" in budget_hint or "57000" in budget_hint.replace(",", "")
+                    has_reserve = "43,000" in last_text or "43000" in last_text.replace(",", "")
+                    if not has_budget and not has_reserve:
+                        page.screenshot(path=str(debug_path), full_page=True)
+                        raise RuntimeError(
+                            f"Ron confirmation did not reserve budget; budget={budget_hint!r}"
+                        )
 
         board = page.locator(".lineup-board-card").last
         for attempt in range(3):

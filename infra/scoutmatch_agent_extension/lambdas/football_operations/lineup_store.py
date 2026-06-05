@@ -65,7 +65,7 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
         selection = get_item(f"player_selection#{normalize_name(starter['name'])}")
         if selection and selection.get("approval_status") == "PENDING_MANAGEMENT_APPROVAL":
             sel_ctx = str(selection.get("planning_context_id") or "").strip()
-            if not active_ctx or sel_ctx == active_ctx:
+            if not active_ctx or (sel_ctx and sel_ctx == active_ctx):
                 status = "PENDING_MANAGEMENT_APPROVAL"
         enriched.append(
             {

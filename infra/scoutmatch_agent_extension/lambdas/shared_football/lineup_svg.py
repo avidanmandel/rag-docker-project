@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from budget_ledger import available_budget_from_context
 from lineup_store import get_current_lineup
-from operations_store import get_item, put_item
+from operations_store import active_demo_season_id, get_item, list_by_prefix, put_item
 from validation import assign_formation_slots, normalize_name, slug_name
 
 LINEUP_PREFIX = os.getenv(
@@ -83,21 +83,44 @@ def _use_local() -> bool:
     )
 
 
+def _selection_remaining_budget(selection: dict, *, base_remaining: int) -> int | None:
+    if selection.get("remaining_budget_eur") is not None:
+        return int(selection["remaining_budget_eur"])
+    reserved = selection.get("reserved_amount_eur")
+    if reserved is not None:
+        return max(base_remaining - int(reserved), 0)
+    return None
+
+
+def _selection_matches_lineup_context(selection: dict, ctx_id: str) -> bool:
+    if selection.get("demo_season_id") and selection.get("demo_season_id") != active_demo_season_id():
+        return False
+    selection_ctx = str(selection.get("planning_context_id") or "").strip()
+    if ctx_id and selection_ctx and selection_ctx != ctx_id:
+        return False
+    return selection.get("reservation_status") == "RESERVED_PENDING_APPROVAL"
+
+
 def _remaining_budget_for_lineup(lineup: dict) -> int:
     ctx_id = str(lineup.get("planning_context_id") or "").strip()
     remaining, _ = available_budget_from_context(planning_context_id=ctx_id or None)
+    base_remaining = int(remaining or 0)
     for starter in lineup.get("starting_xi") or []:
         if starter.get("status") != "PENDING_MANAGEMENT_APPROVAL":
             continue
         selection = get_item(f"player_selection#{normalize_name(starter.get('name', ''))}")
-        if not selection or selection.get("reservation_status") != "RESERVED_PENDING_APPROVAL":
+        if not selection or not _selection_matches_lineup_context(selection, ctx_id):
             continue
-        selection_ctx = str(selection.get("planning_context_id") or "").strip()
-        if ctx_id and selection_ctx and selection_ctx != ctx_id:
+        scoped = _selection_remaining_budget(selection, base_remaining=base_remaining)
+        if scoped is not None:
+            return scoped
+    for selection in list_by_prefix("player_selection#"):
+        if not _selection_matches_lineup_context(selection, ctx_id):
             continue
-        if selection.get("remaining_budget_eur") is not None:
-            return int(selection["remaining_budget_eur"])
-    return int(remaining or 0)
+        scoped = _selection_remaining_budget(selection, base_remaining=base_remaining)
+        if scoped is not None:
+            return scoped
+    return base_remaining
 
 
 def generate_board(lineup_id: str = "") -> tuple[dict | None, str]:
