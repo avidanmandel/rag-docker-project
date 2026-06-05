@@ -304,6 +304,7 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     warnings: list[str] = []
     lineup_route = None
     remaining_budget = None
+    lineup_board_budget = None
     guardrail_intervened = False
 
     for event in events:
@@ -337,6 +338,12 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
                 lineup_route = payload.get("image_route")
             if payload.get("remaining_budget_eur") is not None:
                 remaining_budget = payload.get("remaining_budget_eur")
+            if (
+                str(payload.get("status") or "").upper()
+                in {"LINEUP_BOARD_GENERATED", "RENDERED"}
+                and payload.get("remaining_budget_eur") is not None
+            ):
+                lineup_board_budget = payload.get("remaining_budget_eur")
             if payload.get("formation"):
                 pass
         guard_trace = event.get("trace", {}).get("trace", {}).get("guardrailTrace")
@@ -349,6 +356,8 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     budget_match = _REMAINING_BUDGET_PATTERN.search(answer)
     if budget_match and remaining_budget is None:
         remaining_budget = int(budget_match.group(1).replace(",", ""))
+    if lineup_board_budget is not None:
+        remaining_budget = lineup_board_budget
 
     confirmation_card = _extract_confirmation_card(events, answer)
     if confirmation_card and "confirmation_or_reprompt" not in warnings:

@@ -27,18 +27,27 @@ def main() -> int:
         page.goto(URL, wait_until="networkidle", timeout=90000)
         page.wait_for_timeout(1500)
 
-        prompts = [
+        steps = [
+            "Plan match tactics for opening season with budget 100000 EUR.",
             "I choose Ron Ben Ari because he is the more aggressive right-back option. Submit the player recommendation to management.",
-            "Confirm",
+            "__confirm__",
             "Save the proposed demo 4-3-3 lineup with Ron Ben Ari at right-back for head-coach review.",
-            "Confirm",
+            "__confirm__",
             "Show me the current proposed lineup.",
         ]
-        for prompt in prompts:
-            page.locator("#chatInput").fill(prompt)
-            page.locator("#sendBtn").click()
+        for step in steps:
+            if step == "__confirm__":
+                confirm = page.locator(".confirm-card__btn--confirm").last
+                if confirm.count():
+                    confirm.click()
+                else:
+                    page.locator("#chatInput").fill("Confirm")
+                    page.locator("#sendBtn").click()
+            else:
+                page.locator("#chatInput").fill(step)
+                page.locator("#sendBtn").click()
             page.wait_for_selector(".message--assistant .message__content", timeout=240000)
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(5000)
 
         board = page.locator(".lineup-board-card").last
         board.wait_for(timeout=120000)
