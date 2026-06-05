@@ -11,9 +11,9 @@ Use this outline to build the course deck. **No final PPTX is committed** in thi
 ## 2. Project Overview
 
 - **Problem:** Small clubs need evidence-based recruitment without hallucinated player facts.
-- **Users:** Sporting director / coach / scout.
-- **Solution:** Upload CVs and club documents → Bedrock Knowledge Base → Flask chat with strict source validation.
-- **Extension:** Recruitment Advisor uses Bedrock Agent with **four** operational Tools for squad planning, management notification, and lineup boards.
+- **Primary user:** Scout / Recruitment Analyst / Professional Assistant (not the head coach).
+- **Solution:** Upload CVs and club documents → Bedrock Knowledge Base → polished root UI with Bedrock Agent orchestration and strict source validation.
+- **Workflow:** Analyst prepares recommendations for management (`PENDING_MANAGEMENT_APPROVAL`) and proposed lineups for head-coach review (`PENDING_HEAD_COACH_REVIEW`).
 
 ## 3. Technologies Used
 
@@ -25,16 +25,10 @@ Use this outline to build the course deck. **No final PPTX is committed** in thi
 
 ## 4. System Architecture
 
-**Production v14**
+**Polished root UI (final demo)**
 
 ```
-Browser → EC2 Docker → Flask → boto3 retrieve(KB) → grounded answer + source cards
-```
-
-**Recruitment Advisor (four-Lambda final architecture)**
-
-```
-Browser → Flask → bedrock-agent-runtime invoke_agent
+Browser → EC2 Docker → Flask → bedrock-agent-runtime invoke_agent
   → Agent + central Guardrail + Knowledge Base (ENABLED)
   → 4 Action Groups (1 Tool each) → 4 dedicated Lambdas
   → DynamoDB operational state / private S3 SVG / SNS

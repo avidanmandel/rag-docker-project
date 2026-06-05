@@ -19,7 +19,7 @@ See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, 
 
 | File | Capture |
 |------|---------|
-| `four_action_groups_enabled.png` | Exactly four groups: `ScoutMatchTacticsActionsAvidan`, `ScoutMatchPlayerSelectionActionsAvidan`, `ScoutMatchLineupActionsAvidan`, `ScoutMatchLineupBoardActionsAvidan` |
+| `four_action_groups_enabled.png` | Exactly four groups: `ScoutMatchTacticsActionsAvidan`, `ScoutMatchSelectionAgAvidan`, `ScoutMatchLineupActionsAvidan`, `ScoutMatchLineupBoardActionsAvidan` |
 | `four_dedicated_lambdas.png` | `ScoutMatchPlanMatchTacticsAvidan`, `ScoutMatchSubmitPlayerSelectionAvidan`, `ScoutMatchFinalizeCurrentLineupAvidan`, `ScoutMatchGenerateLineupBoardAvidan` |
 | `legacy_groups_detached.png` | Old native/football groups disabled on agent; Lambdas still exist in console |
 
@@ -27,7 +27,7 @@ See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, 
 
 | File | Capture |
 |------|---------|
-| `31_dynamic_sporting_director_chat.png` | Multi-turn Advisor conversation (PlanMatchTactics → selection → lineup) |
+| `31_dynamic_analyst_chat.png` | Multi-turn polished root UI conversation (coach brief → selection → lineup) |
 | `32_squad_planning_context_saved.png` | DynamoDB `SQUAD_CONTEXT` / `TACTICAL_PLAN` item (sanitized) |
 | `33_player_selection_confirmation.png` | Bedrock confirmation before budget reservation |
 | `37_budget_ledger_record.png` | `RESERVED_PENDING_APPROVAL` ledger entry |
@@ -35,7 +35,7 @@ See `submission_evidence/final_v14/` — 11 PNGs for KB, EC2, Docker, homepage, 
 | `35_sns_publish_evidence.png` | Publish metrics / message preview (no email in repo) |
 | `38_lineup_record.png` | Finalized 11-player lineup record |
 | `39_private_lineup_svg_s3.png` | Private object under `scoutmatch/football-operations/lineups/` |
-| `40_inline_lineup_board_chat.png` | SVG inline in Advisor chat |
+| `40_inline_lineup_board_chat.png` | SVG inline in polished root UI chat (Flask proxy route only) |
 | `41_lineup_board_433.png` | Full board with 11 own-team markers |
 | `42_pending_management_marker.png` | PENDING APPROVAL badge on Ron Ben Ari |
 

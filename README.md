@@ -2,7 +2,7 @@
 
 **AI-Powered Football Recruitment Assistant**
 
-ScoutMatch AI helps football club managers, coaches, and scouts find the right players for their squad. Upload player CVs and scouting reports, then ask natural-language questions in Hebrew or English. The assistant retrieves evidence from **Amazon Bedrock Knowledge Base**, compares candidates, and explains recommendations — grounded strictly in uploaded documents.
+ScoutMatch AI helps **Scouts / Recruitment Analysts / Professional Assistants** prepare evidence-based recommendations for management and proposed lineups for head-coach review. Upload player CVs and scouting reports, then ask natural-language questions in Hebrew or English. The polished root UI uses the **Amazon Bedrock Agent** with **Knowledge Base grounding**, four dedicated Lambda Tools, and strict source validation.
 
 ---
 
@@ -26,14 +26,17 @@ Documents
 
 | Item | Value |
 |------|-------|
-| Docker image | `scoutmatch-ai:baseline-club-v14` |
+| Docker image (production target) | `scoutmatch-ai:agent-extension-v15` |
+| Rollback image | `scoutmatch-ai:baseline-club-v14` |
 | Public test URL | http://3.239.47.249/ |
+| Diagnostic route | http://3.239.47.249/recruitment-advisor |
 | Production container | `scoutmatch-ai` |
 
 Verify:
 
 - http://3.239.47.249/api/health
-- http://3.239.47.249/api/status → `ready: true`, `baseline_ready: true`, `rag_backend: aws_kb`
+- http://3.239.47.249/api/status → `ready: true`, `agent_extension_enabled: true`, `chat_backend: bedrock_agent`
+- Root polished UI at `/` is the main presentation interface; `/recruitment-advisor` remains for debugging only.
 
 ## Main features
 

@@ -4,7 +4,7 @@ Use this checklist after automated pre-manual preparation. Do not delete AWS res
 
 **Production host:** `3.239.47.249`  
 **Branch:** `feature/scoutmatch-agent-flow-extension`  
-**Expected commit:** `2faee6f` or later
+**Expected commit:** latest on `feature/scoutmatch-agent-flow-extension` after agent-extension v15 deploy
 
 ---
 

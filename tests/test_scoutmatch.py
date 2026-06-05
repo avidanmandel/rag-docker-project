@@ -613,6 +613,10 @@ class RuntimeSafetyTests(unittest.TestCase):
             "_init_error",
             None,
         ), patch.object(
+            flask_app,
+            "recruitment_advisor_enabled",
+            return_value=False,
+        ), patch.object(
             flask_app.engine,
             "answer",
             return_value={
@@ -3611,6 +3615,7 @@ class MessageApiSyncGuardTests(unittest.TestCase):
 
         import app as flask_app
 
+        self.flask_app = flask_app
         self.client = flask_app.app.test_client()
         flask_app.app.config["TESTING"] = True
         flask_app.engine.ready = True
@@ -3627,10 +3632,11 @@ class MessageApiSyncGuardTests(unittest.TestCase):
     def test_message_blocked_while_documents_syncing(self):
         session = database.create_session()
         database.bump_document_revision(session["id"])
-        resp = self.client.post(
-            f"/api/sessions/{session['id']}/messages",
-            json={"content": "Who is Daniel Cohen?"},
-        )
+        with patch.object(self.flask_app, "recruitment_advisor_enabled", return_value=False):
+            resp = self.client.post(
+                f"/api/sessions/{session['id']}/messages",
+                json={"content": "Who is Daniel Cohen?"},
+            )
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertTrue(body.get("refused"))
