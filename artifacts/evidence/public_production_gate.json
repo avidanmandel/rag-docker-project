@@ -1,0 +1,68 @@
+{
+  "public_base": "http://3.239.47.249",
+  "checks": {
+    "homepage_http_200": true,
+    "health_http_200": true,
+    "status_http_200": true,
+    "status_ready": true,
+    "agent_extension_enabled": true,
+    "chat_backend_bedrock_agent": true,
+    "root_ui_primary": true,
+    "diagnostic_route_preserved": true,
+    "svg_proxy_http_200": true,
+    "sidebar_groups_present": true,
+    "no_ctx_ids_in_homepage": true,
+    "exactly_four_action_groups": true,
+    "exactly_four_lambdas": true,
+    "fifth_public_tool_exposed": false,
+    "knowledge_base_enabled": true,
+    "guardrail_attached": true
+  },
+  "sanitized_status": {
+    "agent_extension_enabled": true,
+    "app_name": "ScoutMatch AI",
+    "aws_mode": true,
+    "aws_s3_prefix": "scoutmatch/knowledge-base/",
+    "baseline_document_count": 10,
+    "baseline_knowledge_enabled": true,
+    "baseline_ready": true,
+    "baseline_set_id": "production",
+    "baseline_sync_state": "READY",
+    "candidate_pool_count": 8,
+    "chat_backend": "bedrock_agent",
+    "chunks": 0,
+    "club_player_count": 15,
+    "demo_season_id": "opening-season-demo-v1",
+    "engine_class": "AWSKnowledgeBaseEngine",
+    "error": null,
+    "knowledge_base_configured": true,
+    "knowledge_source": "bedrock_knowledge_base_s3",
+    "opening_season_workspace": true,
+    "progress": {
+      "current": 1,
+      "total": 1
+    },
+    "rag_backend": "aws_kb",
+    "ready": true,
+    "sources": [],
+    "status": "ready",
+    "strict_rag": true,
+    "strict_rag_mode": "grounded_documents_only",
+    "workspace_ready": true
+  },
+  "architecture": {
+    "final_tools": [
+      "FinalizeCurrentLineup",
+      "GenerateCurrentLineupBoard",
+      "PlanMatchTactics",
+      "SubmitPlayerSelectionToManagement"
+    ],
+    "final_action_group_count": 4,
+    "final_lambda_count": 4,
+    "knowledge_base_enabled": true,
+    "guardrail_attached": true
+  },
+  "sns_treatment": "optional_future_extension_only",
+  "blocker_count": 0,
+  "blockers": []
+}
