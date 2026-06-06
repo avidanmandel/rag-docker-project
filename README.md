@@ -347,7 +347,9 @@ python -m pytest tests/test_scoutmatch.py tests/test_baseline_club_knowledge.py 
 
 ## Local development fallback
 
-Set `RAG_BACKEND=local` with `GEMINI_API_KEY` and `HF_TOKEN` to use the original FAISS pipeline over `data/`. Course starter files remain for local testing only.
+Production ScoutMatch uses **AWS Knowledge Base** with the `scoutmatch/knowledge-base/` S3 prefix and `sample_scout_data/` as the repository source-data reference. The legacy `data/` course files (Flask lectures, docker PDF, risk report, and other unrelated starter documents) were removed and are **not** part of the final submission.
+
+Optional local FAISS mode (`RAG_BACKEND=local` with `GEMINI_API_KEY` and `HF_TOKEN`) may create or use a local `data/` directory at runtime for developer uploads only. This path is **not** the production deployment.
 
 ---
 
