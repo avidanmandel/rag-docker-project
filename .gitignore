@@ -54,7 +54,7 @@ runtime/
 index_cache/
 generated/
 uploads/
-data/uploads/
+data/
 
 # Local audit artifacts (never commit raw logs)
 artifacts/logs/

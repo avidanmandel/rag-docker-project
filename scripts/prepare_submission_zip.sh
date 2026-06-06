@@ -14,7 +14,8 @@ zip -r "${ZIP}" . \
   -x "./.env" -x "./.env.*" -x "!./.env.example" -x "!./.env.ec2.example" \
   -x "./*.pem" -x "./*.key" -x "./.aws/*" \
   -x "./artifacts/logs/*" -x "./*.log" \
-  -x "./runtime/*" -x "./*chat.db" -x "./*.db" \
+  -x "./runtime/*" -x "./data/*" -x "./index_cache/*" \
+  -x "./*chat.db" -x "./*.db" \
   -x "./.venv/*" -x "./venv/*" \
   -x "./__pycache__/*" -x "./*/__pycache__/*" \
   -x "./home-preview-*.png" \
