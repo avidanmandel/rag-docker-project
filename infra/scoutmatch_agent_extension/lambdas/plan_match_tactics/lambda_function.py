@@ -20,7 +20,7 @@ from bedrock_response import (  # noqa: E402
 from feature_flags import business_workflow_v2_enabled  # noqa: E402
 from write_confirmation import is_write_confirmed, is_write_denied, pending_confirmation_response  # noqa: E402
 
-V2_ACTION_GROUP = "ScoutMatchTransferOutActionsAvidan"
+V2_ACTION_GROUP = "ScoutMatchTransferOutAvidan"
 V2_FUNCTION = "OpenTransferOutReviewCase"
 LEGACY_ACTION_GROUP = "ScoutMatchTacticsActionsAvidan"
 LEGACY_FUNCTION = "PlanMatchTactics"

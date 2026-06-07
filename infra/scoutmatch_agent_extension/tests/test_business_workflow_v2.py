@@ -144,7 +144,7 @@ def test_critical_decision_pre_confirm_and_confirm():
     prep = mod.lambda_handler(
         {
             "function": "SubmitCriticalDecisionAndSendEmail",
-            "actionGroup": "ScoutMatchCriticalDecisionActionsAvidan",
+            "actionGroup": "ScoutMatchCritDecisionAvidan",
             "parameters": [
                 {"name": "candidate_name", "value": "Ron Ben Ari"},
                 {"name": "target_role", "value": "Right-back"},

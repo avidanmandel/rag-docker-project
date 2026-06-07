@@ -55,7 +55,8 @@ LEGACY_FOUR_LAMBDAS = {
 V2_FOUR_LAMBDAS = {
     "ScoutMatchSubmitPlayerSelectionAvidan": {
         "folder": "submit_player_selection",
-        "action_group": "ScoutMatchCriticalDecisionActionsAvidan",
+        "action_group": "ScoutMatchCritDecisionAvidan",
+        "action_group_display": "ScoutMatchCriticalDecisionActionsAvidan",
         "function": "SubmitCriticalDecisionAndSendEmail",
         "role": "ScoutMatchSubmitPlayerSelectionRoleAvidan",
         "description": "Submit confirmed recruitment or tactical decisions and optional SES review email.",
@@ -63,7 +64,8 @@ V2_FOUR_LAMBDAS = {
     },
     "ScoutMatchPlanMatchTacticsAvidan": {
         "folder": "plan_match_tactics",
-        "action_group": "ScoutMatchTransferOutActionsAvidan",
+        "action_group": "ScoutMatchTransferOutAvidan",
+        "action_group_display": "ScoutMatchTransferOutActionsAvidan",
         "function": "OpenTransferOutReviewCase",
         "role": "ScoutMatchPlanMatchTacticsRoleAvidan",
         "description": "Open a transfer-out review case for a current squad player.",
@@ -71,7 +73,8 @@ V2_FOUR_LAMBDAS = {
     },
     "ScoutMatchFinalizeCurrentLineupAvidan": {
         "folder": "finalize_current_lineup",
-        "action_group": "ScoutMatchScoutingMissionActionsAvidan",
+        "action_group": "ScoutMatchScoutMissionAvidan",
+        "action_group_display": "ScoutMatchScoutingMissionActionsAvidan",
         "function": "CreateAndReviewScoutingMission",
         "role": "ScoutMatchFinalizeLineupRoleAvidan",
         "description": "Create scouting missions or review completed demo observations.",
@@ -79,7 +82,8 @@ V2_FOUR_LAMBDAS = {
     },
     "ScoutMatchGenerateLineupBoardAvidan": {
         "folder": "generate_lineup_board",
-        "action_group": "ScoutMatchSquadBoardActionsAvidan",
+        "action_group": "ScoutMatchSquadBoardAvidan",
+        "action_group_display": "ScoutMatchSquadBoardActionsAvidan",
         "function": "GenerateVisualSquadAndLineupBoard",
         "role": "ScoutMatchGenerateLineupBoardRoleAvidan",
         "description": "Save and render the proposed lineup and squad-risk board.",
@@ -110,6 +114,10 @@ ACTION_GROUPS_DETACHED_AT_FINAL_APPLY = [
     "ScoutMatchSelectionAgAvidan",
     "ScoutMatchLineupActionsAvidan",
     "ScoutMatchLineupBoardActionsAvidan",
+    "ScoutMatchCriticalDecisionActionsAvidan",
+    "ScoutMatchTransferOutActionsAvidan",
+    "ScoutMatchScoutingMissionActionsAvidan",
+    "ScoutMatchSquadBoardActionsAvidan",
 ]
 
 LEGACY_WRITE_CONFIRM_FUNCTIONS = frozenset(

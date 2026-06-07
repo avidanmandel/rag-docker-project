@@ -14,7 +14,7 @@ from bedrock_response import build_function_response, handle_action_errors, opti
 from feature_flags import business_workflow_v2_enabled  # noqa: E402
 from write_confirmation import is_write_confirmed, is_write_denied, pending_confirmation_response  # noqa: E402
 
-V2_ACTION_GROUP = "ScoutMatchScoutingMissionActionsAvidan"
+V2_ACTION_GROUP = "ScoutMatchScoutMissionAvidan"
 V2_FUNCTION = "CreateAndReviewScoutingMission"
 LEGACY_ACTION_GROUP = "ScoutMatchLineupActionsAvidan"
 LEGACY_FUNCTION = "FinalizeCurrentLineup"

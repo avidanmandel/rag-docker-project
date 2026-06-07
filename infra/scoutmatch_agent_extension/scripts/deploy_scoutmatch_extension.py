@@ -1014,9 +1014,17 @@ class Deployer:
         if not self.apply:
             return
         try:
-            groups = self.agent.list_agent_action_groups(
-                agentId=agent_id, agentVersion="DRAFT"
-            ).get("actionGroupSummaries", [])
+            groups: list[dict] = []
+            token: str | None = None
+            while True:
+                kwargs: dict = {"agentId": agent_id, "agentVersion": "DRAFT", "maxResults": 50}
+                if token:
+                    kwargs["nextToken"] = token
+                page = self.agent.list_agent_action_groups(**kwargs)
+                groups.extend(page.get("actionGroupSummaries", []))
+                token = page.get("nextToken")
+                if not token:
+                    break
             existing = next(
                 (g for g in groups if g.get("actionGroupName") == action_group_name),
                 None,
