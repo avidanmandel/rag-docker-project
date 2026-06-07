@@ -22,7 +22,8 @@ EXCLUDE_DIR_PARTS = {
     "screenshoot",
     ".local",
     ".cursor",
-    "node_modules",
+    "presentation_output_final",
+    "presentation_output_v2",
 }
 
 EXCLUDE_FILE_GLOBS = ("*.pem", "*.key", "*.log", "chat.db", "*.db", "*.bak", "*.sqlite", "*.sqlite3")
@@ -62,6 +63,8 @@ FORBIDDEN_IN_ZIP_RE = re.compile(
 
 def should_include(path: Path, *, root: Path) -> bool:
     rel = path.relative_to(root).as_posix()
+    if path.name.startswith("~$"):
+        return False
     if rel.startswith("dist/"):
         return False
     parts = rel.split("/")

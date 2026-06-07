@@ -1,5 +1,7 @@
 # ScoutMatch AI — Management Presentation Report
 
+> **Business workflow v2 (2026-06):** Branch `feature/scoutmatch-business-workflow-v2`, feature flag `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED`. Full spec: `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md`. Rollback: `scoutmatch-ai:baseline-club-v14` and legacy branch `feature/scoutmatch-agent-flow-extension`.
+
 **Branch:** `feature/scoutmatch-agent-flow-extension`  
 **Status labels:** VERIFIED · RECOMMENDED · MANUAL VALIDATION REQUIRED
 

@@ -1,5 +1,7 @@
 # ScoutMatch Final Presentation Content (6 slides)
 
+> **Business workflow v2 (2026-06):** Branch `feature/scoutmatch-business-workflow-v2`, feature flag `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED`. Full spec: `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md`. Rollback: `scoutmatch-ai:baseline-club-v14` and legacy branch `feature/scoutmatch-agent-flow-extension`.
+
 Use this outline to build the manager presentation deck. **No PPTX is committed.** Public demo URL: http://3.239.47.249/
 
 SNS is mentioned only as an optional future extension — not part of the core demo.

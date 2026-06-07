@@ -6,7 +6,8 @@ Opening-season football recruitment workspace for **Scouts / Professional Analys
 
 ## Branch and release
 
-- **Branch:** `feature/scoutmatch-agent-flow-extension`
+- **Branch:** `feature/scoutmatch-business-workflow-v2` (stable rollback source: `feature/scoutmatch-agent-flow-extension`)
+- **V2 feature flag:** `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED` (default `false` until staging cutover)
 - **Production image:** `scoutmatch-ai:agent-extension-v15` (rollback: `scoutmatch-ai:baseline-club-v14`)
 - **Public URL:** http://3.239.47.249/
 - **Primary demo route:** `/` (root polished UI)
@@ -48,4 +49,4 @@ python scripts/run_secret_scan.py
 
 ## Documentation
 
-See `docs/SCOUTMATCH_FINAL_COURSE_READINESS_REPORT.md`, `docs/SCOUTMATCH_SUBMISSION_ZIP_MANIFEST.md`, and `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md`.
+See `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md`, `docs/SCOUTMATCH_FINAL_COURSE_READINESS_REPORT.md`, `docs/SCOUTMATCH_SUBMISSION_ZIP_MANIFEST.md`, and `docs/SCOUTMATCH_SUBMISSION_READINESS_REPORT.md`.

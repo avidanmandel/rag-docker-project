@@ -27,6 +27,17 @@ from four_lambda_apply import (  # noqa: E402
 )
 from write_confirmation import is_write_confirmed  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _legacy_four_lambda_env():
+    os.environ.pop("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", None)
+    import importlib
+
+    import four_lambda_apply
+
+    importlib.reload(four_lambda_apply)
+    yield
+
 BEDROCK_TOOL_NAME_LIMIT = 64
 LEGACY_SCHEMAS = {
     "CalculateBudgetImpact",

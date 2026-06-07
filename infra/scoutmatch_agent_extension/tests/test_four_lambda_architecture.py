@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 os.environ["SCOUTMATCH_USE_LOCAL_STORE"] = "true"
+os.environ.pop("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", None)
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 LAMBDAS = Path(__file__).resolve().parents[1] / "lambdas"
@@ -41,6 +42,17 @@ def _shared_operations_store():
 def _evict_shared_modules() -> None:
     for name in _SHARED_MODULES:
         sys.modules.pop(name, None)
+
+
+@pytest.fixture(autouse=True)
+def _legacy_four_lambda_env():
+    os.environ.pop("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", None)
+    import importlib
+
+    import four_lambda_apply
+
+    importlib.reload(four_lambda_apply)
+    yield
 
 
 @pytest.fixture(autouse=True)

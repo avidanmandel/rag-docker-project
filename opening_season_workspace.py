@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import config
+
 ROOT = Path(__file__).resolve().parent
 DATASET_ROOT = (
     ROOT / "infra" / "scoutmatch_agent_extension" / "demo_data" / "opening_season"
@@ -20,7 +22,61 @@ STARTING_PLAYER_COUNT = 11
 ROTATION_PLAYER_COUNT = 4
 CANDIDATE_POOL_COUNT = 8
 
-SUGGESTED_PROMPTS = [
+V2_SUGGESTED_PROMPTS = [
+    {
+        "label": "Which current player should we consider selling to free budget for a new right-back?",
+        "query": (
+            "We need to free budget for a new right-back. "
+            "Which current player should we consider selling?"
+        ),
+    },
+    {
+        "label": "Create a scouting mission for Ron Ben Ari's next match and add it to my calendar.",
+        "query": (
+            "Ron Ben Ari looks promising. "
+            "Create a scouting mission for his next match and add it to my calendar."
+        ),
+    },
+    {
+        "label": "Show me Ron Ben Ari's completed scouting report.",
+        "query": "Show me Ron Ben Ari's completed scouting report.",
+    },
+    {
+        "label": (
+            "I choose Ron Ben Ari as our right-back candidate. "
+            "Submit the recommendation for management review."
+        ),
+        "query": (
+            "I choose Ron Ben Ari as our right-back candidate. "
+            "Submit the recommendation for management review."
+        ),
+    },
+    {
+        "label": "Show me the updated proposed lineup and squad-risk board.",
+        "query": "Show me the updated proposed lineup and squad-risk board.",
+    },
+]
+
+V2_HERO = {
+    "headline": "Build the strongest squad for the season.",
+    "subtitle": (
+        "Review the squad, open transfer-out cases, schedule scouting missions, "
+        "submit critical decisions, and shape the lineup before the transfer window closes."
+    ),
+}
+
+V2_BUSINESS_CARDS = [
+    {"label": "Last season", "value": "4th place"},
+    {"label": "Season objective", "value": "Compete for the championship"},
+    {"label": "Transfer window", "value": "Open"},
+    {"label": "Current squad", "value": "15 players"},
+    {"label": "Pre-scouted candidates", "value": "8"},
+    {"label": "Recruitment budget", "value": "100,000 EUR"},
+    {"label": "Opening fixture", "value": "Barcelona"},
+]
+
+
+LEGACY_SUGGESTED_PROMPTS = [
     {
         "label": "Analyze our current squad weaknesses before the opening match.",
         "query": (
@@ -54,6 +110,16 @@ SUGGESTED_PROMPTS = [
         ),
     },
 ]
+
+
+def active_suggested_prompts() -> list[dict]:
+    if config.SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED:
+        return V2_SUGGESTED_PROMPTS
+    return LEGACY_SUGGESTED_PROMPTS
+
+
+SUGGESTED_PROMPTS = LEGACY_SUGGESTED_PROMPTS
+
 
 SECONDARY_PROMPTS = [
     {
@@ -176,7 +242,7 @@ def candidate_pool_payload() -> list[dict]:
 
 
 def workspace_summary() -> dict:
-    return {
+    summary = {
         "storyline": "opening_season",
         "demo_season_id": DEMO_SEASON_ID,
         "s3_namespace": S3_NAMESPACE,
@@ -186,10 +252,15 @@ def workspace_summary() -> dict:
         "candidate_pool_count": CANDIDATE_POOL_COUNT,
         "club_knowledge_count": len(CLUB_KNOWLEDGE_DOCS),
         "workspace_ready": True,
-        "suggested_prompts": SUGGESTED_PROMPTS,
+        "suggested_prompts": active_suggested_prompts(),
         "secondary_prompts": SECONDARY_PROMPTS,
-        "primary_user_role": "Scout / Recruitment Analyst / Professional Assistant",
+        "primary_user_role": "Chief Scout / Recruitment Analyst",
+        "business_workflow_v2": config.SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED,
     }
+    if config.SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED:
+        summary["hero"] = V2_HERO
+        summary["business_cards"] = V2_BUSINESS_CARDS
+    return summary
 
 
 def system_status_panel() -> dict:

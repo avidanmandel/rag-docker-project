@@ -183,6 +183,19 @@ STALE_ANSWER_TEXT_HE = (
 AWS_KB_AGGREGATE_CANDIDATES = int(os.getenv("AWS_KB_AGGREGATE_CANDIDATES", "50"))
 AWS_KB_AGGREGATE_SOURCE_LIMIT = int(os.getenv("AWS_KB_AGGREGATE_SOURCE_LIMIT", "20"))
 
+# --- Business workflow v2 feature flags ------------------------------------
+SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED = os.getenv(
+    "SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", "false"
+).strip().lower() in ("1", "true", "yes")
+SCOUTMATCH_EMAIL_MODE = os.getenv("SCOUTMATCH_EMAIL_MODE", "disabled").strip().lower()
+SCOUTMATCH_CALENDAR_MODE = os.getenv("SCOUTMATCH_CALENDAR_MODE", "ics_fallback").strip().lower()
+SCOUTMATCH_SCOUTING_REMINDER_MODE = os.getenv(
+    "SCOUTMATCH_SCOUTING_REMINDER_MODE", "disabled"
+).strip().lower()
+SCOUTMATCH_DEMO_REPLAY_ENABLED = os.getenv(
+    "SCOUTMATCH_DEMO_REPLAY_ENABLED", "true"
+).strip().lower() in ("1", "true", "yes")
+
 
 # --- Upload allowlist (ScoutMatch documents) ------------------------------
 DOC_UPLOAD_EXTENSIONS = frozenset({

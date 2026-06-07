@@ -71,6 +71,15 @@ OWN_SQUAD_PLAYERS: dict[str, dict] = {
     "lior dan": {"display_name": "Lior Dan", "position": "RW", "squad_role": "likely_starter"},
     "guy navon": {"display_name": "Guy Navon", "position": "LW", "squad_role": "likely_starter"},
     "amit peretz": {"display_name": "Amit Peretz", "position": "ST", "squad_role": "likely_starter"},
+    "daniel cohen": {
+        "display_name": "Daniel Cohen",
+        "position": "CM",
+        "squad_role": "rotation",
+        "salary_eur": 32000,
+        "expected_minutes": "limited",
+        "tactical_fit": "adequate but overlapping midfield options",
+        "squad_overlap": "competes with Noam Sharon, Ido Katz, Eran Blum",
+    },
 }
 
 VALID_FORMATIONS = frozenset({"4-3-3", "4-4-2", "3-5-2", "3-4-3", "5-4-1", "5-2-3"})

@@ -3,12 +3,36 @@
 **Public URL:** http://3.239.47.249/  
 **Primary UI:** Polished root page `/`  
 **Diagnostic only:** `/recruitment-advisor`  
-**Primary user:** Scout / Professional Analyst  
-**SNS:** Not part of this demo.
+**Primary user:** Chief Scout / Recruitment Analyst  
+**V2 reference:** `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md` (enable `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED=true` on staging)
 
 ---
 
-## Main presentation flow
+## Business workflow v2 demo (recommended when flag enabled)
+
+| Step | Time | Action | Expected result |
+|------|------|--------|-----------------|
+| 1 | 0:20 | Open `/` | Headline: *Build the strongest squad for the season*; cards: 4th place, championship objective, transfer window open, 100,000 EUR |
+| 2 | 0:45 | Quick-start: transfer-out question | Daniel Cohen proposed; hypothetical 25,000 EUR release; no write |
+| 3 | 1:10 | *Open a transfer-out review case for Daniel Cohen* → Confirm | Pending technical-director review |
+| 4 | 1:35 | Quick-start: scouting mission for Ron Ben Ari | Confirm card → mission + ICS or Google Calendar (if configured) |
+| 5 | 2:00 | Quick-start: Ron completed scouting report | Demo replay label; synthetic stats; ready for recruitment review |
+| 6 | 2:30 | Quick-start: submit Ron for management review → Confirm | 43,000 EUR reserved; 57,000 EUR remaining; optional review email |
+| 7 | 3:00 | Quick-start: show updated lineup board | 11 markers; Ron pending approval; Daniel transfer-out pending |
+| 8 | 3:30 | Architecture + boundaries | No automatic signings, sales, or lineup approval |
+
+**V2 quick-start prompts (homepage):**
+
+1. Which current player should we consider selling to free budget for a new right-back?
+2. Create a scouting mission for Ron Ben Ari's next match and add it to my calendar.
+3. Show me Ron Ben Ari's completed scouting report.
+4. I choose Ron Ben Ari as our right-back candidate. Submit the recommendation for management review.
+5. Show me the updated proposed lineup and squad-risk board.
+
+---
+
+## Legacy opening-season demo (flag disabled)
+
 
 | Step | Time | Action | Expected result |
 |------|------|--------|-----------------|

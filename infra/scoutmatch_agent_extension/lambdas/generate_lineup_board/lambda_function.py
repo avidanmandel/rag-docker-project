@@ -1,4 +1,4 @@
-"""ScoutMatchGenerateLineupBoardAvidan — GenerateCurrentLineupBoard."""
+"""GenerateVisualSquadAndLineupBoard — legacy GenerateCurrentLineupBoard when v2 disabled."""
 
 from __future__ import annotations
 
@@ -11,33 +11,118 @@ for path in (_ROOT,):
         sys.path.insert(0, path)
 
 from bedrock_response import build_function_response, handle_action_errors, optional_string  # noqa: E402
-from lineup_svg import generate_board  # noqa: E402
+from feature_flags import business_workflow_v2_enabled  # noqa: E402
+from write_confirmation import is_write_confirmed, is_write_denied, pending_confirmation_response  # noqa: E402
 
-ACTION_GROUP = "ScoutMatchLineupBoardActionsAvidan"
-FUNCTION_NAME = "GenerateCurrentLineupBoard"
+V2_ACTION_GROUP = "ScoutMatchSquadBoardActionsAvidan"
+V2_FUNCTION = "GenerateVisualSquadAndLineupBoard"
+LEGACY_ACTION_GROUP = "ScoutMatchLineupBoardActionsAvidan"
+LEGACY_FUNCTION = "GenerateCurrentLineupBoard"
 
 
-def _handle(params: dict, event: dict) -> dict:
-    body, err = generate_board(optional_string(params, "lineup_id") or "")
+def _config():
+    if business_workflow_v2_enabled():
+        return V2_ACTION_GROUP, V2_FUNCTION
+    return LEGACY_ACTION_GROUP, LEGACY_FUNCTION
+
+
+def _truthy(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "demo"}
+
+
+def _handle_v2(params: dict, event: dict, action_group: str, function_name: str) -> dict:
+    from visual_squad_board import (  # noqa: E402
+        deny_save_lineup,
+        prepare_save_lineup,
+        render_current_board,
+        save_and_render_lineup,
+    )
+
+    mode = (optional_string(params, "board_mode") or optional_string(params, "mode") or "RENDER_CURRENT").upper()
+    if mode == "SAVE_AND_RENDER":
+        payload = {
+            "formation": optional_string(params, "formation") or "4-3-3",
+            "lineup_json": optional_string(params, "lineup_json") or optional_string(params, "starting_xi") or "",
+            "demo_lineup": _truthy(params.get("demo_lineup")) or True,
+            "opponent": optional_string(params, "opponent") or "Barcelona",
+            "planning_context_id": optional_string(params, "planning_context_id") or "",
+        }
+        if is_write_denied(event):
+            return build_function_response(
+                action_group=action_group,
+                function_name=function_name,
+                body=deny_save_lineup(),
+                event=event,
+            )
+        if not is_write_confirmed(event):
+            body = prepare_save_lineup(payload)
+            return build_function_response(
+                action_group=action_group,
+                function_name=function_name,
+                body=body,
+                event=event,
+            )
+        body, err = save_and_render_lineup(payload)
+        if err:
+            return build_function_response(
+                action_group=action_group,
+                function_name=function_name,
+                body={"status": "REJECTED", "message": err},
+                event=event,
+            )
+        return build_function_response(
+            action_group=action_group,
+            function_name=function_name,
+            body=body or {"status": "FAILURE"},
+            event=event,
+        )
+    body, err = render_current_board()
     if err:
         return build_function_response(
-            action_group=ACTION_GROUP,
-            function_name=FUNCTION_NAME,
+            action_group=action_group,
+            function_name=function_name,
             body={"status": "NOT_FOUND", "message": err},
             event=event,
         )
     return build_function_response(
-        action_group=ACTION_GROUP,
-        function_name=FUNCTION_NAME,
+        action_group=action_group,
+        function_name=function_name,
         body=body or {"status": "FAILURE"},
         event=event,
     )
 
 
+def _handle_legacy(params: dict, event: dict, action_group: str, function_name: str) -> dict:
+    from lineup_svg import generate_board  # noqa: E402
+
+    body, err = generate_board(optional_string(params, "lineup_id") or "")
+    if err:
+        return build_function_response(
+            action_group=action_group,
+            function_name=function_name,
+            body={"status": "NOT_FOUND", "message": err},
+            event=event,
+        )
+    return build_function_response(
+        action_group=action_group,
+        function_name=function_name,
+        body=body or {"status": "FAILURE"},
+        event=event,
+    )
+
+
+def _handle(params: dict, event: dict) -> dict:
+    action_group, function_name = _config()
+    if business_workflow_v2_enabled():
+        return _handle_v2(params, event, action_group, function_name)
+    return _handle_legacy(params, event, action_group, function_name)
+
+
 def lambda_handler(event, context):  # noqa: ARG001
+    action_group, function_name = _config()
     return handle_action_errors(
-        action_group=ACTION_GROUP,
-        function_name=FUNCTION_NAME,
+        action_group=action_group,
+        function_name=function_name,
         event=event,
         handler=_handle,
     )

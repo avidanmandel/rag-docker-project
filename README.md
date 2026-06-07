@@ -26,7 +26,8 @@ Documents
 
 | Item | Status |
 |------|--------|
-| Full pytest | `437 passed` (`python -m pytest -q --cache-clear`) |
+| Full pytest | `475 passed` (`python -m pytest -q`) |
+| Business workflow v2 (feature-flagged) | See `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md` |
 | Public four-tool validation | `BLOCKERS=0` |
 | Guardrail live regression | `BLOCKERS=0` (v11, alias v22) |
 | Live rehearsal script | `python scripts/final_hardening_live_rehearsal.py` |

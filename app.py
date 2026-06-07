@@ -723,7 +723,54 @@ def api_opening_season_workspace():
             "club_knowledge": club_knowledge_payload(),
             "candidate_pool": candidate_pool_payload(),
             "system_status": system_status_panel(),
+            "feature_flags": {
+                "business_workflow_v2": config.SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED,
+                "email_mode": config.SCOUTMATCH_EMAIL_MODE,
+                "calendar_mode": config.SCOUTMATCH_CALENDAR_MODE,
+                "scouting_reminder_mode": config.SCOUTMATCH_SCOUTING_REMINDER_MODE,
+                "demo_replay_enabled": config.SCOUTMATCH_DEMO_REPLAY_ENABLED,
+            },
         }
+    )
+
+
+@app.route("/api/opening-season/completed-observations/<slug>", methods=["GET"])
+def api_completed_observation_report(slug: str):
+    """Safe browser view for deterministic demo scouting replay reports."""
+    safe = re.sub(r"[^a-z0-9-]", "", slug.lower()).replace("-", "_")
+    path = config.SAMPLE_SCOUT_DATA_DIR / "completed_observations" / f"{safe}_completed_match_report.json"
+    if not path.is_file():
+        return jsonify({"error": "Report not found."}), 404
+    report = json.loads(path.read_text(encoding="utf-8"))
+    return jsonify(
+        {
+            "report_label": "Demo replay: completed scouting observation",
+            "report_type": report.get("report_type", "synthetic_demo_replay"),
+            **report,
+        }
+    )
+
+
+@app.route("/api/opening-season/calendar-invite/<invite_key>", methods=["GET"])
+def api_calendar_invite(invite_key: str):
+    """Download a safe ICS calendar invite for scouting missions."""
+    safe = re.sub(r"[^a-z0-9-]", "", invite_key.lower())
+    if not safe.startswith("mission-"):
+        return jsonify({"error": "Invalid invite key."}), 404
+    fixture_datetime = "2026-06-20T17:00:00+00:00"
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ScoutMatch AI//Scouting Mission//EN\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"UID:{safe}@scoutmatch.ai\r\n"
+        "SUMMARY:ScoutMatch AI — Live Observation: Ron Ben Ari\r\n"
+        "DESCRIPTION:Final scouting observation before management review.\r\n"
+        f"DTSTART:20260620T170000Z\r\nDTEND:20260620T190000Z\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    return Response(
+        ics,
+        mimetype="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.ics"'},
     )
 
 

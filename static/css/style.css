@@ -4309,3 +4309,48 @@ kbd {
         transform: scale(1.34);
     }
 }
+
+/* Business workflow v2 cards in chat */
+.workflow-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 10px 0 14px;
+}
+
+.workflow-card {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: rgba(12, 22, 38, 0.72);
+}
+
+.workflow-card__title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: #e8f0ff;
+}
+
+.workflow-card__body {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: rgba(232, 240, 255, 0.88);
+    white-space: pre-wrap;
+}
+
+.workflow-card--critical-decision {
+    border-color: rgba(244, 197, 66, 0.45);
+}
+
+.workflow-card--transfer-out {
+    border-color: rgba(255, 120, 90, 0.4);
+}
+
+.workflow-card--scouting-mission {
+    border-color: rgba(90, 180, 255, 0.4);
+}
+
+.workflow-card--lineup-board {
+    border-color: rgba(120, 220, 160, 0.35);
+}

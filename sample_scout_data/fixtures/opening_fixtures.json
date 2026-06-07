@@ -1,0 +1,17 @@
+[
+  {
+    "fixture_id": "opening-home-barcelona",
+    "opponent": "Barcelona",
+    "competition": "Opening season",
+    "fixture_type": "approved_club_document",
+    "notes": "Opening-season fixture brief"
+  },
+  {
+    "fixture_id": "ron-demo-away-hapoel-city",
+    "candidate_name": "Ron Ben Ari",
+    "fixture_name": "Ron Ben Ari's club vs. Hapoel City",
+    "fixture_datetime": "2026-06-20T17:00:00+00:00",
+    "display_date": "Saturday, 20:00",
+    "fixture_type": "synthetic_demo_fixture"
+  }
+]

@@ -18,6 +18,10 @@ WRITE_ACTIONS = frozenset(
         "SubmitPlayerSelectionToManagement",
         "FinalizeCurrentLineup",
         "RecordPlayerAvailabilityChange",
+        "SubmitCriticalDecisionAndSendEmail",
+        "OpenTransferOutReviewCase",
+        "CreateAndReviewScoutingMission",
+        "GenerateVisualSquadAndLineupBoard",
     }
 )
 

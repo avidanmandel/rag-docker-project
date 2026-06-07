@@ -23,6 +23,7 @@ from four_lambda_apply import (
     LINEUP_S3_PREFIX,
     SNS_TOPIC_NAME,
     WRITE_CONFIRM_FUNCTIONS,
+    is_business_workflow_v2_enabled,
 )
 from demo_roster_seed import apply_demo_roster_seed, plan_demo_roster_seed
 
@@ -65,6 +66,56 @@ def _function_schema(
 
 
 def final_four_schemas() -> dict[str, dict]:
+    if is_business_workflow_v2_enabled():
+        return {
+            "SubmitCriticalDecisionAndSendEmail": _function_schema(
+                "SubmitCriticalDecisionAndSendEmail",
+                "Submit a confirmed recruitment decision for management review and optional SES email.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "target_role": {"type": "string"},
+                    "salary_eur": {"type": "integer"},
+                    "decision_type": {"type": "string"},
+                    "selection_reason": {"type": "string"},
+                },
+                ["candidate_name"],
+                require_confirmation=True,
+            ),
+            "OpenTransferOutReviewCase": _function_schema(
+                "OpenTransferOutReviewCase",
+                "Open a transfer-out review case for a current squad player.",
+                {
+                    "player_name": {"type": "string"},
+                    "review_reason": {"type": "string"},
+                    "advisory_only": {"type": "boolean"},
+                },
+                [],
+                require_confirmation=True,
+            ),
+            "CreateAndReviewScoutingMission": _function_schema(
+                "CreateAndReviewScoutingMission",
+                "Create a scouting mission or review a completed demo observation report.",
+                {
+                    "candidate_name": {"type": "string"},
+                    "mission_mode": {"type": "string"},
+                    "purpose": {"type": "string"},
+                },
+                [],
+                require_confirmation=True,
+            ),
+            "GenerateVisualSquadAndLineupBoard": _function_schema(
+                "GenerateVisualSquadAndLineupBoard",
+                "Save and render the proposed lineup and squad-risk board.",
+                {
+                    "board_mode": {"type": "string"},
+                    "formation": {"type": "string"},
+                    "demo_lineup": {"type": "boolean"},
+                    "opponent": {"type": "string"},
+                },
+                [],
+                require_confirmation=True,
+            ),
+        }
     return {
         "PlanMatchTactics": _function_schema(
             "PlanMatchTactics",

@@ -1,7 +1,9 @@
 # ScoutMatch Final Course Readiness Report
 
+> **Business workflow v2 (2026-06):** Branch `feature/scoutmatch-business-workflow-v2`, feature flag `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED`. Full spec: `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md`. Rollback: `scoutmatch-ai:baseline-club-v14` and legacy branch `feature/scoutmatch-agent-flow-extension`.
+
 **Date:** 2026-06-04  
-**Branch:** `feature/scoutmatch-agent-flow-extension`  
+**Branch:** `feature/scoutmatch-business-workflow-v2` (in progress; legacy: `feature/scoutmatch-agent-flow-extension`)  
 **Public URL:** http://3.239.47.249/  
 **SNS status:** Frozen as optional future extension — **not** a course blocker
 
@@ -16,7 +18,7 @@
 | DynamoDB operational workflow | **READY** |
 | Confirmation-safe writes | **READY** |
 | Private lineup SVG + Flask proxy | **READY** (validated after metadata lookup fix) |
-| Automated tests | **437 passed** |
+| Automated tests | **475 passed** |
 | Live rehearsal (Flows A–G) | **BLOCKERS=0** |
 | Presentation screenshots | **NEEDS MANUAL SCREENSHOT** |
 | Submission ZIP | **READY_FOR_MANUAL_SCREENSHOTS** |
@@ -84,7 +86,7 @@ See `docs/SCOUTMATCH_DYNAMIC_SCREENSHOT_GUIDE.md` — KB association, four Actio
 | Guardrail safety | Central guardrail v11 | Live regression | BLOCKERS=0 | `agent_guardrail_central.png` | **NEEDS MANUAL SCREENSHOT** |
 | Docker + EC2 public deployment | `Dockerfile`, deploy scripts | http://3.239.47.249/ | Health 200 | `03_ec2_instance_running.png` (exists) | **READY** |
 | README (goal, architecture, install, docs) | `README.md` | Complete README | N/A | N/A | **READY** |
-| Automated tests pass | `tests/`, `infra/.../tests/` | pytest 437 passed | Full suite green | N/A | **READY** |
+| Automated tests pass | `tests/`, `infra/.../tests/` | pytest 475 passed | Full suite green | N/A | **READY** |
 | Secret scan clean enough for submission | `.gitignore`, `run_secret_scan.py` | REVIEW status | No live keys | N/A | **READY** |
 | Live demo script | `docs/SCOUTMATCH_FINAL_DEMO_SCRIPT.md` | This pass | Rehearsal PASS | N/A | **READY** |
 | Submission package | `scripts/prepare_submission_zip.py` | Candidate ZIP | Manifest + SHA256 | N/A | **READY_FOR_MANUAL_SCREENSHOTS** |

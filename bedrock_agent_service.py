@@ -44,20 +44,46 @@ GUARDRAIL_BLOCK_MESSAGE = (
     "I cannot answer this request because it was blocked by the ScoutMatch safety policy."
 )
 
-WRITE_CONFIRM_TOOLS = frozenset(
+def _business_workflow_v2_enabled() -> bool:
+    return os.getenv("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+LEGACY_WRITE_CONFIRM_TOOLS = frozenset(
     {
         "SubmitPlayerSelectionToManagement",
         "FinalizeCurrentLineup",
     }
 )
+V2_WRITE_CONFIRM_TOOLS = frozenset(
+    {
+        "SubmitCriticalDecisionAndSendEmail",
+        "OpenTransferOutReviewCase",
+        "CreateAndReviewScoutingMission",
+        "GenerateVisualSquadAndLineupBoard",
+    }
+)
+WRITE_CONFIRM_TOOLS = (
+    V2_WRITE_CONFIRM_TOOLS if _business_workflow_v2_enabled() else LEGACY_WRITE_CONFIRM_TOOLS
+)
 CONFIRM_INPUTS = frozenset({"confirm", "yes", "proceed", "approve"})
 DENY_INPUTS = frozenset({"deny", "cancel", "reject", "no"})
-TOOL_USER_LABELS = {
+LEGACY_TOOL_USER_LABELS = {
     "PlanMatchTactics": "Plan match tactics",
     "SubmitPlayerSelectionToManagement": "Submit player recommendation to management",
     "FinalizeCurrentLineup": "Save proposed lineup for head-coach review",
     "GenerateCurrentLineupBoard": "Generate current lineup board",
 }
+V2_TOOL_USER_LABELS = {
+    "SubmitCriticalDecisionAndSendEmail": "Submit critical decision for management review",
+    "OpenTransferOutReviewCase": "Open transfer-out review case",
+    "CreateAndReviewScoutingMission": "Create or review scouting mission",
+    "GenerateVisualSquadAndLineupBoard": "Generate visual squad and lineup board",
+}
+TOOL_USER_LABELS = V2_TOOL_USER_LABELS if _business_workflow_v2_enabled() else LEGACY_TOOL_USER_LABELS
 GUARDRAIL_SAFE_PARAPHRASES = {
     (
         "Compare the right-back candidates within our recruitment budget. "
@@ -72,13 +98,24 @@ _INTERNAL_ID_PATTERN = re.compile(
     r"\b(?:ctx|record|entity|lineup|selection)[-_][A-Za-z0-9]{6,}\b",
     re.I,
 )
-ALLOWED_PUBLIC_TOOLS = frozenset(
+LEGACY_ALLOWED_PUBLIC_TOOLS = frozenset(
     {
         "PlanMatchTactics",
         "SubmitPlayerSelectionToManagement",
         "FinalizeCurrentLineup",
         "GenerateCurrentLineupBoard",
     }
+)
+V2_ALLOWED_PUBLIC_TOOLS = frozenset(
+    {
+        "SubmitCriticalDecisionAndSendEmail",
+        "OpenTransferOutReviewCase",
+        "CreateAndReviewScoutingMission",
+        "GenerateVisualSquadAndLineupBoard",
+    }
+)
+ALLOWED_PUBLIC_TOOLS = (
+    V2_ALLOWED_PUBLIC_TOOLS if _business_workflow_v2_enabled() else LEGACY_ALLOWED_PUBLIC_TOOLS
 )
 
 _ARN_PATTERN = re.compile(r"arn:aws:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:[^\s]+", re.I)
@@ -187,6 +224,35 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
         status = str(payload.get("status") or "").upper()
         if status == "PENDING_MANAGEMENT_APPROVAL":
             return _format_selection_success(payload)
+        if status == "PENDING_TECHNICAL_DIRECTOR_REVIEW":
+            return (
+                f"Transfer-out review case opened.\n"
+                f"Player: {payload.get('player_name', '')}\n"
+                f"Reason: {payload.get('reason', '')}\n"
+                f"Estimated budget released: {payload.get('estimated_budget_release_eur', 0):,} EUR\n"
+                f"Status: Pending technical-director review\n"
+                f"The player has not been sold."
+            )
+        if status == "PENDING_SCOUT_OBSERVATION":
+            return (
+                f"Scouting mission created.\n"
+                f"Candidate: {payload.get('candidate_name', '')}\n"
+                f"Match: {payload.get('fixture_name', '')}\n"
+                f"Date: {payload.get('display_date', '')}\n"
+                f"Calendar: {payload.get('calendar_label', '')}\n"
+                f"Reminder: {payload.get('reminder_label', '')}\n"
+                f"Status: Pending scout observation"
+            )
+        if status == "READY_FOR_RECRUITMENT_REVIEW":
+            return (
+                f"{payload.get('report_label', 'Demo replay')}\n"
+                f"Candidate: {payload.get('candidate_name', '')}\n"
+                f"Recommendation: {payload.get('recommendation', '')}\n"
+                f"Status: Ready for recruitment review"
+            )
+        if payload.get("email_user_message"):
+            base = _format_selection_success(payload)
+            return f"{base}\n{payload['email_user_message']}"
         if status in {"PENDING_HEAD_COACH_REVIEW", "LINEUP_FINALIZED"}:
             return _format_lineup_success(payload)
         if status == "LINEUP_BOARD_GENERATED" and payload.get("image_route"):
@@ -246,6 +312,18 @@ def _extract_confirmation_card(events: list[dict], answer: str) -> dict[str, Any
             card["action_label"] = (
                 "Submit recommendation to management and reserve budget"
             )
+        elif fn == "SubmitCriticalDecisionAndSendEmail":
+            card["title"] = "Confirm player recommendation"
+            card["action_label"] = "Submit critical decision for management review"
+        elif fn == "OpenTransferOutReviewCase":
+            card["title"] = "Open transfer-out review case"
+            card["action_label"] = "Open transfer-out review case"
+        elif fn == "CreateAndReviewScoutingMission":
+            card["title"] = "Create scouting mission"
+            card["action_label"] = "Create scouting mission"
+        elif fn == "GenerateVisualSquadAndLineupBoard":
+            card["title"] = "Save proposed lineup"
+            card["action_label"] = "Save and show proposed lineup board"
         elif fn == "FinalizeCurrentLineup":
             card["title"] = "Save proposed lineup for head-coach review"
             card["action_label"] = "Save proposed lineup for head-coach review"
@@ -306,6 +384,7 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     remaining_budget = None
     lineup_board_budget = None
     guardrail_intervened = False
+    workflow_cards: list[dict[str, Any]] = []
 
     for event in events:
         orchestration = _trace_orchestration(event)
@@ -346,6 +425,21 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
                 lineup_board_budget = payload.get("remaining_budget_eur")
             if payload.get("formation"):
                 pass
+            if payload.get("mission_card_type") == "scouting_mission":
+                workflow_cards.append({"type": "scouting_mission", **payload})
+            if payload.get("status") == "PENDING_TECHNICAL_DIRECTOR_REVIEW":
+                workflow_cards.append({"type": "transfer_out_review", **payload})
+            if payload.get("report_label"):
+                workflow_cards.append({"type": "completed_demo_report", **payload})
+            if payload.get("squad_board_type") == "visual_squad_board":
+                workflow_cards.append({"type": "visual_squad_board", **payload})
+            if payload.get("email_user_message"):
+                workflow_cards.append(
+                    {
+                        "type": "review_email_result",
+                        "message": payload.get("email_user_message"),
+                    }
+                )
         guard_trace = event.get("trace", {}).get("trace", {}).get("guardrailTrace")
         if guard_trace and guard_trace.get("action") == "INTERVENED":
             guardrail_intervened = True
@@ -373,6 +467,7 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
         "missing_information": None,
         "warnings": warnings[:4],
         "confirmation_card": confirmation_card,
+        "workflow_cards": workflow_cards[:4],
         "guardrail_intervened": guardrail_intervened,
         "coach_brief": bool(_COACH_BRIEF_PREFIX.search(answer or "")),
     }

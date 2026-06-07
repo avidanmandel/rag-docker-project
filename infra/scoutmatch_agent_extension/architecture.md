@@ -36,12 +36,25 @@ flowchart LR
 
 ## Four public Agent-facing tools
 
+### Legacy (default when `SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED=false`)
+
 | Tool | Lambda |
 |------|--------|
 | `PlanMatchTactics` | `ScoutMatchPlanMatchTacticsAvidan` |
 | `SubmitPlayerSelectionToManagement` | `ScoutMatchSubmitPlayerSelectionAvidan` |
 | `FinalizeCurrentLineup` | `ScoutMatchFinalizeCurrentLineupAvidan` |
 | `GenerateCurrentLineupBoard` | `ScoutMatchGenerateLineupBoardAvidan` |
+
+### Business workflow v2 (staging alias when flag enabled)
+
+| Tool | Lambda (AWS name preserved) |
+|------|----------------------------|
+| `SubmitCriticalDecisionAndSendEmail` | `ScoutMatchSubmitPlayerSelectionAvidan` |
+| `OpenTransferOutReviewCase` | `ScoutMatchPlanMatchTacticsAvidan` |
+| `CreateAndReviewScoutingMission` | `ScoutMatchFinalizeCurrentLineupAvidan` |
+| `GenerateVisualSquadAndLineupBoard` | `ScoutMatchGenerateLineupBoardAvidan` |
+
+See `docs/SCOUTMATCH_BUSINESS_WORKFLOW_V2.md` for record types, integrations, and rollback.
 
 ## Principles
 

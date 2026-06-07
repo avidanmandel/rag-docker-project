@@ -141,6 +141,9 @@ const els = {
     systemStatusList: document.getElementById("systemStatusList"),
     squadCountLabel: document.getElementById("squadCountLabel"),
     candidateCountLabel: document.getElementById("candidateCountLabel"),
+    heroHeadline: document.getElementById("heroHeadline"),
+    heroSubtitle: document.getElementById("heroSubtitle"),
+    workspaceCards: document.getElementById("workspaceCards"),
 };
 
 const REFUSAL_MARKERS = [
@@ -458,6 +461,20 @@ async function loadOpeningSeasonWorkspace() {
         const sidebarCandidates = document.getElementById("sidebarCandidateCount");
         if (sidebarSquad) sidebarSquad.textContent = String(ws.club_player_count || 15);
         if (sidebarCandidates) sidebarCandidates.textContent = String(ws.candidate_pool_count || 8);
+        if (ws.hero && els.heroHeadline) {
+            els.heroHeadline.innerHTML = escapeHtml(ws.hero.headline || "").replace(/\n/g, "<br>");
+        }
+        if (ws.hero && els.heroSubtitle) {
+            els.heroSubtitle.textContent = ws.hero.subtitle || els.heroSubtitle.textContent;
+        }
+        if (Array.isArray(ws.business_cards) && els.workspaceCards) {
+            els.workspaceCards.innerHTML = ws.business_cards
+                .map(
+                    card =>
+                        `<div class="scouting-status-tile"><span class="scouting-status-tile__label">${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong></div>`
+                )
+                .join("");
+        }
         renderBaselineDocuments(ws.club_knowledge || [], ws.club_player_count || 15);
         renderCandidatePool(ws.candidate_pool || [], ws.candidate_pool_count || 8);
         renderSuggestedPrompts(ws.suggested_prompts || [], ws.secondary_prompts || []);
@@ -1009,10 +1026,20 @@ function renderConfirmationCard(card) {
     const params = card.parameters || {};
     const rows = [];
     if (params.candidate_name) rows.push(["Candidate", params.candidate_name]);
+    if (params.player_name) rows.push(["Player", params.player_name]);
     if (params.target_role) rows.push(["Target role", params.target_role]);
     if (params.salary_eur) rows.push(["Salary", `${Number(params.salary_eur).toLocaleString()} EUR`]);
+    if (params.candidate_cost_eur) rows.push(["Salary", `${Number(params.candidate_cost_eur).toLocaleString()} EUR`]);
+    if (params.reserved_amount_eur) rows.push(["Reserved budget", `${Number(params.reserved_amount_eur).toLocaleString()} EUR`]);
+    if (params.estimated_budget_release_eur) {
+        rows.push(["Estimated budget released", `${Number(params.estimated_budget_release_eur).toLocaleString()} EUR`]);
+    }
+    if (params.fixture_name) rows.push(["Match", params.fixture_name]);
+    if (params.display_date) rows.push(["Date", params.display_date]);
     if (params.formation) rows.push(["Formation", params.formation]);
-    if (card.function === "FinalizeCurrentLineup") rows.push(["Players", "11"]);
+    if (card.function === "FinalizeCurrentLineup" || card.function === "GenerateVisualSquadAndLineupBoard") {
+        rows.push(["Players", "11"]);
+    }
     rows.push(["Action", card.action_label || card.title || "Confirm write action"]);
 
     const body = document.createElement("div");
@@ -1058,6 +1085,35 @@ function renderLineupBoard(route) {
     return wrap;
 }
 
+function renderWorkflowCards(cards) {
+    if (!Array.isArray(cards) || !cards.length) return null;
+    const wrap = document.createElement("div");
+    wrap.className = "workflow-cards";
+    cards.forEach(card => {
+        const item = document.createElement("div");
+        item.className = `workflow-card workflow-card--${card.type || "generic"}`;
+        const title = document.createElement("div");
+        title.className = "workflow-card__title";
+        title.textContent = card.type ? card.type.replace(/_/g, " ") : "Workflow update";
+        item.appendChild(title);
+        const body = document.createElement("div");
+        body.className = "workflow-card__body";
+        const lines = [];
+        if (card.candidate_name) lines.push(`Candidate: ${card.candidate_name}`);
+        if (card.player_name) lines.push(`Player: ${card.player_name}`);
+        if (card.calendar_label) lines.push(`Calendar: ${card.calendar_label}`);
+        if (card.calendar_invite_key) {
+            lines.push(`Download: /api/opening-season/calendar-invite/${card.calendar_invite_key}`);
+        }
+        if (card.report_route) lines.push(`Report: ${card.report_route}`);
+        if (card.message) lines.push(card.message);
+        body.textContent = lines.join("\n");
+        item.appendChild(body);
+        wrap.appendChild(item);
+    });
+    return wrap;
+}
+
 function renderAgentExtras(msg) {
     const meta = msg.agent_metadata;
     if (!meta || typeof meta !== "object") return null;
@@ -1067,6 +1123,8 @@ function renderAgentExtras(msg) {
     }
     const card = renderConfirmationCard(meta.confirmation_card);
     if (card) frag.appendChild(card);
+    const workflow = renderWorkflowCards(meta.workflow_cards);
+    if (workflow) frag.appendChild(workflow);
     const board = renderLineupBoard(meta.lineup_image_route);
     if (board) frag.appendChild(board);
     if (meta.remaining_budget_eur != null) {

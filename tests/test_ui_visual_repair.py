@@ -41,10 +41,12 @@ def test_homepage_quick_start_grid_and_five_buttons_template():
     assert "renderSuggestions" in js or "suggestions" in js
 
 
-def test_opening_season_workspace_exposes_five_quick_starts():
+def test_opening_season_workspace_exposes_five_quick_starts(monkeypatch):
+    import config as cfg
     import opening_season_workspace as workspace
 
-    prompts = workspace.SUGGESTED_PROMPTS + workspace.SECONDARY_PROMPTS
+    monkeypatch.setattr(cfg, "SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", True, raising=False)
+    prompts = workspace.active_suggested_prompts()
     assert len(prompts) == 5
 
 

@@ -1,0 +1,14 @@
+{
+  "candidate_name": "Ron Ben Ari",
+  "report_type": "synthetic_demo_replay",
+  "match": "Ron Ben Ari's club vs. Hapoel City",
+  "observation_status": "COMPLETED",
+  "defensive_recoveries": 7,
+  "overlapping_runs": 6,
+  "key_passes": 2,
+  "pressing_intensity": "strong",
+  "recovery_speed": "good",
+  "defensive_positioning": "mostly reliable",
+  "main_risk": "Space may remain behind the player during attacking overlaps",
+  "recommendation": "Proceed to management review with defensive cover behind the right-back position."
+}

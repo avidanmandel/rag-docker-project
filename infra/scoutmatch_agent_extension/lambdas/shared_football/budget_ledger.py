@@ -11,6 +11,23 @@ def get_context_budget() -> dict | None:
     return get_item("squad_context#current")
 
 
+def ensure_demo_context(*, budget_eur: int = 100_000, opponent: str = "Barcelona") -> dict:
+    """Seed opening-season demo context when missing (v2 workflow)."""
+    import uuid
+
+    ctx = get_context_budget()
+    if ctx:
+        return ctx
+    record = {
+        "planning_context_id": f"ctx-{uuid.uuid4().hex[:8]}",
+        "available_budget_eur": budget_eur,
+        "opponent": opponent,
+        "demo_scope": active_demo_season_id(),
+    }
+    put_item(entity_key="squad_context#current", item_type="SQUAD_CONTEXT", payload=record)
+    return record
+
+
 def _in_active_demo_season(record: dict) -> bool:
     season = (record.get("demo_season_id") or "").strip()
     if not season:

@@ -43,6 +43,9 @@ def parse_starting_xi(raw: str) -> list[dict]:
 
 
 def finalize_lineup(params: dict) -> tuple[dict | None, str]:
+    from budget_ledger import ensure_demo_context
+
+    ensure_demo_context()
     ctx = get_current_context()
     if not ctx:
         return None, "Save the match planning context before finalizing a lineup."
