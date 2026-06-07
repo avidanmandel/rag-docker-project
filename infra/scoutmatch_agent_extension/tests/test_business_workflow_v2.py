@@ -374,3 +374,18 @@ def test_ses_disabled_fallback():
     result = send_review_email({"candidate_name": "Ron Ben Ari", "status": "PENDING_MANAGEMENT_APPROVAL"})
     assert result["sent"] is False
     assert "saved for management review" in result["user_message"]
+
+
+def test_season_context_imports_under_lambda_flat_layout(tmp_path):
+    """Regression for AWS Lambda IndexError when season_context sits at /var/task/."""
+    src = LAMBDAS / "shared_football" / "season_context.py"
+    target = tmp_path / "season_context.py"
+    target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("season_context_flat", target)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    report = module.load_completed_observation_report("ron-ben-ari")
+    assert report is not None
+    assert report["report_type"] == "synthetic_demo_replay"
+    assert report["candidate_name"] == "Ron Ben Ari"
