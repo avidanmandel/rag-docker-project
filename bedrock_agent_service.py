@@ -155,6 +155,10 @@ _V2_WRITE_STEER_SUFFIX = (
     " Invoke the matching write tool immediately with defaults from approved club data. "
     "Do not ask clarifying questions."
 )
+_V2_RENDER_ONLY_PATTERN = re.compile(
+    r"show me the updated proposed lineup and squad-risk board",
+    re.I,
+)
 _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"open\s+a\s+transfer-out\s+review\s+case", re.I),
     re.compile(r"submit\s+(?:the\s+)?recommendation", re.I),
@@ -189,6 +193,11 @@ def _maybe_steered_v2_prompt(question: str) -> str:
     text = (question or "").strip()
     if not text or text in {"Confirm", "Deny"}:
         return text
+    if _V2_RENDER_ONLY_PATTERN.search(text):
+        return (
+            f"{text} Use GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT only. "
+            "Do not save or reserve budget."
+        )
     augmented = text
     for pattern, suffix in _V2_EXPLICIT_WRITE_AUGMENTS:
         if pattern.search(text):
@@ -733,6 +742,25 @@ def invoke_agent(
                     answer, collected_events, metadata = _invoke_agent_once(
                         client, agent_session=agent_session, question=steered
                     )
+            if (
+                _business_workflow_v2_enabled()
+                and any(pattern.search(normalized) for pattern in _V2_WRITE_INTENT_PATTERNS)
+                and not metadata.get("pending_return_control")
+                and not metadata.get("confirmation_card")
+                and answer != GENERIC_ERROR_MESSAGE
+            ):
+                for attempt in range(2):
+                    retry_session = f"{agent_session}-w{attempt + 1}"
+                    retry_prompt = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
+                    retry_answer, retry_events, retry_meta = _invoke_agent_once(
+                        client,
+                        agent_session=retry_session,
+                        question=retry_prompt,
+                    )
+                    answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+                    agent_session = retry_session
+                    if metadata.get("pending_return_control") or metadata.get("confirmation_card"):
+                        break
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             if refused and prompt != normalized:
                 retry_answer, retry_events, retry_meta = _invoke_agent_once(
