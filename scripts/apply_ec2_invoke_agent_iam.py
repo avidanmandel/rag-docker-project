@@ -27,13 +27,15 @@ FOOTBALL_OPS_TABLE = os.getenv(
 )
 
 
-def _load_agent_ids() -> tuple[str, str]:
+def _load_agent_ids() -> tuple[str, str, list[str]]:
     agent_id = (os.getenv("SCOUTMATCH_AGENT_ID") or "").strip()
     alias_id = (os.getenv("SCOUTMATCH_AGENT_ALIAS_ID") or "").strip()
+    staging_alias_id = (os.getenv("SCOUTMATCH_AGENT_STAGING_ALIAS_ID") or "").strip()
     if STATE_PATH.exists():
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
         agent_id = agent_id or str(state.get("agent_id") or "").strip()
         alias_id = alias_id or str(state.get("agent_alias_id") or "").strip()
+        staging_alias_id = staging_alias_id or str(state.get("agent_staging_alias_id") or "").strip()
     env_agent = ROOT / ".env.agent"
     if env_agent.exists():
         for line in env_agent.read_text(encoding="utf-8").splitlines():
@@ -47,11 +49,16 @@ def _load_agent_ids() -> tuple[str, str]:
                 agent_id = value
             if key == "SCOUTMATCH_AGENT_ALIAS_ID" and not alias_id:
                 alias_id = value
+            if key == "SCOUTMATCH_AGENT_STAGING_ALIAS_ID" and not staging_alias_id:
+                staging_alias_id = value
             if key == "AWS_S3_BUCKET" and value:
                 os.environ.setdefault("AWS_S3_BUCKET", value)
     if not agent_id or not alias_id:
         raise SystemExit("Missing SCOUTMATCH_AGENT_ID or SCOUTMATCH_AGENT_ALIAS_ID in state or .env.agent")
-    return agent_id, alias_id
+    alias_ids = [alias_id]
+    if staging_alias_id and staging_alias_id not in alias_ids:
+        alias_ids.append(staging_alias_id)
+    return agent_id, alias_id, alias_ids
 
 
 def _bucket_name() -> str:
@@ -68,11 +75,20 @@ def _bucket_name() -> str:
     return bucket
 
 
-def build_policy_document(*, account_id: str, agent_id: str, alias_id: str, bucket: str) -> dict:
-    alias_arn = f"arn:aws:bedrock:{REGION}:{account_id}:agent-alias/{agent_id}/{alias_id}"
+def build_policy_document(
+    *,
+    account_id: str,
+    agent_id: str,
+    alias_ids: list[str],
+    bucket: str,
+) -> dict:
+    alias_arns = [
+        f"arn:aws:bedrock:{REGION}:{account_id}:agent-alias/{agent_id}/{alias_id}"
+        for alias_id in alias_ids
+    ]
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     document = (
-        template.replace("{{AGENT_ALIAS_ARN}}", alias_arn)
+        template.replace('"{{AGENT_ALIAS_ARNS}}"', json.dumps(alias_arns))
         .replace("{{BUCKET_NAME}}", bucket)
         .replace("{{REGION}}", REGION)
         .replace("{{ACCOUNT_ID}}", account_id)
@@ -89,14 +105,14 @@ def _redact_policy_for_output(policy: dict) -> dict:
 
 
 def apply_policy(*, dry_run: bool = False) -> dict:
-    agent_id, alias_id = _load_agent_ids()
+    agent_id, alias_id, alias_ids = _load_agent_ids()
     bucket = _bucket_name()
     sts = boto3.client("sts", region_name=REGION)
     account_id = sts.get_caller_identity()["Account"]
     policy = build_policy_document(
         account_id=account_id,
         agent_id=agent_id,
-        alias_id=alias_id,
+        alias_ids=alias_ids,
         bucket=bucket,
     )
     result = {

@@ -163,6 +163,24 @@ _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
     re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
 )
+_V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"open\s+a\s+transfer-out\s+review\s+case\s+for\s+daniel\s+cohen", re.I),
+        " Daniel Cohen is an approved current-squad rotation midfielder in ScoutMatch operational data.",
+    ),
+    (
+        re.compile(r"submit\s+the\s+recommendation\s+for\s+management\s+review", re.I),
+        " Ron Ben Ari is the approved right-back candidate at 43,000 EUR in ScoutMatch operational data.",
+    ),
+    (
+        re.compile(r"create\s+a\s+scouting\s+mission\s+for\s+his\s+next\s+match", re.I),
+        " Use Ron Ben Ari as candidate_name with mission_mode CREATE_MISSION.",
+    ),
+    (
+        re.compile(r"save\s+and\s+show\s+the\s+proposed\s+4-3-3\s+lineup", re.I),
+        " Use board_mode SAVE_AND_RENDER, formation 4-3-3, and demo_lineup true.",
+    ),
+)
 
 
 def _maybe_steered_v2_prompt(question: str) -> str:
@@ -171,9 +189,14 @@ def _maybe_steered_v2_prompt(question: str) -> str:
     text = (question or "").strip()
     if not text or text in {"Confirm", "Deny"}:
         return text
+    augmented = text
+    for pattern, suffix in _V2_EXPLICIT_WRITE_AUGMENTS:
+        if pattern.search(text):
+            augmented = f"{augmented}{suffix}"
+            break
     if any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS):
-        return f"{text}{_V2_WRITE_STEER_SUFFIX}"
-    return text
+        return f"{augmented}{_V2_WRITE_STEER_SUFFIX}"
+    return augmented
 
 
 def _needs_v2_write_steering(question: str, metadata: dict[str, Any]) -> bool:

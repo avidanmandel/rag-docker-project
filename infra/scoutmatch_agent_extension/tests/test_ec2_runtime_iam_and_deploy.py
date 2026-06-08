@@ -60,7 +60,7 @@ def test_iam_template_grants_only_invoke_agent_for_bedrock():
 
 def test_iam_template_uses_exact_alias_placeholder_not_wildcard():
     text = TEMPLATE.read_text(encoding="utf-8")
-    assert "{{AGENT_ALIAS_ARN}}" in text
+    assert "{{AGENT_ALIAS_ARNS}}" in text
     assert '"*"' not in text
     assert "Resource" in text
 
@@ -83,13 +83,14 @@ def test_build_policy_document_scopes_alias_arn_only():
     doc = mod.build_policy_document(
         account_id="000000000000",
         agent_id="AGENTID123",
-        alias_id="ALIASID123",
+        alias_ids=["ALIASID123", "STAGING123"],
         bucket="example-bucket",
     )
     bedrock_stmt = doc["Statement"][0]
     assert bedrock_stmt["Action"] == ["bedrock:InvokeAgent"]
-    assert len(bedrock_stmt["Resource"]) == 1
+    assert len(bedrock_stmt["Resource"]) == 2
     assert "agent-alias/AGENTID123/ALIASID123" in bedrock_stmt["Resource"][0]
+    assert "agent-alias/AGENTID123/STAGING123" in bedrock_stmt["Resource"][1]
     assert "*" not in bedrock_stmt["Resource"][0]
 
 

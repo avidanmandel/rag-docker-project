@@ -5,7 +5,7 @@
       "Sid": "InvokeScoutMatchAgentAliasOnly",
       "Effect": "Allow",
       "Action": ["bedrock:InvokeAgent"],
-      "Resource": ["{{AGENT_ALIAS_ARN}}"]
+      "Resource": "{{AGENT_ALIAS_ARNS}}"
     },
     {
       "Sid": "ListPrivateLineupSvgPrefixOnly",
