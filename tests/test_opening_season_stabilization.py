@@ -44,27 +44,6 @@ def _ensure_shared_paths() -> None:
             sys.path.insert(0, path)
 
 
-def _purge_stab_modules() -> None:
-    for name in _STAB_ALIASES:
-        sys.modules.pop(f"{_STAB_PREFIX}{name}", None)
-    for name in _STAB_ALIASES:
-        mod = sys.modules.get(name)
-        mod_file = getattr(mod, "__file__", "") or ""
-        if mod is not None and "shared_football" in str(mod_file).replace("\\", "/"):
-            sys.modules.pop(name, None)
-
-
-def _load_stab(internal_name: str, filename: str):
-    mod_key = f"{_STAB_PREFIX}{internal_name}"
-    spec = importlib.util.spec_from_file_location(mod_key, SHARED / filename)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[mod_key] = module
-    sys.modules[internal_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def _bind_shared_modules() -> None:
     global clear_local_store, get_item, put_item, plan_match_tactics
     global finalize_lineup, get_current_lineup, submit_selection
@@ -72,22 +51,18 @@ def _bind_shared_modules() -> None:
     global validate_starter_lineup, FINAL_FOUR_LAMBDAS, FINAL_USER_FACING_FUNCTIONS
     global is_write_confirmed
 
-    _purge_stab_modules()
-    _ensure_shared_paths()
+    from lambda_test_isolation import evict_conflicting_modules, reload_shared_football_modules
 
-    _ops = _load_stab("operations_store", "operations_store.py")
-    _load_stab("budget_rules", "budget_rules.py")
-    _load_stab("budget_ledger", "budget_ledger.py")
-    _validation = _load_stab("validation", "validation.py")
-    _sns = _load_stab("sns_notification", "sns_notification.py")
-    _demo = _load_stab("demo_roster", "demo_roster.py")
-    _load_stab("squad_context", "squad_context.py")
-    _tactical = _load_stab("tactical_planner", "tactical_planner.py")
-    _lineup = _load_stab("lineup_store", "lineup_store.py")
-    _selection = _load_stab("player_selection", "player_selection.py")
+    evict_conflicting_modules()
+    reload_shared_football_modules()
 
-    for name in _STAB_ALIASES:
-        sys.modules.pop(name, None)
+    _ops = sys.modules["operations_store"]
+    _validation = sys.modules["validation"]
+    _sns = sys.modules["sns_notification"]
+    _demo = sys.modules["demo_roster"]
+    _tactical = sys.modules["tactical_planner"]
+    _lineup = sys.modules["lineup_store"]
+    _selection = sys.modules["player_selection"]
 
     clear_local_store = _ops.clear_local_store
     get_item = _ops.get_item
@@ -114,9 +89,6 @@ def _bind_shared_modules() -> None:
     is_write_confirmed = _wc.is_write_confirmed
 
 
-_bind_shared_modules()
-
-
 _SHARED_NAMES = _STAB_ALIASES + ("squad_context",)
 
 
@@ -141,7 +113,9 @@ def _fresh_store(tmp_path, monkeypatch):
     clear_local_store()
     yield
     clear_local_store()
-    _purge_stab_modules()
+    from lambda_test_isolation import evict_conflicting_modules
+
+    evict_conflicting_modules()
 
 
 def _seed_planning_context() -> None:

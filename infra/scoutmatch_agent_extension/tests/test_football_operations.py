@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from lambda_test_isolation import reload_football_operations_lambda
+
 os.environ["SCOUTMATCH_USE_LOCAL_STORE"] = "true"
 os.environ["SCOUTMATCH_WORKFLOW_INPROCESS"] = "true"
 
@@ -15,12 +17,20 @@ for path in (str(_COMMON), str(_OPS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-_spec = importlib.util.spec_from_file_location("football_ops_lambda", _OPS / "lambda_function.py")
-ops = importlib.util.module_from_spec(_spec)
-assert _spec.loader is not None
-_spec.loader.exec_module(ops)
+ops = None
 
-from operations_store import clear_local_store  # noqa: E402
+
+@pytest.fixture(autouse=True)
+def _football_operations_store():
+    global ops
+    ops, store = reload_football_operations_lambda()
+    store.clear_local_store()
+    yield
+    store.clear_local_store()
+
+
+def _store():
+    return sys.modules["operations_store"]
 
 
 def _body(resp):
@@ -34,13 +44,6 @@ def _event(function, params, confirmed=False):
         "parameters": [{"name": k, "value": str(v)} for k, v in params.items()],
         "sessionAttributes": {"write_confirmed": "true"} if confirmed else {},
     }
-
-
-@pytest.fixture(autouse=True)
-def reset_store():
-    clear_local_store()
-    yield
-    clear_local_store()
 
 
 DEMO_XI = (

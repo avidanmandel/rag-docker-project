@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from lambda_test_isolation import reload_football_operations_lambda
+
 ROOT = Path(__file__).resolve().parents[1]
 _OPS = ROOT / "infra/scoutmatch_agent_extension/lambdas/football_operations"
 os.environ.setdefault("SCOUTMATCH_USE_LOCAL_STORE", "true")
@@ -20,14 +22,13 @@ for path in (str(_OPS.parent / "common"), str(_OPS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-_spec = importlib.util.spec_from_file_location("football_ops_lambda", _OPS / "lambda_function.py")
-ops = importlib.util.module_from_spec(_spec)
-assert _spec.loader is not None
-_spec.loader.exec_module(ops)
-
-from operations_store import clear_local_store, list_by_prefix  # noqa: E402
+ops = None
 
 import bedrock_agent_service as advisor  # noqa: E402
+
+
+def _store():
+    return sys.modules["operations_store"]
 
 
 def _body(resp):
@@ -53,9 +54,11 @@ def _player_marker_names(svg: str) -> list[str]:
 
 @pytest.fixture(autouse=True)
 def reset_store():
-    clear_local_store()
+    global ops
+    ops, store = reload_football_operations_lambda()
+    store.clear_local_store()
     yield
-    clear_local_store()
+    store.clear_local_store()
 
 
 def _seed_demo_flow(*, confirm_ron: bool = True) -> dict:
@@ -166,7 +169,7 @@ def test_repeated_confirmation_is_idempotent_for_budget():
     )
     assert second.get("idempotent") is True
     assert second["remaining_budget_eur"] == first["remaining_budget_eur"] == 57000
-    reservations = [e for e in list_by_prefix("budget_ledger#") if e.get("entry_type") == "RESERVATION"]
+    reservations = [e for e in _store().list_by_prefix("budget_ledger#") if e.get("entry_type") == "RESERVATION"]
     assert len(reservations) == 1
 
 
@@ -184,16 +187,14 @@ def test_legacy_ledger_without_context_uses_matching_selection_scope():
             None,
         )
     )
-    from operations_store import list_by_prefix, put_item
-
-    for entry in list_by_prefix("budget_ledger#"):
+    for entry in _store().list_by_prefix("budget_ledger#"):
         if entry.get("entry_type") == "RESERVATION":
             legacy = {
                 k: v
                 for k, v in entry.items()
                 if k not in {"entity_key", "item_type", "updated_at", "planning_context_id"}
             }
-            put_item(entity_key=entry["entity_key"], item_type="BUDGET_LEDGER", payload=legacy)
+            _store().put_item(entity_key=entry["entity_key"], item_type="BUDGET_LEDGER", payload=legacy)
             break
     xi = (
         "Avi Cohen:GK;Ron Ben Ari:RB;Yossi Bar:CB;Michael Ross:CB;Tal Amar:LB;"
@@ -220,7 +221,7 @@ def test_deny_does_not_reserve_budget():
         )
     )
     assert deny["status"] == "PENDING_CONFIRMATION"
-    reservations = [e for e in list_by_prefix("budget_ledger#") if e.get("entry_type") == "RESERVATION"]
+    reservations = [e for e in _store().list_by_prefix("budget_ledger#") if e.get("entry_type") == "RESERVATION"]
     assert reservations == []
 
 

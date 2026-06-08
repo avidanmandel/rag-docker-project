@@ -44,6 +44,16 @@ def _evict_shared_modules() -> None:
         sys.modules.pop(name, None)
 
 
+def _reload_shared_modules() -> None:
+    for name in _SHARED_MODULES:
+        path = LAMBDAS / "shared_football" / f"{name}.py"
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        sys.modules[name] = module
+
+
 @pytest.fixture(autouse=True)
 def _legacy_four_lambda_env():
     os.environ.pop("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", None)
@@ -61,6 +71,7 @@ def _isolated_shared_store():
     store = _shared_operations_store()
     sys.modules["operations_store"] = store
     _evict_shared_modules()
+    _reload_shared_modules()
     store.clear_local_store()
     yield
     store.clear_local_store()

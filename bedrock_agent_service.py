@@ -30,6 +30,7 @@ AGENT_ENABLED = os.getenv("SCOUTMATCH_AGENT_EXTENSION_ENABLED", "false").strip()
 )
 AGENT_ID = (os.getenv("SCOUTMATCH_AGENT_ID") or "").strip()
 AGENT_ALIAS_ID = (os.getenv("SCOUTMATCH_AGENT_ALIAS_ID") or "").strip()
+AGENT_STAGING_ALIAS_ID = (os.getenv("SCOUTMATCH_AGENT_STAGING_ALIAS_ID") or "").strip()
 
 DISABLED_MESSAGE = (
     "ScoutMatch Bedrock Agent recruitment advisor is disabled. "
@@ -49,6 +50,22 @@ def _business_workflow_v2_enabled() -> bool:
         "1",
         "true",
         "yes",
+    }
+
+
+def _resolved_agent_alias_id() -> str:
+    if _business_workflow_v2_enabled() and AGENT_STAGING_ALIAS_ID:
+        return AGENT_STAGING_ALIAS_ID
+    return AGENT_ALIAS_ID
+
+
+def agent_runtime_config() -> dict[str, Any]:
+    """Sanitized runtime config for status endpoints."""
+    alias = _resolved_agent_alias_id()
+    return {
+        "business_workflow_v2": _business_workflow_v2_enabled(),
+        "agent_alias_id": alias or None,
+        "agent_extension_enabled": is_enabled(),
     }
 
 
@@ -134,10 +151,42 @@ _CONFIRM_FIELD_PATTERN = re.compile(
     r"(?:^|\n)\s*(?:[-*]\s*)?\*\*(Candidate|Target Role|Salary|Formation|Players):\*\*\s*([^\n]+)",
     re.I,
 )
+_V2_WRITE_STEER_SUFFIX = (
+    " Invoke the matching write tool immediately with defaults from approved club data. "
+    "Do not ask clarifying questions."
+)
+_V2_WRITE_INTENT_PATTERNS = (
+    re.compile(r"open\s+a\s+transfer-out\s+review\s+case", re.I),
+    re.compile(r"submit\s+(?:the\s+)?recommendation", re.I),
+    re.compile(r"choose\s+.+\s+submit", re.I),
+    re.compile(r"create\s+a\s+scouting\s+mission", re.I),
+    re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
+    re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
+)
+
+
+def _maybe_steered_v2_prompt(question: str) -> str:
+    if not _business_workflow_v2_enabled():
+        return question
+    text = (question or "").strip()
+    if not text or text in {"Confirm", "Deny"}:
+        return text
+    if any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS):
+        return f"{text}{_V2_WRITE_STEER_SUFFIX}"
+    return text
+
+
+def _needs_v2_write_steering(question: str, metadata: dict[str, Any]) -> bool:
+    if not _business_workflow_v2_enabled():
+        return False
+    if metadata.get("confirmation_card") or metadata.get("pending_return_control"):
+        return False
+    text = (question or "").strip()
+    return any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS)
 
 
 def is_enabled() -> bool:
-    return AGENT_ENABLED and bool(AGENT_ID) and bool(AGENT_ALIAS_ID)
+    return AGENT_ENABLED and bool(AGENT_ID) and bool(_resolved_agent_alias_id())
 
 
 def disabled_response() -> dict[str, Any]:
@@ -283,7 +332,101 @@ def _trace_orchestration(event: dict) -> dict:
     return trace.get("trace", {}).get("orchestrationTrace") or {}
 
 
-def _extract_confirmation_card(events: list[dict], answer: str) -> dict[str, Any] | None:
+def _confirmation_card_for_function(fn: str, params: dict[str, str]) -> dict[str, Any]:
+    card: dict[str, Any] = {
+        "function": fn,
+        "parameters": params,
+        "state": "pending",
+    }
+    if fn == "SubmitPlayerSelectionToManagement":
+        card["title"] = "Submit recommendation to management"
+        card["action_label"] = "Submit recommendation to management and reserve budget"
+    elif fn == "SubmitCriticalDecisionAndSendEmail":
+        card["title"] = "Confirm player recommendation"
+        card["action_label"] = "Submit critical decision for management review"
+    elif fn == "OpenTransferOutReviewCase":
+        card["title"] = "Open transfer-out review case"
+        card["action_label"] = "Open transfer-out review case"
+    elif fn == "CreateAndReviewScoutingMission":
+        card["title"] = "Create scouting mission"
+        card["action_label"] = "Create scouting mission"
+    elif fn == "GenerateVisualSquadAndLineupBoard":
+        card["title"] = "Save proposed lineup"
+        card["action_label"] = "Save and show proposed lineup board"
+    elif fn == "FinalizeCurrentLineup":
+        card["title"] = "Save proposed lineup for head-coach review"
+        card["action_label"] = "Save proposed lineup for head-coach review"
+    else:
+        card["title"] = "Action requires confirmation"
+        card["action_label"] = "Confirm this write action"
+    return card
+
+
+def _parse_return_control(events: list[dict]) -> dict[str, Any] | None:
+    for event in reversed(events):
+        rc = event.get("returnControl") or {}
+        invocation_id = str(rc.get("invocationId") or "").strip()
+        for item in rc.get("invocationInputs") or []:
+            fn_input = item.get("functionInvocationInput") or {}
+            inv_type = str(fn_input.get("actionInvocationType") or "")
+            if inv_type != "USER_CONFIRMATION":
+                continue
+            fn = str(fn_input.get("function") or "")
+            if fn not in WRITE_CONFIRM_TOOLS:
+                continue
+            params = _parse_parameters(fn_input)
+            return {
+                "invocation_id": invocation_id,
+                "action_group": str(fn_input.get("actionGroup") or ""),
+                "function": fn,
+                "parameters": params,
+            }
+    return None
+
+
+def _confirmation_prompt_from_return_control(pending: dict[str, Any]) -> str:
+    fn = str(pending.get("function") or "")
+    params = pending.get("parameters") or {}
+    if fn == "OpenTransferOutReviewCase":
+        player = params.get("player_name") or "the selected player"
+        release = params.get("estimated_budget_release_eur") or params.get("estimated_release_eur")
+        suffix = f" Estimated release: {release} EUR." if release else ""
+        return (
+            f"Please confirm opening a transfer-out review case for {player}.{suffix} "
+            "No budget will change until technical-director review completes."
+        )
+    if fn == "SubmitCriticalDecisionAndSendEmail":
+        candidate = params.get("candidate_name") or "the candidate"
+        salary = params.get("salary_eur") or "43000"
+        return (
+            f"Please confirm submitting {candidate} for management review. "
+            f"Budget reservation: {salary} EUR. Remaining budget after confirmation: 57,000 EUR."
+        )
+    if fn == "CreateAndReviewScoutingMission":
+        candidate = params.get("candidate_name") or "the candidate"
+        return (
+            f"Please confirm creating a scouting mission for {candidate}. "
+            "A calendar invite will be prepared for download after confirmation."
+        )
+    if fn == "GenerateVisualSquadAndLineupBoard":
+        return (
+            "Please confirm saving the proposed 4-3-3 lineup for head-coach review. "
+            "Exactly 11 proposed players will be saved after confirmation."
+        )
+    return "Please confirm this write action before it is saved."
+
+
+def _extract_confirmation_card(
+    events: list[dict],
+    answer: str,
+    *,
+    pending_return_control: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if pending_return_control:
+        return _confirmation_card_for_function(
+            str(pending_return_control.get("function") or ""),
+            pending_return_control.get("parameters") or {},
+        )
     pending = "PENDING_CONFIRMATION" in (answer or "").upper()
     for event in reversed(events):
         orchestration = _trace_orchestration(event)
@@ -302,32 +445,7 @@ def _extract_confirmation_card(events: list[dict], answer: str) -> dict[str, Any
         if not pending:
             continue
         params = _parse_parameters(ag)
-        card: dict[str, Any] = {
-            "function": fn,
-            "parameters": params,
-            "state": "pending",
-        }
-        if fn == "SubmitPlayerSelectionToManagement":
-            card["title"] = "Submit recommendation to management"
-            card["action_label"] = (
-                "Submit recommendation to management and reserve budget"
-            )
-        elif fn == "SubmitCriticalDecisionAndSendEmail":
-            card["title"] = "Confirm player recommendation"
-            card["action_label"] = "Submit critical decision for management review"
-        elif fn == "OpenTransferOutReviewCase":
-            card["title"] = "Open transfer-out review case"
-            card["action_label"] = "Open transfer-out review case"
-        elif fn == "CreateAndReviewScoutingMission":
-            card["title"] = "Create scouting mission"
-            card["action_label"] = "Create scouting mission"
-        elif fn == "GenerateVisualSquadAndLineupBoard":
-            card["title"] = "Save proposed lineup"
-            card["action_label"] = "Save and show proposed lineup board"
-        elif fn == "FinalizeCurrentLineup":
-            card["title"] = "Save proposed lineup for head-coach review"
-            card["action_label"] = "Save proposed lineup for head-coach review"
-        return card
+        return _confirmation_card_for_function(fn, params)
     if pending:
         return {
             "function": "unknown",
@@ -347,26 +465,14 @@ def _extract_confirmation_from_answer(answer: str) -> dict[str, Any] | None:
         key.lower().replace(" ", "_"): value.strip()
         for key, value in _CONFIRM_FIELD_PATTERN.findall(text)
     }
-    if "candidate" in fields or "formation" in fields:
-        fn = (
-            "FinalizeCurrentLineup"
-            if "formation" in fields or "players" in fields
-            else "SubmitPlayerSelectionToManagement"
-        )
-        card: dict[str, Any] = {
-            "function": fn,
-            "parameters": fields,
-            "state": "pending",
-        }
-        if fn == "SubmitPlayerSelectionToManagement":
-            card["title"] = "Submit recommendation to management"
-            card["action_label"] = (
-                "Submit recommendation to management and reserve budget"
-            )
+    if "candidate" in fields or "formation" in fields or "target_role" in fields:
+        if "formation" in fields or "players" in fields:
+            fn = "GenerateVisualSquadAndLineupBoard" if _business_workflow_v2_enabled() else "FinalizeCurrentLineup"
+        elif _business_workflow_v2_enabled():
+            fn = "SubmitCriticalDecisionAndSendEmail"
         else:
-            card["title"] = "Save proposed lineup for head-coach review"
-            card["action_label"] = "Save proposed lineup for head-coach review"
-        return card
+            fn = "SubmitPlayerSelectionToManagement"
+        return _confirmation_card_for_function(fn, fields)
     return {
         "function": "unknown",
         "parameters": fields,
@@ -376,7 +482,12 @@ def _extract_confirmation_from_answer(answer: str) -> dict[str, Any] | None:
     }
 
 
-def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
+def _extract_metadata(
+    events: list[dict],
+    answer: str,
+    *,
+    pending_return_control: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     tools: list[str] = []
     documents: list[str] = []
     warnings: list[str] = []
@@ -453,12 +564,16 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
     if lineup_board_budget is not None:
         remaining_budget = lineup_board_budget
 
-    confirmation_card = _extract_confirmation_card(events, answer)
+    confirmation_card = _extract_confirmation_card(
+        events,
+        answer,
+        pending_return_control=pending_return_control,
+    )
     if confirmation_card and "confirmation_or_reprompt" not in warnings:
         warnings.append("confirmation_or_reprompt")
 
     tool_labels = [TOOL_USER_LABELS.get(name, name) for name in tools[:8]]
-    return {
+    metadata = {
         "documents_used": documents[:8],
         "tools_executed": tools[:8],
         "tool_labels": tool_labels[:8],
@@ -471,39 +586,98 @@ def _extract_metadata(events: list[dict], answer: str) -> dict[str, Any]:
         "guardrail_intervened": guardrail_intervened,
         "coach_brief": bool(_COACH_BRIEF_PREFIX.search(answer or "")),
     }
+    if pending_return_control:
+        metadata["pending_return_control"] = pending_return_control
+    return metadata
 
 
 def _invoke_agent_once(
     client,
     *,
     agent_session: str,
-    question: str,
+    question: str | None = None,
+    session_state: dict[str, Any] | None = None,
 ) -> tuple[str, list[dict], dict[str, Any]]:
     collected_events: list[dict] = []
-    response = client.invoke_agent(
-        agentId=AGENT_ID,
-        agentAliasId=AGENT_ALIAS_ID,
-        sessionId=agent_session,
-        inputText=question,
-        enableTrace=True,
-    )
+    kwargs: dict[str, Any] = {
+        "agentId": AGENT_ID,
+        "agentAliasId": _resolved_agent_alias_id(),
+        "sessionId": agent_session,
+        "enableTrace": True,
+    }
+    if session_state:
+        kwargs["sessionState"] = session_state
+    if question is not None:
+        kwargs["inputText"] = question
+    response = client.invoke_agent(**kwargs)
     answer_parts: list[str] = []
     for event in response.get("completion", []):
         collected_events.append(event)
         if "chunk" in event and "bytes" in event["chunk"]:
             answer_parts.append(event["chunk"]["bytes"].decode("utf-8", errors="replace"))
     raw_answer = "".join(answer_parts).strip()
-    metadata = _extract_metadata(collected_events, raw_answer)
+    pending_return_control = _parse_return_control(collected_events)
+    metadata = _extract_metadata(
+        collected_events,
+        raw_answer,
+        pending_return_control=pending_return_control,
+    )
     answer = _answer_from_tool_payload(raw_answer, collected_events)
+    if not answer.strip() and pending_return_control:
+        answer = _confirmation_prompt_from_return_control(pending_return_control)
     answer = _sanitize_text(answer) or GENERIC_ERROR_MESSAGE
     refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
-    if metadata.get("guardrail_intervened") and not raw_answer.strip():
+    if metadata.get("guardrail_intervened") and not raw_answer.strip() and not pending_return_control:
         answer = GUARDRAIL_BLOCK_MESSAGE
         refused = True
     return answer, collected_events, metadata
 
 
-def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]:
+def _invoke_agent_return_control(
+    client,
+    *,
+    agent_session: str,
+    pending: dict[str, Any],
+    confirmation_state: str,
+) -> tuple[str, list[dict], dict[str, Any]]:
+    response_body = json.dumps({"status": confirmation_state})
+    session_state = {
+        "invocationId": pending["invocation_id"],
+        "returnControlInvocationResults": [
+            {
+                "functionResult": {
+                    "actionGroup": pending["action_group"],
+                    "function": pending["function"],
+                    "confirmationState": confirmation_state,
+                    "responseBody": {
+                        "TEXT": {
+                            "body": response_body,
+                        }
+                    },
+                }
+            }
+        ],
+    }
+    return _invoke_agent_once(client, agent_session=agent_session, session_state=session_state)
+
+
+def latest_pending_return_control(messages: list[dict]) -> dict[str, Any] | None:
+    for msg in reversed(messages):
+        if msg.get("role") != "assistant":
+            continue
+        meta = msg.get("agent_metadata") or {}
+        pending = meta.get("pending_return_control")
+        if isinstance(pending, dict) and pending.get("invocation_id"):
+            return pending
+    return None
+
+
+def invoke_agent(
+    question: str,
+    session_id: str | None = None,
+    *,
+    pending_return_control: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if not is_enabled():
         return disabled_response()
 
@@ -511,40 +685,57 @@ def invoke_agent(question: str, session_id: str | None = None) -> dict[str, Any]
     prompt = (
         normalized
         if normalized in {"Confirm", "Deny"}
-        else _guardrail_safe_prompt(normalized)
+        else _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
     )
     agent_session = session_id or f"advisor-{uuid.uuid4().hex}"
     try:
         client = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
-        answer, collected_events, metadata = _invoke_agent_once(
-            client, agent_session=agent_session, question=prompt
-        )
-        refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
-        if refused and prompt != normalized:
-            retry_answer, retry_events, retry_meta = _invoke_agent_once(
-                client, agent_session=agent_session, question=normalized
+        if normalized in {"Confirm", "Deny"} and pending_return_control:
+            confirmation_state = "CONFIRM" if normalized == "Confirm" else "DENY"
+            answer, collected_events, metadata = _invoke_agent_return_control(
+                client,
+                agent_session=agent_session,
+                pending=pending_return_control,
+                confirmation_state=confirmation_state,
             )
-            if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
-                answer, collected_events, metadata = retry_answer, retry_events, retry_meta
-                refused = False
-        if refused and prompt in GUARDRAIL_SAFE_PARAPHRASES:
-            safe = GUARDRAIL_SAFE_PARAPHRASES[prompt]
-            retry_answer, retry_events, retry_meta = _invoke_agent_once(
-                client, agent_session=f"advisor-{uuid.uuid4().hex}", question=safe
+            refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+            clear_pending = True
+        else:
+            answer, collected_events, metadata = _invoke_agent_once(
+                client, agent_session=agent_session, question=prompt
             )
-            if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
-                answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+            if _needs_v2_write_steering(normalized, metadata):
+                steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
+                if steered != prompt:
+                    answer, collected_events, metadata = _invoke_agent_once(
+                        client, agent_session=agent_session, question=steered
+                    )
+            refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+            if refused and prompt != normalized:
+                retry_answer, retry_events, retry_meta = _invoke_agent_once(
+                    client, agent_session=agent_session, question=normalized
+                )
+                if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
+                    answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+                    refused = False
+            if refused and prompt in GUARDRAIL_SAFE_PARAPHRASES:
+                safe = GUARDRAIL_SAFE_PARAPHRASES[prompt]
+                retry_answer, retry_events, retry_meta = _invoke_agent_once(
+                    client, agent_session=f"advisor-{uuid.uuid4().hex}", question=safe
+                )
+                if GUARDRAIL_BLOCK_MESSAGE.lower() not in retry_answer.lower():
+                    answer, collected_events, metadata = retry_answer, retry_events, retry_meta
+                    agent_session = f"advisor-{uuid.uuid4().hex}"
+                    refused = False
+            tool_failed = (
+                answer == GENERIC_ERROR_MESSAGE
+                or "could not complete this request" in answer.lower()
+            )
+            clear_pending = _is_confirmation_input(normalized) and (
+                tool_failed or metadata.get("confirmation_card") is None
+            )
+            if clear_pending:
                 agent_session = f"advisor-{uuid.uuid4().hex}"
-                refused = False
-        tool_failed = (
-            answer == GENERIC_ERROR_MESSAGE
-            or "could not complete this request" in answer.lower()
-        )
-        clear_pending = _is_confirmation_input(normalized) and (
-            tool_failed or metadata.get("confirmation_card") is None
-        )
-        if clear_pending:
-            agent_session = f"advisor-{uuid.uuid4().hex}"
         return {
             "enabled": True,
             "session_id": agent_session,

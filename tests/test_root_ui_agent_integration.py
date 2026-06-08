@@ -12,14 +12,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "infra" / "scoutmatch_agent_extension" / "scripts"))
-sys.path.insert(0, str(ROOT / "infra" / "scoutmatch_agent_extension" / "lambdas" / "shared_football"))
 
 os.environ.setdefault("SCOUTMATCH_USE_LOCAL_STORE", "true")
 
 import bedrock_agent_service as advisor  # noqa: E402
 import database  # noqa: E402
 from four_lambda_apply import FINAL_FOUR_LAMBDAS, FINAL_USER_FACING_FUNCTIONS  # noqa: E402
-from tactical_planner import plan_match_tactics  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +46,7 @@ def test_root_chat_uses_agent_path_when_extension_enabled(monkeypatch):
     monkeypatch.setattr(
         flask_app,
         "invoke_recruitment_advisor",
-        lambda question, session_id=None: {
+        lambda question, session_id=None, pending_return_control=None: {
             "enabled": True,
             "session_id": session_id or "agent-sess-1",
             "answer": "Grounded analyst response.",
@@ -80,7 +78,7 @@ def test_same_agent_session_reused_across_messages(monkeypatch):
     flask_app.app.config["TESTING"] = True
     calls: list[str | None] = []
 
-    def _invoke(question, session_id=None):
+    def _invoke(question, session_id=None, pending_return_control=None):
         calls.append(session_id)
         return {
             "enabled": True,
@@ -109,7 +107,7 @@ def test_new_conversation_gets_new_agent_session(monkeypatch):
     monkeypatch.setattr(
         flask_app,
         "invoke_recruitment_advisor",
-        lambda question, session_id=None: {
+        lambda question, session_id=None, pending_return_control=None: {
             "enabled": True,
             "session_id": session_id or "agent-new",
             "answer": "ok",
@@ -154,7 +152,11 @@ def test_exactly_four_lambdas_and_functions():
 
 
 def test_coach_brief_goalkeeper_injury_plan_is_read_only():
-    body = plan_match_tactics(
+    from lambda_test_isolation import reload_shared_football_modules
+
+    reload_shared_football_modules()
+    tactical = sys.modules["tactical_planner"]
+    body = tactical.plan_match_tactics(
         opponent="",
         squad_context=(
             "Coach brief: Our starting goalkeeper was injured during training and will miss "

@@ -637,7 +637,10 @@ class Deployer:
                     {
                         "Effect": "Allow",
                         "Action": ["lambda:InvokeFunction"],
-                        "Resource": [f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan"],
+                        "Resource": [
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan:*",
+                        ],
                     },
                     {
                         "Effect": "Allow",
@@ -860,7 +863,10 @@ class Deployer:
                     {
                         "Effect": "Allow",
                         "Action": ["lambda:InvokeFunction"],
-                        "Resource": [f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan"],
+                        "Resource": [
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan",
+                            f"arn:aws:lambda:{REGION}:{self.account_id}:function:ScoutMatch*Avidan:*",
+                        ],
                     },
                     {
                         "Effect": "Allow",
@@ -1102,19 +1108,30 @@ class Deployer:
         except ClientError as exc:
             self.blockers.append(f"Native action group {action_group_name}: {exc}")
 
-    def allow_agent_invoke(self, lambda_name: str, agent_arn: str, statement_id: str) -> None:
-        self.plan.append(f"Add scoped invoke permission on {lambda_name}")
+    def allow_agent_invoke(
+        self,
+        lambda_name: str,
+        agent_arn: str,
+        statement_id: str,
+        *,
+        qualifier: str | None = None,
+    ) -> None:
+        label = f"{lambda_name}:{qualifier}" if qualifier else lambda_name
+        self.plan.append(f"Add scoped invoke permission on {label}")
         if not self.apply:
             return
         try:
-            self.lambda_client.add_permission(
-                FunctionName=lambda_name,
-                StatementId=statement_id,
-                Action="lambda:InvokeFunction",
-                Principal="bedrock.amazonaws.com",
-                SourceArn=agent_arn,
-                SourceAccount=self.account_id,
-            )
+            kwargs: dict = {
+                "FunctionName": lambda_name,
+                "StatementId": statement_id,
+                "Action": "lambda:InvokeFunction",
+                "Principal": "bedrock.amazonaws.com",
+                "SourceArn": agent_arn,
+                "SourceAccount": self.account_id,
+            }
+            if qualifier:
+                kwargs["Qualifier"] = qualifier
+            self.lambda_client.add_permission(**kwargs)
         except ClientError as exc:
             if exc.response["Error"]["Code"] != "ResourceConflictException":
                 raise

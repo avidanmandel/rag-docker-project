@@ -26,27 +26,23 @@ for path in (str(_COMMON), str(OPS), str(_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-_spec = importlib.util.spec_from_file_location("football_ops_lambda", OPS / "lambda_function.py")
-ops = importlib.util.module_from_spec(_spec)
-assert _spec.loader is not None
-_spec.loader.exec_module(ops)
-
-from demo_roster import (  # noqa: E402
-    DEMO_RECORD_SCOPE,
-    DEMO_ROSTER_ENTITY_KEY,
-    build_demo_starting_xi,
-    demo_starting_xi_string,
-    load_demo_roster_from_file,
-    seed_demo_roster_idempotent,
-)
-import operations_store as fo_operations_store_module  # noqa: E402
-from operations_store import clear_local_store, get_item, put_item  # noqa: E402
+from lambda_test_isolation import reload_football_operations_lambda  # noqa: E402
 from football_operations_apply import (  # noqa: E402
     ACTIVE_INTERNAL_HELPERS_AT_RUNTIME,
     BUDGET_HELPER_LAMBDA_NAME,
     NATIVE_AGENT_FUNCTIONS_SIMPLIFIED,
     ROLLBACK_ONLY_INTERNAL_HELPERS,
 )
+
+ops = None
+
+
+def _demo():
+    return sys.modules["demo_roster"]
+
+
+def _store():
+    return sys.modules["operations_store"]
 
 
 def _body(resp):
@@ -62,33 +58,13 @@ def _event(function, params, confirmed=False):
     }
 
 
-def _purge_shared_football_modules():
-    shared_root = str((EXT / "lambdas" / "shared_football").resolve()).replace("\\", "/")
-    for name in list(sys.modules):
-        mod = sys.modules.get(name)
-        mod_file = str(getattr(mod, "__file__", "") or "").replace("\\", "/")
-        if mod_file.startswith(shared_root):
-            sys.modules.pop(name, None)
-        elif name in {
-            "operations_store",
-            "budget_ledger",
-            "player_selection",
-            "budget_rules",
-            "tactical_planner",
-            "lineup_store",
-            "sns_notification",
-            "validation",
-            "demo_roster",
-        } and "shared_football" in mod_file:
-            sys.modules.pop(name, None)
-
-
 @pytest.fixture(autouse=True)
 def reset_store():
-    _purge_shared_football_modules()
-    clear_local_store()
+    global ops
+    ops, store = reload_football_operations_lambda()
+    store.clear_local_store()
     yield
-    clear_local_store()
+    store.clear_local_store()
 
 
 def test_demo_roster_json_has_eleven_sanitized_players():
@@ -111,7 +87,7 @@ def test_demo_roster_json_has_eleven_sanitized_players():
 
 
 def test_demo_roster_valid_433_role_counts():
-    data = load_demo_roster_from_file()
+    data = _demo().load_demo_roster_from_file()
     positions = [p["position"] for p in data["players"]]
     assert positions.count("GK") == 1
     assert positions.count("RB") == 1
@@ -124,7 +100,7 @@ def test_demo_roster_valid_433_role_counts():
 
 
 def test_build_demo_starting_xi_puts_ron_at_right_back():
-    starters = build_demo_starting_xi(ron_at_right_back=True)
+    starters = _demo().build_demo_starting_xi(ron_at_right_back=True)
     assert len(starters) == 11
     rb = [p for p in starters if p["position"] == "RB"]
     assert len(rb) == 1
@@ -132,16 +108,16 @@ def test_build_demo_starting_xi_puts_ron_at_right_back():
 
 
 def test_demo_seed_idempotent_and_skips_non_demo():
-    first = seed_demo_roster_idempotent(apply=True)
+    first = _demo().seed_demo_roster_idempotent(apply=True)
     assert first["status"] == "SEEDED"
-    second = seed_demo_roster_idempotent(apply=True)
+    second = _demo().seed_demo_roster_idempotent(apply=True)
     assert second["status"] == "ALREADY_SEEDED"
-    put_item(
-        entity_key=DEMO_ROSTER_ENTITY_KEY,
+    _store().put_item(
+        entity_key=_demo().DEMO_ROSTER_ENTITY_KEY,
         item_type="PRODUCTION_ROSTER",
         payload={"record_scope": "PRODUCTION", "players": []},
     )
-    third = seed_demo_roster_idempotent(apply=True)
+    third = _demo().seed_demo_roster_idempotent(apply=True)
     assert third["status"] == "SKIPPED"
     assert third["reason"] == "non_demo_record_present"
 
@@ -195,7 +171,7 @@ def test_non_demo_incomplete_lineup_rejected():
 
 
 def test_demo_lineup_svg_contains_ron_rb_pending_and_no_opponent_lineup():
-    seed_demo_roster_idempotent(apply=True)
+    _demo().seed_demo_roster_idempotent(apply=True)
     ops.lambda_handler(
         _event(
             "UpdateSquadPlanningContext",
@@ -258,30 +234,11 @@ def test_budget_helper_fail_path_no_reservation():
         )
     )
     assert body["status"] == "REJECTED"
-    assert get_item("player_selection#ron ben ari") is None
+    assert _store().get_item("player_selection#ron ben ari") is None
 
 
 def _load_football_operations_player_selection():
-    _purge_shared_football_modules()
-    sys.modules["operations_store"] = fo_operations_store_module
-    fo = EXT / "lambdas" / "football_operations"
-    for internal, filename in (
-        ("budget_ledger", "budget_ledger.py"),
-        ("sns_notification", "sns_notification.py"),
-        ("validation", "validation.py"),
-    ):
-        sys.modules.pop(internal, None)
-        spec = importlib.util.spec_from_file_location(internal, fo / filename)
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        sys.modules[internal] = module
-        spec.loader.exec_module(module)
-    sys.modules.pop("player_selection", None)
-    spec = importlib.util.spec_from_file_location("player_selection", fo / "player_selection.py")
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return sys.modules["player_selection"]
 
 
 def test_budget_helper_invoke_failure_safe_no_write_no_sns():
@@ -303,7 +260,7 @@ def test_budget_helper_invoke_failure_safe_no_write_no_sns():
     assert not err
     assert body["status"] == "REJECTED"
     assert "Budget helper" in body["message"] or "unavailable" in body["message"].lower()
-    assert get_item("player_selection#ron ben ari") is None
+    assert _store().get_item("player_selection#ron ben ari") is None
 
 
 def test_deploy_plan_scopes_budget_helper_invoke():
@@ -325,6 +282,6 @@ def test_active_vs_rollback_internal_helpers():
 
 
 def test_demo_starting_xi_string_matches_eleven_players():
-    xi = demo_starting_xi_string(ron_at_right_back=True)
+    xi = _demo().demo_starting_xi_string(ron_at_right_back=True)
     assert len(xi.split(";")) == 11
     assert "Ron Ben Ari:RB" in xi

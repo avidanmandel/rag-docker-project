@@ -65,6 +65,10 @@ _RELOAD_MODULES = (
     "ses_adapter",
     "google_calendar_adapter",
     "demo_roster",
+    "validation",
+    "budget_rules",
+    "sns_notification",
+    "ics_calendar",
 )
 
 
@@ -110,6 +114,7 @@ def _v2_env():
     import four_lambda_apply
 
     importlib.reload(four_lambda_apply)
+    _reload_shared_modules()
     yield
     os.environ.pop("SCOUTMATCH_BUSINESS_WORKFLOW_V2_ENABLED", None)
 

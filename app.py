@@ -50,9 +50,11 @@ from image_extract import (  # noqa: E402
 from bedrock_flow_service import invoke_flow as invoke_recruitment_flow  # noqa: E402
 from bedrock_agent_service import (  # noqa: E402
     agent_result_to_chat_payload,
+    agent_runtime_config,
     disabled_response as advisor_disabled_response,
     invoke_agent as invoke_recruitment_advisor,
     is_enabled as recruitment_advisor_enabled,
+    latest_pending_return_control,
 )
 from lineup_board_service import fetch_lineup_svg, is_valid_lineup_id  # noqa: E402
 
@@ -459,6 +461,7 @@ def api_status():
     payload["chat_backend"] = (
         "bedrock_agent" if recruitment_advisor_enabled() else config.RAG_BACKEND
     )
+    payload.update(agent_runtime_config())
     ws = workspace_summary()
     payload["opening_season_workspace"] = True
     payload["workspace_ready"] = ws.get("workspace_ready", True)
@@ -1439,7 +1442,14 @@ def _send_message_via_bedrock_agent(
     user_msg: dict,
 ) -> tuple[dict, int]:
     agent_session_id = (session.get("bedrock_session_id") or "").strip() or None
-    agent_result = invoke_recruitment_advisor(question, session_id=agent_session_id)
+    pending = None
+    if question.strip().lower() in {"confirm", "deny", "yes", "no", "cancel", "reject", "proceed", "approve"}:
+        pending = latest_pending_return_control(database.get_messages(session_id))
+    agent_result = invoke_recruitment_advisor(
+        question,
+        session_id=agent_session_id,
+        pending_return_control=pending,
+    )
     if not agent_result.get("enabled"):
         return {
             "error": agent_result.get("message") or "Bedrock Agent advisor is disabled.",

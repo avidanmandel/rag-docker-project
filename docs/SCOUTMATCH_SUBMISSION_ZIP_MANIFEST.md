@@ -1,6 +1,6 @@
 # ScoutMatch Submission ZIP Manifest
 
-**Generated:** 2026-06-07 13:55 UTC
+**Generated:** 2026-06-08 08:31 UTC
 **Branch:** `feature/scoutmatch-agent-flow-extension`
 **ZIP file:** `dist/Avidan_RAG_Docker_Project-submission.zip`
 **Status:** **READY_FOR_MANUAL_SCREENSHOTS**
@@ -9,8 +9,8 @@
 
 | Item | Value |
 |------|-------|
-| Total packaged files | 336 |
-| SHA256 | `50655F68717DCFD4C2B62F9509B18D5DBE9647DD427578A9B8B2417D86C9D432` |
+| Total packaged files | 352 |
+| SHA256 | `1E4B78EA55885989E0798C486CA4E5F2807DA6B98585AEA0E4FEA47E7E226399` |
 | Secret scan | REVIEW |
 | Forbidden entries found | 0 |
 
