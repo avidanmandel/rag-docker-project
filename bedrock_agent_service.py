@@ -344,6 +344,16 @@ def _resolve_v2_agent_response(
                     break
             if not metadata.get("pending_return_control"):
                 continue
+        if not metadata.get("lineup_image_route") and not _no_lineup_answer(answer):
+            answer, _, metadata, agent_session = _recover_failed_confirm(
+                client,
+                fn="GenerateVisualSquadAndLineupBoard",
+                pending={
+                    "function": "GenerateVisualSquadAndLineupBoard",
+                    "parameters": {"board_mode": "RENDER_CURRENT", "formation": "4-3-3"},
+                },
+                agent_session=agent_session,
+            )
         return answer, metadata, agent_session
 
     if re.search(r"completed scouting report", normalized, re.I) and not _has_completed_report(
@@ -655,6 +665,94 @@ def _has_completed_report(metadata: dict[str, Any], answer: str) -> bool:
         if card.get("type") == "completed_demo_report":
             return True
     return False
+
+
+def _post_confirm_steer(fn: str, params: dict[str, str] | None = None) -> str | None:
+    params = _enrich_confirmation_parameters(fn, params or {})
+    if fn == "CreateAndReviewScoutingMission":
+        candidate = params.get("candidate_name") or "Ron Ben Ari"
+        mode = params.get("mission_mode") or "CREATE_MISSION"
+        return (
+            f"Invoke CreateAndReviewScoutingMission with candidate_name {candidate} "
+            f"and mission_mode {mode}."
+        )
+    if fn == "SubmitCriticalDecisionAndSendEmail":
+        candidate = params.get("candidate_name") or "Ron Ben Ari"
+        salary = params.get("salary_eur") or "43000"
+        role = params.get("target_role") or "Right-back"
+        return (
+            f"Invoke SubmitCriticalDecisionAndSendEmail with candidate_name {candidate}, "
+            f"salary_eur {salary}, and target_role {role}."
+        )
+    if fn == "OpenTransferOutReviewCase":
+        player = params.get("player_name") or "Daniel Cohen"
+        release = params.get("estimated_budget_release_eur") or "25000"
+        return (
+            f"Invoke OpenTransferOutReviewCase with player_name {player} "
+            f"and estimated_budget_release_eur {release}."
+        )
+    if fn == "GenerateVisualSquadAndLineupBoard":
+        mode = params.get("board_mode") or "SAVE_AND_RENDER"
+        formation = params.get("formation") or "4-3-3"
+        return (
+            f"Invoke GenerateVisualSquadAndLineupBoard with board_mode {mode}, "
+            f"formation {formation}, and demo_lineup true."
+        )
+    return None
+
+
+def _confirm_succeeded(
+    fn: str,
+    answer: str,
+    metadata: dict[str, Any],
+    events: list[dict],
+) -> bool:
+    payloads = _collect_tool_payloads(events)
+    if payloads:
+        best = max(payloads, key=_payload_priority)
+        status = str(best.get("status") or "").upper()
+        if fn == "CreateAndReviewScoutingMission":
+            return status == "PENDING_SCOUT_OBSERVATION"
+        if fn == "SubmitCriticalDecisionAndSendEmail":
+            return status == "PENDING_MANAGEMENT_APPROVAL"
+        if fn == "OpenTransferOutReviewCase":
+            return status == "PENDING_TECHNICAL_DIRECTOR_REVIEW"
+        if fn == "GenerateVisualSquadAndLineupBoard":
+            return status in {"PENDING_HEAD_COACH_REVIEW", "LINEUP_BOARD_GENERATED"} or bool(
+                best.get("image_route")
+            )
+    if fn == "CreateAndReviewScoutingMission":
+        if "calendar-invite/" in (answer or ""):
+            return True
+        return any(
+            card.get("calendar_invite_key")
+            for card in (metadata.get("workflow_cards") or [])
+        )
+    if fn == "GenerateVisualSquadAndLineupBoard":
+        return bool(metadata.get("lineup_image_route"))
+    return False
+
+
+def _recover_failed_confirm(
+    client,
+    *,
+    fn: str,
+    pending: dict[str, Any],
+    agent_session: str,
+) -> tuple[str, list[dict], dict[str, Any], str]:
+    steered = _post_confirm_steer(fn, pending.get("parameters"))
+    if not steered:
+        return "", [], {}, agent_session
+    retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+    answer, events, metadata = _invoke_agent_once(
+        client,
+        agent_session=retry_session,
+        question=_guardrail_safe_prompt(steered),
+    )
+    answer, metadata = _finalize_agent_response(answer, events, metadata, answer=answer)
+    metadata.pop("confirmation_card", None)
+    metadata.pop("pending_return_control", None)
+    return answer, events, metadata, retry_session
 
 
 def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
@@ -1144,6 +1242,19 @@ def invoke_agent(
                 metadata,
                 answer=answer,
             )
+            fn = str(pending_return_control.get("function") or "")
+            if (
+                confirmation_state == "CONFIRM"
+                and _business_workflow_v2_enabled()
+                and fn
+                and not _confirm_succeeded(fn, answer, metadata, collected_events)
+            ):
+                answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+                    client,
+                    fn=fn,
+                    pending=pending_return_control,
+                    agent_session=agent_session,
+                )
             if confirmation_state == "DENY":
                 fn = str(pending_return_control.get("function") or "")
                 explicit = _deny_answer_for_function(fn)
@@ -1157,6 +1268,30 @@ def invoke_agent(
             metadata.pop("pending_return_control", None)
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             clear_pending = True
+        elif (
+            _business_workflow_v2_enabled()
+            and re.search(r"completed scouting report", normalized, re.I)
+        ):
+            steered = _guardrail_safe_prompt(
+                _rewrite_v2_direct_invoke_prompt(normalized) or normalized
+            )
+            for attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+                retry_session = agent_session if attempt == 0 else f"advisor-{uuid.uuid4().hex[:10]}"
+                answer, collected_events, metadata = _invoke_agent_once(
+                    client,
+                    agent_session=retry_session,
+                    question=steered,
+                )
+                answer, metadata = _finalize_agent_response(
+                    answer, collected_events, metadata, answer=answer
+                )
+                agent_session = retry_session
+                if _has_completed_report(metadata, answer):
+                    metadata.pop("confirmation_card", None)
+                    metadata.pop("pending_return_control", None)
+                    break
+            refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+            clear_pending = False
         else:
             answer, collected_events, metadata = _invoke_agent_once(
                 client, agent_session=agent_session, question=prompt
