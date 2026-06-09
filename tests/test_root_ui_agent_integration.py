@@ -46,7 +46,7 @@ def test_root_chat_uses_agent_path_when_extension_enabled(monkeypatch):
     monkeypatch.setattr(
         flask_app,
         "invoke_recruitment_advisor",
-        lambda question, session_id=None, pending_return_control=None: {
+        lambda question, session_id=None, pending_return_control=None, chat_context=None: {
             "enabled": True,
             "session_id": session_id or "agent-sess-1",
             "answer": "Grounded analyst response.",
@@ -78,7 +78,7 @@ def test_same_agent_session_reused_across_messages(monkeypatch):
     flask_app.app.config["TESTING"] = True
     calls: list[str | None] = []
 
-    def _invoke(question, session_id=None, pending_return_control=None):
+    def _invoke(question, session_id=None, pending_return_control=None, chat_context=None):
         calls.append(session_id)
         return {
             "enabled": True,
@@ -107,7 +107,7 @@ def test_new_conversation_gets_new_agent_session(monkeypatch):
     monkeypatch.setattr(
         flask_app,
         "invoke_recruitment_advisor",
-        lambda question, session_id=None, pending_return_control=None: {
+        lambda question, session_id=None, pending_return_control=None, chat_context=None: {
             "enabled": True,
             "session_id": session_id or "agent-new",
             "answer": "ok",
