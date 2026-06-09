@@ -4058,8 +4058,8 @@ kbd {
 
 .messages--landing .hero-left {
     align-self: center;
-    overflow-y: auto;
-    max-height: calc(100vh - 170px);
+    overflow: hidden;
+    max-height: none;
 }
 
 .messages--landing .hero-right {
@@ -4138,8 +4138,7 @@ kbd {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     max-height: none;
     align-self: stretch;
 }
@@ -4628,5 +4627,60 @@ kbd {
         max-height: 100%;
         object-fit: contain;
         object-position: center center;
+    }
+}
+
+/* Homepage no-scroll final override — left workspace column must not scroll */
+@media (min-width: 1101px) and (max-height: 920px) {
+    .messages.messages--landing .hero-left,
+    .messages.messages--landing .empty-state {
+        overflow: hidden !important;
+        max-height: none !important;
+    }
+
+    .messages.messages--landing .home-hero .suggestion {
+        min-height: 2.45rem;
+        padding: 7px 10px 7px 32px;
+        font-size: 11px;
+        line-height: 1.26;
+    }
+
+    .messages.messages--landing .hero-kicker {
+        margin-bottom: 4px;
+        padding: 3px 10px;
+        font-size: 10px;
+    }
+
+    .messages.messages--landing .hero-copy__headline {
+        margin-bottom: 4px;
+        font-size: clamp(1.22rem, 1.7vw, 1.55rem);
+    }
+
+    .messages.messages--landing .hero-copy__sub {
+        margin-bottom: 5px;
+        font-size: 11px;
+    }
+
+    .messages.messages--landing .scouting-status-strip {
+        gap: 4px;
+        margin-bottom: 4px;
+    }
+
+    .messages.messages--landing .scouting-status-tile {
+        padding: 5px 8px;
+        font-size: 10.5px;
+    }
+
+    .messages.messages--landing .empty-state__notice {
+        margin: 2px 0 4px !important;
+        font-size: 10px !important;
+    }
+
+    .messages.messages--landing .home-hero .suggestions {
+        gap: 4px;
+    }
+
+    .messages.messages--landing .dashboard-stage__panel-img {
+        transform: scale(1.18);
     }
 }
