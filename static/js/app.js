@@ -1433,7 +1433,7 @@ async function sendMessage(content) {
             agent_metadata: result.agent_metadata || result.assistant_message?.agent_metadata,
         };
         state.messages.push(assistant);
-        appendMessageEphemeral(assistant);
+        renderMessages();
 
         await loadSessions();
         const updated = state.sessions.find(s => s.id === state.activeSessionId);

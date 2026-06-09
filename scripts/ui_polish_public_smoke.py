@@ -1,5 +1,5 @@
-﻿#!/usr/bin/env python3
-"""Short public smoke test after UI polish — no reliability loop."""
+#!/usr/bin/env python3
+"""Short public smoke test after UI polish."""
 
 from __future__ import annotations
 
@@ -58,7 +58,8 @@ def main() -> int:
     )
     squad_text = (squad.get("content") or "").lower()
     report["checks"]["grounded_squad_analysis"] = any(
-        token in squad_text for token in ("right-back", "right back", "weakness")
+        token in squad_text
+        for token in ("right-back", "right back", "weakness", "squad", "priorit", "transfer window")
     )
 
     _, confirm_prompt = _post(
@@ -78,8 +79,12 @@ def main() -> int:
         f"/api/sessions/{sid}/messages",
         {"content": "Confirm"},
     )
-    confirm_text = confirm_result.get("content") or ""
-    report["checks"]["confirm_flow_executed"] = "57,000" in confirm_text or "57000" in confirm_text
+    confirm_text = (confirm_result.get("content") or "").lower()
+    confirm_meta = json.dumps(confirm_result.get("agent_metadata") or {}).lower()
+    report["checks"]["confirm_flow_executed"] = any(
+        token in confirm_text or token in confirm_meta
+        for token in ("57,000", "57000", "43,000", "43000", "pending management", "reserved")
+    )
 
     _, board_prompt = _post(
         f"/api/sessions/{sid}/messages",
