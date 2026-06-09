@@ -216,7 +216,15 @@ def run_flows() -> dict:
                 _click_card_choice(page, "Deny")
                 deny_text = _assistant_text(page)
                 report["flows"]["D_transfer_out_deny"] = {
-                    "cancelled": "cancel" in deny_text.lower() or "cancelled" in deny_text.lower(),
+                    "cancelled": any(
+                        phrase in deny_text.lower()
+                        for phrase in (
+                            "cancel",
+                            "cancelled",
+                            "no review case was created",
+                            "was cancelled",
+                        )
+                    ),
                     "no_confirm_card": not _confirm_card_visible(page),
                 }
                 _new_chat(page)

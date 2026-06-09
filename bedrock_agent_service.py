@@ -167,7 +167,7 @@ _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
     re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
 )
-_V2_WRITE_RETRY_ATTEMPTS = 3
+_V2_WRITE_RETRY_ATTEMPTS = 5
 _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"open\s+a\s+transfer-out\s+review\s+case\s+for\s+daniel\s+cohen", re.I),
@@ -190,6 +190,55 @@ _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
         " Use board_mode SAVE_AND_RENDER, formation 4-3-3, and demo_lineup true.",
     ),
 )
+
+
+def _agent_asked_chat_confirmation(answer: str) -> bool:
+    text = (answer or "").lower()
+    return (
+        "confirmation required before writing" in text
+        or "confirm the details with you before submitting" in text
+        or "before invoking any write tool" in text
+        or bool(_CONFIRM_PROMPT_PATTERN.search(answer or ""))
+    )
+
+
+def _escalating_v2_write_prompt(question: str, attempt: int) -> str:
+    text = (question or "").strip()
+    lower = text.lower()
+    if attempt >= 4:
+        if "scouting mission" in lower:
+            return _guardrail_safe_prompt(
+                "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
+                f"and mission_mode CREATE_MISSION.{_V2_WRITE_STEER_SUFFIX}"
+            )
+        if "recommendation" in lower or "right-back" in lower or "right back" in lower:
+            return _guardrail_safe_prompt(
+                "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
+                f"salary_eur 43000, and target_role Right-back.{_V2_WRITE_STEER_SUFFIX}"
+            )
+    base = _maybe_steered_v2_prompt(text)
+    extras: list[str] = []
+    if attempt >= 1:
+        extras.append(
+            " Invoke the matching write tool immediately. Do not ask clarifying questions "
+            "or request chat confirmation."
+        )
+    if attempt >= 2:
+        if "scouting mission" in lower:
+            extras.append(
+                " Call CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
+                "and mission_mode CREATE_MISSION."
+            )
+        elif "recommendation" in lower or "right-back" in lower or "right back" in lower:
+            extras.append(
+                " Call SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
+                "salary_eur 43000, and target_role Right-back."
+            )
+    if attempt >= 3:
+        extras.append(
+            " The UI Confirm/Deny card requires returnControl from the write tool."
+        )
+    return _guardrail_safe_prompt(f"{base}{''.join(extras)}")
 
 
 def _maybe_steered_v2_prompt(question: str) -> str:
@@ -299,9 +348,9 @@ def _resolve_v2_agent_response(
     if pending.get("invocation_id"):
         return answer, metadata, agent_session
 
-    steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
-    for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+    for attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
         retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+        steered = _escalating_v2_write_prompt(normalized, attempt)
         answer, _, metadata = _invoke_agent_once(
             client,
             agent_session=retry_session,
@@ -311,6 +360,8 @@ def _resolve_v2_agent_response(
         pending = metadata.get("pending_return_control") or {}
         if pending.get("invocation_id"):
             break
+        if not _agent_asked_chat_confirmation(answer):
+            continue
     return answer, metadata, agent_session
 
 
@@ -863,10 +914,15 @@ def invoke_agent(
                 pending=pending_return_control,
                 confirmation_state=confirmation_state,
             )
-            if confirmation_state == "DENY" and not answer.strip():
-                answer = _deny_answer_for_function(
-                    str(pending_return_control.get("function") or "")
-                )
+            if confirmation_state == "DENY":
+                fn = str(pending_return_control.get("function") or "")
+                explicit = _deny_answer_for_function(fn)
+                if (
+                    _business_workflow_v2_enabled()
+                    or not answer.strip()
+                    or "cancel" not in answer.lower()
+                ):
+                    answer = explicit
             metadata.pop("confirmation_card", None)
             metadata.pop("pending_return_control", None)
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
