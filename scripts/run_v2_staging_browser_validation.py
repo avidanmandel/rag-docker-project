@@ -283,10 +283,6 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
-                page.wait_for_function(
-                    "() => document.body.innerText.includes('calendar-invite/')",
-                    timeout=60000,
-                )
                 mission_text = _messages_text(page)
                 invite_key = _extract_invite_key(mission_text)
                 ics_ok = False

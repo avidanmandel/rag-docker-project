@@ -457,6 +457,10 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
                 f"The player has not been sold."
             )
         if status == "PENDING_SCOUT_OBSERVATION":
+            invite = str(payload.get("calendar_invite_key") or "").strip()
+            invite_line = (
+                f"\nDownload: /api/opening-season/calendar-invite/{invite}" if invite else ""
+            )
             return (
                 f"Scouting mission created.\n"
                 f"Candidate: {payload.get('candidate_name', '')}\n"
@@ -465,6 +469,7 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
                 f"Calendar: {payload.get('calendar_label', '')}\n"
                 f"Reminder: {payload.get('reminder_label', '')}\n"
                 f"Status: Pending scout observation"
+                f"{invite_line}"
             )
         if status == "READY_FOR_RECRUITMENT_REVIEW":
             return (
