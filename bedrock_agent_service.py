@@ -682,6 +682,15 @@ def _has_visual_board(metadata: dict[str, Any], answer: str) -> bool:
     return "opening fixture" in text and "barcelona" in text
 
 
+def _has_mission_invite(metadata: dict[str, Any], answer: str) -> bool:
+    if "calendar-invite/" in (answer or ""):
+        return True
+    for card in metadata.get("workflow_cards") or []:
+        if card.get("calendar_invite_key"):
+            return True
+    return False
+
+
 def _invoke_render_board_response(
     client,
     *,
@@ -718,10 +727,51 @@ def _invoke_render_board_response(
             answer, collected_events, metadata, answer=answer
         )
         agent_session = retry_session
-        if _has_visual_board(metadata, answer) or _no_lineup_answer(answer):
+        if _has_visual_board(metadata, answer):
             metadata.pop("confirmation_card", None)
             metadata.pop("pending_return_control", None)
-            break
+            return answer, collected_events, metadata, agent_session
+    if not _has_visual_board(metadata, answer):
+        answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+            client,
+            fn="GenerateVisualSquadAndLineupBoard",
+            pending={
+                "function": "GenerateVisualSquadAndLineupBoard",
+                "parameters": {
+                    "board_mode": "SAVE_AND_RENDER",
+                    "formation": "4-3-3",
+                    "demo_lineup": "true",
+                },
+            },
+            agent_session=agent_session,
+        )
+        if _has_visual_board(metadata, answer):
+            return answer, collected_events, metadata, agent_session
+        for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+            retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+            answer, collected_events, metadata = _invoke_agent_once(
+                client,
+                agent_session=retry_session,
+                question=steered,
+                session_attributes=confirm_attrs,
+            )
+            pending_rc = metadata.get("pending_return_control") or {}
+            if (
+                pending_rc.get("invocation_id")
+                and pending_rc.get("function") == "GenerateVisualSquadAndLineupBoard"
+            ):
+                answer, collected_events, metadata = _invoke_agent_return_control(
+                    client,
+                    agent_session=retry_session,
+                    pending=pending_rc,
+                    confirmation_state="CONFIRM",
+                )
+            answer, metadata = _finalize_agent_response(
+                answer, collected_events, metadata, answer=answer
+            )
+            agent_session = retry_session
+            if _has_visual_board(metadata, answer):
+                break
     if not _has_visual_board(metadata, answer) and not _no_lineup_answer(answer):
         answer, collected_events, metadata, agent_session = _recover_failed_confirm(
             client,
@@ -732,6 +782,8 @@ def _invoke_render_board_response(
             },
             agent_session=agent_session,
         )
+    metadata.pop("confirmation_card", None)
+    metadata.pop("pending_return_control", None)
     return answer, collected_events, metadata, agent_session
 
 
@@ -1337,6 +1389,17 @@ def invoke_agent(
                 and _business_workflow_v2_enabled()
                 and fn
                 and not _confirm_succeeded(fn, answer, metadata, collected_events)
+            ):
+                answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+                    client,
+                    fn=fn,
+                    pending=pending_return_control,
+                    agent_session=agent_session,
+                )
+            if (
+                confirmation_state == "CONFIRM"
+                and fn == "CreateAndReviewScoutingMission"
+                and not _has_mission_invite(metadata, answer)
             ):
                 answer, collected_events, metadata, agent_session = _recover_failed_confirm(
                     client,

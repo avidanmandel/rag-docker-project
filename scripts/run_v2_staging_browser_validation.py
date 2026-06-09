@@ -288,11 +288,18 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
-                mission_text = _messages_text(page)
-                invite_key = _extract_invite_key(mission_text)
-                if not invite_key:
-                    cards_text = page.locator(".workflow-card").inner_text(timeout=5000)
-                    invite_key = _extract_invite_key(cards_text)
+                invite_key = ""
+                for _poll in range(60):
+                    mission_text = _messages_text(page)
+                    invite_key = _extract_invite_key(mission_text)
+                    if invite_key:
+                        break
+                    if page.locator(".workflow-card").count() > 0:
+                        cards_text = page.locator(".workflow-card").first.inner_text(timeout=5000)
+                        invite_key = _extract_invite_key(cards_text)
+                        if invite_key:
+                            break
+                    page.wait_for_timeout(1000)
                 ics_ok = False
                 if invite_key:
                     resp = page.request.get(
@@ -376,6 +383,9 @@ def run_flows() -> dict:
                     raise RuntimeError("Lineup save did not persist before board render")
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
                 render_text = _wait_for_response(page)
+                if "no proposed lineup has been saved" in render_text.lower():
+                    _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
+                    render_text = _wait_for_response(page)
                 if "no proposed lineup has been saved" in render_text.lower():
                     raise RuntimeError("Board render returned clean no-lineup state")
                 page.wait_for_function(
