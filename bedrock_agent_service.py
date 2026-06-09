@@ -744,10 +744,12 @@ def _recover_failed_confirm(
     if not steered:
         return "", [], {}, agent_session
     retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+    confirm_attrs = {"write_confirmed": "true", "workflow_internal": "true"}
     answer, events, metadata = _invoke_agent_once(
         client,
         agent_session=retry_session,
         question=_guardrail_safe_prompt(steered),
+        session_attributes=confirm_attrs,
     )
     pending_rc = metadata.get("pending_return_control") or {}
     if pending_rc.get("invocation_id") and str(pending_rc.get("function") or "") == fn:
@@ -1137,6 +1139,7 @@ def _invoke_agent_once(
     agent_session: str,
     question: str | None = None,
     session_state: dict[str, Any] | None = None,
+    session_attributes: dict[str, str] | None = None,
 ) -> tuple[str, list[dict], dict[str, Any]]:
     collected_events: list[dict] = []
     kwargs: dict[str, Any] = {
@@ -1145,8 +1148,13 @@ def _invoke_agent_once(
         "sessionId": agent_session,
         "enableTrace": True,
     }
-    if session_state:
-        kwargs["sessionState"] = session_state
+    merged_state = dict(session_state or {})
+    if session_attributes:
+        attrs = dict(merged_state.get("sessionAttributes") or {})
+        attrs.update(session_attributes)
+        merged_state["sessionAttributes"] = attrs
+    if merged_state:
+        kwargs["sessionState"] = merged_state
     if question is not None:
         kwargs["inputText"] = question
     response = client.invoke_agent(**kwargs)
@@ -1187,7 +1195,7 @@ def _invoke_agent_return_control(
     confirmation_state: str,
 ) -> tuple[str, list[dict], dict[str, Any]]:
     response_body = json.dumps({"status": confirmation_state})
-    session_state = {
+    session_state: dict[str, Any] = {
         "invocationId": pending["invocation_id"],
         "returnControlInvocationResults": [
             {
@@ -1204,6 +1212,11 @@ def _invoke_agent_return_control(
             }
         ],
     }
+    if confirmation_state == "CONFIRM":
+        session_state["sessionAttributes"] = {
+            "write_confirmed": "true",
+            "workflow_internal": "true",
+        }
     return _invoke_agent_once(client, agent_session=agent_session, session_state=session_state)
 
 
