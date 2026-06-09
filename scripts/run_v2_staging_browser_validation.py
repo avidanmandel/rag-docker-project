@@ -261,8 +261,8 @@ def run_flows() -> dict:
                     "daniel_on_card": "Daniel Cohen" in card_text,
                 }
                 report["screenshots"].append(_shot(page, "04_transfer_out_confirm_card.png"))
-                _click_card_choice(page, "Deny")
-                deny_text = _messages_text(page)
+                _send_prompt(page, "Deny")
+                deny_text = _wait_for_response(page)
                 deny_ok = _deny_ok(deny_text)
                 report["flows"]["D_transfer_out_deny"] = {
                     "cancelled": deny_ok,
@@ -303,8 +303,8 @@ def run_flows() -> dict:
                     "ron_on_card": "Ron Ben Ari" in card_text or "Ron Ben Ari" in card_page_text,
                 }
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
-                _click_card_choice(page, "Deny")
-                deny_text = _messages_text(page)
+                _send_prompt(page, "Deny")
+                deny_text = _wait_for_response(page)
                 deny_ok = _deny_ok(deny_text)
                 report["flows"]["E_scouting_mission_deny"] = {
                     "no_confirm_card": deny_ok or not _confirm_card_visible(page),
@@ -362,13 +362,11 @@ def run_flows() -> dict:
                 )
                 _wait_for_response(page, require_confirm=True)
                 report["screenshots"].append(_shot(page, "09_critical_decision_confirm_card.png"))
-                _click_card_choice(page, "Deny")
-                deny_text = _messages_text(page)
-                deny_ok = _deny_ok(deny_text)
+                _send_prompt(page, "Deny")
+                deny_text = _wait_for_response(page)
                 report["flows"]["G_critical_decision_deny"] = {
-                    "no_confirm_card": deny_ok or not _confirm_card_visible(page),
+                    "no_confirm_card": _deny_ok(deny_text) or not _confirm_card_visible(page),
                 }
-                _new_chat(page)
                 _send_prompt(
                     page,
                     "I choose Ron Ben Ari as our right-back candidate. Submit the recommendation for management review.",
