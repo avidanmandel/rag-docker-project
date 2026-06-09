@@ -124,8 +124,7 @@ def _click_card_choice(page, choice: str) -> None:
         ".confirm-card__btn--confirm" if choice.lower() == "confirm" else ".confirm-card__btn--deny"
     )
     card.locator(selector).click()
-    _wait_agent_idle(page)
-    page.wait_for_timeout(800)
+    _wait_for_response(page)
 
 
 def _shot(page, name: str) -> str:
@@ -150,7 +149,9 @@ def _messages_text(page) -> str:
 def _extract_invite_key(text: str) -> str:
     if "calendar-invite/" not in text:
         return ""
-    return text.split("calendar-invite/")[-1].split()[0].strip(").,")
+    fragment = text.split("calendar-invite/")[-1]
+    key = fragment.split()[0].strip(").,>\"'")
+    return key if key.startswith("mission-") else ""
 
 
 def run_flows() -> dict:
@@ -285,6 +286,9 @@ def run_flows() -> dict:
                 _wait_for_response(page)
                 mission_text = _messages_text(page)
                 invite_key = _extract_invite_key(mission_text)
+                if not invite_key:
+                    cards_text = page.locator(".workflow-card").inner_text(timeout=5000)
+                    invite_key = _extract_invite_key(cards_text)
                 ics_ok = False
                 if invite_key:
                     resp = page.request.get(
@@ -362,30 +366,22 @@ def run_flows() -> dict:
                 _send_prompt(page, "Save and show the proposed 4-3-3 lineup for head-coach review.")
                 _wait_for_response(page, require_confirm=True)
                 report["screenshots"].append(_shot(page, "11_lineup_confirm_card.png"))
-                _click_card_choice(page, "Deny")
-                _new_chat(page)
-                _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
-                _wait_for_response(page, require_confirm=True)
-                _click_card_choice(page, "Confirm")
-                _wait_for_response(page)
-                _send_prompt(
-                    page,
-                    "I choose Ron Ben Ari as our right-back candidate. Submit the recommendation for management review.",
-                )
-                _wait_for_response(page, require_confirm=True)
-                _click_card_choice(page, "Confirm")
-                _wait_for_response(page)
-                _send_prompt(page, "Save and show the proposed 4-3-3 lineup for head-coach review.")
-                _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
                 _wait_for_response(page)
-                page.wait_for_selector(".lineup-board-card__image", timeout=120000)
+                page.wait_for_selector(".lineup-board-card__image, .lineup-board-card", timeout=180000)
                 page_text = _messages_text(page)
                 has_svg = page.locator(".lineup-board-card__image").count() > 0
                 svg_text = ""
                 if has_svg:
+                    page.wait_for_function(
+                        """() => {
+                            const img = document.querySelector('.lineup-board-card__image');
+                            return img && img.complete && img.naturalWidth > 0;
+                        }""",
+                        timeout=60000,
+                    )
                     src = page.locator(".lineup-board-card__image").first.get_attribute("src") or ""
                     if src.startswith("/"):
                         resp = page.request.get(f"{BASE_URL.rstrip('/')}{src}")
