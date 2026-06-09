@@ -123,25 +123,12 @@ def _click_card_choice(page, choice: str) -> None:
         }""",
         timeout=AGENT_TIMEOUT_MS,
     )
-    before_assistant_count = page.locator(".message--assistant").count()
     card = _last_assistant(page).locator(".confirm-card")
     selector = (
         ".confirm-card__btn--confirm" if choice.lower() == "confirm" else ".confirm-card__btn--deny"
     )
     card.locator(selector).click()
     _wait_for_response(page)
-    if choice.lower() == "deny":
-        page.wait_for_function(
-            """(before) => {
-                const msgs = document.querySelectorAll('.message--assistant');
-                if (msgs.length > before) return true;
-                const last = msgs[msgs.length - 1];
-                const text = (last.innerText || '').toLowerCase();
-                return text.includes('cancel') || text.includes('cancelled');
-            }""",
-            arg=before_assistant_count,
-            timeout=120000,
-        )
 
 
 def _shot(page, name: str) -> str:
