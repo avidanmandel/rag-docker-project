@@ -237,7 +237,7 @@ def _maybe_steered_v2_prompt(question: str) -> str:
         return text
     if _V2_RENDER_ONLY_PATTERN.search(text):
         return (
-            f"{text} Use GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT only. "
+            "Invoke GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT only. "
             "Do not use SAVE_AND_RENDER. Do not save or reserve budget."
         )
     direct = _rewrite_v2_direct_invoke_prompt(text)
