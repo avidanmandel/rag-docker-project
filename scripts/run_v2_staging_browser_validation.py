@@ -129,18 +129,6 @@ def _click_card_choice(page, choice: str) -> None:
     )
     card.locator(selector).click()
     _wait_for_response(page)
-    if choice.lower() == "deny":
-        page.wait_for_function(
-            """() => {
-                const msgs = document.querySelectorAll('.message--assistant');
-                if (!msgs.length) return true;
-                const last = msgs[msgs.length - 1];
-                const text = (last.innerText || '').toLowerCase();
-                if (text.includes('cancel') || text.includes('cancelled')) return true;
-                return !last.querySelector('.confirm-card');
-            }""",
-            timeout=120000,
-        )
 
 
 def _shot(page, name: str) -> str:
