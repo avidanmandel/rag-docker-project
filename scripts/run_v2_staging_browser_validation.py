@@ -105,6 +105,10 @@ def _send_prompt(page, prompt: str) -> None:
 
 
 def _new_chat(page) -> None:
+    page.wait_for_function(
+        "() => !document.getElementById('typingIndicator')",
+        timeout=120000,
+    )
     btn = page.locator("#newChatBtn, #newChatBtnLarge").first
     btn.click()
     page.wait_for_timeout(1000)
@@ -130,9 +134,12 @@ def _click_card_choice(page, choice: str) -> None:
             """() => {
                 const msgs = document.querySelectorAll('.message--assistant');
                 if (!msgs.length) return true;
-                return !msgs[msgs.length - 1].querySelector('.confirm-card');
+                const last = msgs[msgs.length - 1];
+                const text = (last.innerText || '').toLowerCase();
+                if (text.includes('cancel') || text.includes('cancelled')) return true;
+                return !last.querySelector('.confirm-card');
             }""",
-            timeout=AGENT_TIMEOUT_MS,
+            timeout=120000,
         )
 
 
