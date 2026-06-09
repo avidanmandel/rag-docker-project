@@ -749,6 +749,14 @@ def _recover_failed_confirm(
         agent_session=retry_session,
         question=_guardrail_safe_prompt(steered),
     )
+    pending_rc = metadata.get("pending_return_control") or {}
+    if pending_rc.get("invocation_id") and str(pending_rc.get("function") or "") == fn:
+        answer, events, metadata = _invoke_agent_return_control(
+            client,
+            agent_session=retry_session,
+            pending=pending_rc,
+            confirmation_state="CONFIRM",
+        )
     answer, metadata = _finalize_agent_response(answer, events, metadata, answer=answer)
     metadata.pop("confirmation_card", None)
     metadata.pop("pending_return_control", None)
@@ -1282,6 +1290,14 @@ def invoke_agent(
                     agent_session=retry_session,
                     question=steered,
                 )
+                pending_rc = metadata.get("pending_return_control") or {}
+                if pending_rc.get("invocation_id"):
+                    answer, collected_events, metadata = _invoke_agent_return_control(
+                        client,
+                        agent_session=retry_session,
+                        pending=pending_rc,
+                        confirmation_state="CONFIRM",
+                    )
                 answer, metadata = _finalize_agent_response(
                     answer, collected_events, metadata, answer=answer
                 )
