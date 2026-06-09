@@ -167,6 +167,7 @@ _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
     re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
 )
+_V2_WRITE_RETRY_ATTEMPTS = 6
 _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"open\s+a\s+transfer-out\s+review\s+case\s+for\s+daniel\s+cohen", re.I),
@@ -177,8 +178,12 @@ _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
         " Ron Ben Ari is the approved right-back candidate at 43,000 EUR in ScoutMatch operational data.",
     ),
     (
-        re.compile(r"create\s+a\s+scouting\s+mission\s+for\s+his\s+next\s+match", re.I),
+        re.compile(r"create\s+a\s+scouting\s+mission\s+for\s+ron\s+ben\s+ari", re.I),
         " Use Ron Ben Ari as candidate_name with mission_mode CREATE_MISSION.",
+    ),
+    (
+        re.compile(r"create\s+a\s+scouting\s+mission", re.I),
+        " Use mission_mode CREATE_MISSION.",
     ),
     (
         re.compile(r"save\s+and\s+show\s+the\s+proposed\s+4-3-3\s+lineup", re.I),
@@ -213,8 +218,67 @@ def _needs_v2_write_steering(question: str, metadata: dict[str, Any]) -> bool:
         return False
     if metadata.get("confirmation_card") or metadata.get("pending_return_control"):
         return False
-    text = (question or "").strip()
-    return any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS)
+    return _is_v2_write_intent(question)
+
+
+def _no_lineup_answer(answer: str) -> bool:
+    text = (answer or "").lower()
+    return (
+        "no proposed lineup has been saved" in text
+        or "not been saved for head-coach review" in text
+    )
+
+
+def _resolve_v2_agent_response(
+    client,
+    *,
+    normalized: str,
+    prompt: str,
+    agent_session: str,
+    answer: str,
+    metadata: dict[str, Any],
+) -> tuple[str, dict[str, Any], str]:
+    if not _business_workflow_v2_enabled() or normalized in {"Confirm", "Deny"}:
+        return answer, metadata, agent_session
+
+    if _is_v2_render_only_intent(normalized):
+        if _no_lineup_answer(answer) or metadata.get("lineup_image_route"):
+            return answer, metadata, agent_session
+        steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
+        for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+            retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+            answer, _, metadata = _invoke_agent_once(
+                client,
+                agent_session=retry_session,
+                question=steered,
+            )
+            agent_session = retry_session
+            if _no_lineup_answer(answer) or metadata.get("lineup_image_route"):
+                break
+            if not metadata.get("pending_return_control"):
+                continue
+        return answer, metadata, agent_session
+
+    if not _is_v2_write_intent(normalized):
+        return answer, metadata, agent_session
+
+    pending = metadata.get("pending_return_control") or {}
+    if pending.get("invocation_id"):
+        return answer, metadata, agent_session
+
+    steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
+    for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+        retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+        answer, _, metadata = _invoke_agent_once(
+            client,
+            agent_session=retry_session,
+            question=steered,
+        )
+        agent_session = retry_session
+        pending = metadata.get("pending_return_control") or {}
+        if pending.get("invocation_id"):
+            break
+    return answer, metadata, agent_session
 
 
 def is_enabled() -> bool:
@@ -364,7 +428,35 @@ def _trace_orchestration(event: dict) -> dict:
     return trace.get("trace", {}).get("orchestrationTrace") or {}
 
 
+def _is_v2_write_intent(question: str) -> bool:
+    text = (question or "").strip()
+    return any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS)
+
+
+def _is_v2_render_only_intent(question: str) -> bool:
+    return bool(_V2_RENDER_ONLY_PATTERN.search(question or ""))
+
+
+def _enrich_confirmation_parameters(fn: str, params: dict[str, str]) -> dict[str, str]:
+    enriched = dict(params or {})
+    if fn == "OpenTransferOutReviewCase":
+        enriched.setdefault("player_name", "Daniel Cohen")
+        enriched.setdefault("estimated_budget_release_eur", "25000")
+    elif fn == "SubmitCriticalDecisionAndSendEmail":
+        enriched.setdefault("candidate_name", "Ron Ben Ari")
+        enriched.setdefault("salary_eur", "43000")
+        enriched.setdefault("target_role", "Right-back")
+    elif fn == "CreateAndReviewScoutingMission":
+        enriched.setdefault("candidate_name", "Ron Ben Ari")
+        enriched.setdefault("mission_mode", "CREATE_MISSION")
+    elif fn == "GenerateVisualSquadAndLineupBoard":
+        enriched.setdefault("formation", "4-3-3")
+        enriched.setdefault("board_mode", "SAVE_AND_RENDER")
+    return enriched
+
+
 def _confirmation_card_for_function(fn: str, params: dict[str, str]) -> dict[str, Any]:
+    params = _enrich_confirmation_parameters(fn, params)
     card: dict[str, Any] = {
         "function": fn,
         "parameters": params,
@@ -421,7 +513,11 @@ def _confirmation_prompt_from_return_control(pending: dict[str, Any]) -> str:
     params = pending.get("parameters") or {}
     if fn == "OpenTransferOutReviewCase":
         player = params.get("player_name") or "the selected player"
-        release = params.get("estimated_budget_release_eur") or params.get("estimated_release_eur")
+        release = (
+            params.get("estimated_budget_release_eur")
+            or params.get("estimated_release_eur")
+            or ("25000" if "daniel cohen" in player.lower() else "")
+        )
         suffix = f" Estimated release: {release} EUR." if release else ""
         return (
             f"Please confirm opening a transfer-out review case for {player}.{suffix} "
@@ -459,6 +555,8 @@ def _extract_confirmation_card(
             str(pending_return_control.get("function") or ""),
             pending_return_control.get("parameters") or {},
         )
+    if _business_workflow_v2_enabled():
+        return None
     pending = "PENDING_CONFIRMATION" in (answer or "").upper()
     for event in reversed(events):
         orchestration = _trace_orchestration(event)
@@ -742,25 +840,14 @@ def invoke_agent(
                     answer, collected_events, metadata = _invoke_agent_once(
                         client, agent_session=agent_session, question=steered
                     )
-            if (
-                _business_workflow_v2_enabled()
-                and any(pattern.search(normalized) for pattern in _V2_WRITE_INTENT_PATTERNS)
-                and not metadata.get("pending_return_control")
-                and not metadata.get("confirmation_card")
-                and answer != GENERIC_ERROR_MESSAGE
-            ):
-                for attempt in range(2):
-                    retry_session = f"{agent_session}-w{attempt + 1}"
-                    retry_prompt = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
-                    retry_answer, retry_events, retry_meta = _invoke_agent_once(
-                        client,
-                        agent_session=retry_session,
-                        question=retry_prompt,
-                    )
-                    answer, collected_events, metadata = retry_answer, retry_events, retry_meta
-                    agent_session = retry_session
-                    if metadata.get("pending_return_control") or metadata.get("confirmation_card"):
-                        break
+            answer, metadata, agent_session = _resolve_v2_agent_response(
+                client,
+                normalized=normalized,
+                prompt=prompt,
+                agent_session=agent_session,
+                answer=answer,
+                metadata=metadata,
+            )
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             if refused and prompt != normalized:
                 retry_answer, retry_events, retry_meta = _invoke_agent_once(
