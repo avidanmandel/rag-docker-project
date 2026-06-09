@@ -1135,6 +1135,14 @@ function renderWorkflowCards(cards) {
 function renderAgentExtras(msg) {
     const meta = msg.agent_metadata;
     if (!meta || typeof meta !== "object") return null;
+    if (!meta.lineup_image_route && Array.isArray(meta.workflow_cards)) {
+        for (const card of meta.workflow_cards) {
+            if (card && card.image_route) {
+                meta.lineup_image_route = card.image_route;
+                break;
+            }
+        }
+    }
     const frag = document.createDocumentFragment();
     if (Array.isArray(meta.tools_executed) && meta.tools_executed.length) {
         frag.appendChild(renderToolChips(meta.tools_executed, meta.tool_labels));
