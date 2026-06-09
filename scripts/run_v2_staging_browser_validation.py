@@ -158,6 +158,19 @@ def _extract_invite_key(text: str) -> str:
     return key if key.startswith("mission-") else ""
 
 
+def _deny_ok(text: str) -> bool:
+    lower = (text or "").lower()
+    return any(
+        phrase in lower
+        for phrase in (
+            "cancel",
+            "cancelled",
+            "was cancelled",
+            "no review case was created",
+        )
+    )
+
+
 def run_flows() -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -167,6 +180,26 @@ def run_flows() -> dict:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 900})
+            captured_invite_keys: list[str] = []
+
+            def _capture_invite_response(response) -> None:
+                try:
+                    if response.request.method != "POST" or "/messages" not in response.url:
+                        return
+                    payload = response.json()
+                    assistant = payload.get("assistant_message") or {}
+                    meta = assistant.get("agent_metadata") or {}
+                    for card in meta.get("workflow_cards") or []:
+                        key = str(card.get("calendar_invite_key") or "").strip()
+                        if key.startswith("mission-"):
+                            captured_invite_keys.append(key)
+                    invite_line = _extract_invite_key(str(assistant.get("content") or ""))
+                    if invite_line:
+                        captured_invite_keys.append(invite_line)
+                except Exception:
+                    return
+
+            page.on("response", _capture_invite_response)
             page.goto(BASE_URL, wait_until="networkidle", timeout=120000)
 
             def _run_step(name: str, fn):
@@ -230,7 +263,7 @@ def run_flows() -> dict:
                 report["screenshots"].append(_shot(page, "04_transfer_out_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 deny_text = _messages_text(page)
-                deny_ok = "cancel" in deny_text.lower()
+                deny_ok = _deny_ok(deny_text)
                 report["flows"]["D_transfer_out_deny"] = {
                     "cancelled": deny_ok,
                     "no_confirm_card": deny_ok or not _confirm_card_visible(page),
@@ -272,7 +305,7 @@ def run_flows() -> dict:
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 deny_text = _messages_text(page)
-                deny_ok = "cancel" in deny_text.lower()
+                deny_ok = _deny_ok(deny_text)
                 report["flows"]["E_scouting_mission_deny"] = {
                     "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }
@@ -282,18 +315,18 @@ def run_flows() -> dict:
                     "Create a scouting mission for Ron Ben Ari's next match and add it to my calendar.",
                 )
                 _wait_for_response(page, require_confirm=True)
+                invite_start = len(captured_invite_keys)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
-                try:
-                    page.wait_for_function(
-                        "() => (document.body.innerText || '').includes('calendar-invite/mission-')",
-                        timeout=120000,
-                    )
-                except Exception:
-                    pass
                 invite_key = ""
+                for key in reversed(captured_invite_keys[invite_start:]):
+                    if key.startswith("mission-"):
+                        invite_key = key
+                        break
                 page_text = ""
-                for _poll in range(60):
+                for _poll in range(30):
+                    if invite_key:
+                        break
                     page_text = page.content()
                     invite_key = _extract_invite_key(page_text)
                     if invite_key:
@@ -335,7 +368,7 @@ def run_flows() -> dict:
                 report["screenshots"].append(_shot(page, "09_critical_decision_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 deny_text = _messages_text(page)
-                deny_ok = "cancel" in deny_text.lower()
+                deny_ok = _deny_ok(deny_text)
                 report["flows"]["G_critical_decision_deny"] = {
                     "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }

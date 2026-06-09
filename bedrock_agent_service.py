@@ -1346,8 +1346,9 @@ def latest_pending_return_control(messages: list[dict]) -> dict[str, Any] | None
             continue
         meta = msg.get("agent_metadata") or {}
         pending = meta.get("pending_return_control")
-        if isinstance(pending, dict) and pending.get("invocation_id"):
+        if meta.get("confirmation_card") and isinstance(pending, dict) and pending.get("invocation_id"):
             return pending
+        return None
     return None
 
 
