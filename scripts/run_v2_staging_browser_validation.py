@@ -369,8 +369,18 @@ def run_flows() -> dict:
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
-                _wait_for_response(page)
-                page.wait_for_selector(".lineup-board-card__image, .lineup-board-card", timeout=180000)
+                render_text = _wait_for_response(page)
+                page.wait_for_function(
+                    """() => {
+                        const msgs = document.querySelectorAll('.message--assistant');
+                        const last = msgs[msgs.length - 1];
+                        if (!last) return false;
+                        return !!last.querySelector('.lineup-board-card__image')
+                            || !!last.querySelector('.lineup-board-card')
+                            || (last.innerText || '').includes('Opening fixture: Barcelona');
+                    }""",
+                    timeout=180000,
+                )
                 page_text = _messages_text(page)
                 has_svg = page.locator(".lineup-board-card__image").count() > 0
                 svg_text = ""
@@ -391,6 +401,7 @@ def run_flows() -> dict:
                 player_circles = svg_text.count('<circle cx="') if svg_text else 0
                 report["flows"]["H_visual_board"] = {
                     "inline_svg_or_board": has_svg,
+                    "render_text_ok": "opening fixture" in render_text.lower() and "barcelona" in render_text.lower(),
                     "eleven_markers": player_circles >= 11,
                     "ron_pending": "Ron Ben Ari" in combined and "pending" in combined.lower(),
                     "daniel_transfer_out": "Daniel Cohen" in combined and "transfer" in combined.lower(),

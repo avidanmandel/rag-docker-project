@@ -1151,7 +1151,15 @@ function renderAgentExtras(msg) {
     if (card) frag.appendChild(card);
     const workflow = renderWorkflowCards(meta.workflow_cards);
     if (workflow) frag.appendChild(workflow);
-    const board = renderLineupBoard(meta.lineup_image_route);
+    let board = renderLineupBoard(meta.lineup_image_route);
+    if (!board && Array.isArray(meta.workflow_cards)) {
+        for (const card of meta.workflow_cards) {
+            if (card && card.type === "visual_squad_board" && card.image_route) {
+                board = renderLineupBoard(card.image_route);
+                if (board) break;
+            }
+        }
+    }
     if (board) frag.appendChild(board);
     if (meta.remaining_budget_eur != null) {
         const budget = document.createElement("div");
