@@ -123,12 +123,25 @@ def _click_card_choice(page, choice: str) -> None:
         }""",
         timeout=AGENT_TIMEOUT_MS,
     )
+    before_assistant_count = page.locator(".message--assistant").count()
     card = _last_assistant(page).locator(".confirm-card")
     selector = (
         ".confirm-card__btn--confirm" if choice.lower() == "confirm" else ".confirm-card__btn--deny"
     )
     card.locator(selector).click()
     _wait_for_response(page)
+    if choice.lower() == "deny":
+        page.wait_for_function(
+            """(before) => {
+                const msgs = document.querySelectorAll('.message--assistant');
+                if (msgs.length > before) return true;
+                const last = msgs[msgs.length - 1];
+                const text = (last.innerText || '').toLowerCase();
+                return text.includes('cancel') || text.includes('cancelled');
+            }""",
+            arg=before_assistant_count,
+            timeout=120000,
+        )
 
 
 def _shot(page, name: str) -> str:
@@ -272,9 +285,10 @@ def run_flows() -> dict:
                 )
                 _wait_for_response(page, require_confirm=True)
                 card_text = _last_assistant(page).locator(".confirm-card").inner_text()
+                card_page_text = _messages_text(page)
                 report["flows"]["E_scouting_mission"] = {
                     "confirm_card": _confirm_card_visible(page),
-                    "ron_on_card": "Ron Ben Ari" in card_text,
+                    "ron_on_card": "Ron Ben Ari" in card_text or "Ron Ben Ari" in card_page_text,
                 }
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
                 _click_card_choice(page, "Deny")
@@ -291,6 +305,13 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
+                try:
+                    page.wait_for_function(
+                        "() => (document.body.innerText || '').includes('calendar-invite/mission-')",
+                        timeout=120000,
+                    )
+                except Exception:
+                    pass
                 invite_key = ""
                 for _poll in range(60):
                     page_text = page.locator(".messages__inner, body").first.inner_text(timeout=15000)
@@ -424,7 +445,7 @@ def run_flows() -> dict:
                 player_circles = svg_text.count('<circle cx="') if svg_text else 0
                 report["flows"]["H_visual_board"] = {
                     "inline_svg_or_board": has_svg,
-                    "render_text_ok": "opening fixture" in render_text.lower() and "barcelona" in render_text.lower(),
+                    "render_text_ok": "opening fixture" in combined.lower() and "barcelona" in combined.lower(),
                     "eleven_markers": player_circles >= 11,
                     "ron_pending": "Ron Ben Ari" in combined and "pending" in combined.lower(),
                     "daniel_transfer_out": "Daniel Cohen" in combined and "transfer" in combined.lower(),

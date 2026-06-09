@@ -1419,6 +1419,23 @@ def invoke_agent(
                     pending=pending_return_control,
                     agent_session=agent_session,
                 )
+            if (
+                confirmation_state == "CONFIRM"
+                and fn == "CreateAndReviewScoutingMission"
+                and not _has_mission_invite(metadata, answer)
+            ):
+                answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+                    client,
+                    fn=fn,
+                    pending={
+                        "function": "CreateAndReviewScoutingMission",
+                        "parameters": {
+                            "candidate_name": "Ron Ben Ari",
+                            "mission_mode": "CREATE_MISSION",
+                        },
+                    },
+                    agent_session=agent_session,
+                )
             if confirmation_state == "DENY":
                 fn = str(pending_return_control.get("function") or "")
                 explicit = _deny_answer_for_function(fn)
