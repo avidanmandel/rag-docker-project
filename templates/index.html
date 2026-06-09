@@ -17,16 +17,8 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar__header">
                 <div class="brand">
-                    <div class="brand__mark" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
-                            <path d="M2 12h20"></path>
-                        </svg>
-                    </div>
                     <div class="brand__text">
                         <div class="brand__title">ScoutMatch AI</div>
-                        <div class="brand__subtitle">Football Recruitment</div>
                     </div>
                 </div>
                 <button class="icon-btn" id="newChatBtn" title="New conversation">
@@ -132,6 +124,9 @@
                     <span class="main__subtitle" id="conversationMeta"></span>
                 </div>
                 <div class="main__actions">
+                    <button type="button" class="back-workspace-btn" id="backToWorkspaceBtn" hidden>
+                        Back to workspace
+                    </button>
                     <button class="icon-btn icon-btn--ghost" id="renameBtn" title="Rename" disabled>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -202,7 +197,11 @@
 
                     <div class="hero-right" aria-hidden="true">
                         <div class="dashboard-stage">
-                            <img class="dashboard-stage__panel-img" src="{{ url_for('static', filename='images/home-dashboard-art.png') }}" alt="" />
+                            <img
+                                class="dashboard-stage__panel-img"
+                                src="{{ url_for('static', filename='images/stadium-home.png') }}"
+                                alt="Football stadium crowd during an opening-season match"
+                            />
                         </div>
                     </div>
                 </div>
@@ -227,6 +226,9 @@
                 </form>
                 <div class="composer__hint">
                     Press <kbd>Enter</kbd> to send &middot; <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line
+                </div>
+                <div class="composer__demo-link">
+                    Live demo: <a href="http://3.239.47.249/" target="_blank" rel="noopener noreferrer">http://3.239.47.249/</a>
                 </div>
             </footer>
         </main>

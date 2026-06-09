@@ -3623,7 +3623,7 @@ kbd {
 .messages.messages--has-chat::before {
     opacity: 0.20;
     background:
-        url("/static/images/home-dashboard-art.png")
+        url("/static/images/stadium-home.png")
         right -24px center / min(52%, 760px) no-repeat;
 }
 
@@ -4353,4 +4353,136 @@ kbd {
 
 .workflow-card--lineup-board {
     border-color: rgba(120, 220, 160, 0.35);
+}
+
+/* UI polish pass — lecturer feedback (2026-06-09) */
+.brand { gap: 0; }
+.brand__title { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+
+.back-workspace-btn {
+    margin-right: 4px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: rgba(15, 29, 50, 0.72);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.back-workspace-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+    background: var(--bg-hover);
+}
+
+.composer__demo-link {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+.composer__demo-link a {
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.composer__demo-link a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+.messages__inner {
+    max-width: 860px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.message--assistant .message__content--markdown {
+    line-height: 1.72;
+    font-size: 14.5px;
+}
+
+.message--assistant .message__content--markdown p {
+    margin: 0.55em 0;
+}
+
+.message--assistant .message__content--markdown li {
+    margin: 0.35em 0 0.35em 1.25em;
+    line-height: 1.65;
+}
+
+.message--assistant .message__content--markdown h1,
+.message--assistant .message__content--markdown h2,
+.message--assistant .message__content--markdown h3,
+.message--assistant .message__content--markdown h4 {
+    margin: 0.85em 0 0.45em;
+}
+
+.markdown-table-wrap {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: rgba(8, 18, 32, 0.55);
+}
+
+.markdown-table-wrap table {
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+}
+
+.markdown-table-wrap th,
+.markdown-table-wrap td {
+    padding: 8px 10px;
+    white-space: nowrap;
+}
+
+.lineup-board-card__intro {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.lineup-board-card__details {
+    margin: 0 0 12px 1.1em;
+    padding: 0;
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+.lineup-board-card__details li + li {
+    margin-top: 4px;
+}
+
+.messages.messages--landing .dashboard-stage__panel-img {
+    width: 100%;
+    height: 100%;
+    min-height: clamp(320px, 42vh, 560px);
+    object-fit: cover;
+    object-position: center center;
+}
+
+@media (max-width: 1100px) {
+    .messages.messages--landing .dashboard-stage__panel-img {
+        min-height: 280px;
+        max-height: 420px;
+    }
+}
+
+@media (max-width: 720px) {
+    .back-workspace-btn {
+        padding: 7px 10px;
+        font-size: 11px;
+    }
 }

@@ -106,6 +106,7 @@ const state = {
     sessionDocumentRevision: 0,
     ingestionJobId: null,
     workspace: null,
+    showWorkspaceLanding: false,
 };
 
 const els = {
@@ -115,6 +116,7 @@ const els = {
     newChatBtn: document.getElementById("newChatBtn"),
     newChatBtnLarge: document.getElementById("newChatBtnLarge"),
     toggleSidebar: document.getElementById("toggleSidebar"),
+    backToWorkspaceBtn: document.getElementById("backToWorkspaceBtn"),
     renameBtn: document.getElementById("renameBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
     messages: document.getElementById("messages"),
@@ -206,7 +208,7 @@ function renderMarkdown(text) {
         }
         const header = rows[0];
         const body = rows.slice(rows[1]?.every(c => /^-+$/.test(c)) ? 2 : 1);
-        out.push("<table><thead><tr>");
+        out.push('<div class="markdown-table-wrap"><table><thead><tr>');
         header.forEach(cell => {
             out.push(`<th>${escapeHtml(cell.replace(/\*\*/g, ""))}</th>`);
         });
@@ -219,7 +221,7 @@ function renderMarkdown(text) {
             });
             out.push("</tr>");
         });
-        out.push("</tbody></table>");
+        out.push("</tbody></table></div>");
         tableRows = [];
         inTable = false;
     };
@@ -802,6 +804,7 @@ function renderSessions() {
 
 async function selectSession(id) {
     state.activeSessionId = id;
+    state.showWorkspaceLanding = false;
     const data = await API.getSession(id);
     state.messages = data.messages || [];
     state.sessionDocumentRevision = data.document_revision ?? 0;
@@ -958,24 +961,40 @@ async function handleResetProject() {
 
 function renderMessages() {
     const hasMessages = state.messages.length > 0;
-    els.messages.classList.toggle("messages--has-chat", hasMessages);
-    els.messages.classList.toggle("messages--landing", !hasMessages);
-    els.messages.innerHTML = "";
-    if (!hasMessages) {
-        if (els.homeHero) {
-            els.messages.appendChild(els.homeHero);
-        } else if (els.emptyState) {
-            els.messages.appendChild(els.emptyState);
-        }
-        return;
+    const showLanding = !hasMessages || state.showWorkspaceLanding;
+    els.messages.classList.toggle("messages--has-chat", hasMessages && !state.showWorkspaceLanding);
+    els.messages.classList.toggle("messages--landing", showLanding);
+    if (els.backToWorkspaceBtn) {
+        els.backToWorkspaceBtn.hidden = !hasMessages || state.showWorkspaceLanding;
     }
-    const inner = document.createElement("div");
-    inner.className = "messages__inner";
-    for (const m of state.messages) inner.appendChild(renderMessage(m));
-    els.messages.appendChild(inner);
+
+    const heroNode = els.homeHero;
+    if (heroNode && heroNode.parentElement === els.messages) {
+        heroNode.remove();
+    }
+    const existingInner = els.messages.querySelector(".messages__inner");
+    if (existingInner) {
+        existingInner.remove();
+    }
+
+    if (showLanding && heroNode) {
+        els.messages.appendChild(heroNode);
+    }
+    if (hasMessages && !state.showWorkspaceLanding) {
+        const inner = document.createElement("div");
+        inner.className = "messages__inner";
+        for (const m of state.messages) inner.appendChild(renderMessage(m));
+        els.messages.appendChild(inner);
+    }
     requestAnimationFrame(() => {
-        els.messages.scrollTop = els.messages.scrollHeight;
+        els.messages.scrollTop = showLanding ? 0 : els.messages.scrollHeight;
     });
+}
+
+function backToWorkspace() {
+    if (!state.messages.length) return;
+    state.showWorkspaceLanding = true;
+    renderMessages();
 }
 
 function isRefusalMessage(content) {
@@ -1076,12 +1095,29 @@ function renderLineupBoard(route) {
     const badge = document.createElement("div");
     badge.className = "lineup-board-card__badge";
     badge.textContent = "PROPOSED LINEUP — PENDING HEAD COACH REVIEW";
+    const intro = document.createElement("p");
+    intro.className = "lineup-board-card__intro";
+    intro.textContent =
+        "Proposed lineup for head-coach review. This board shows the current 4-3-3 proposal, pending player decisions, and the confirmed remaining budget.";
+    const details = document.createElement("ul");
+    details.className = "lineup-board-card__details";
+    [
+        "Formation: 4-3-3",
+        "Ron Ben Ari: Pending management approval",
+        "Daniel Cohen: Transfer-out review pending",
+        "Remaining confirmed budget: 57,000 EUR",
+        "Opening fixture: Barcelona",
+    ].forEach(line => {
+        const item = document.createElement("li");
+        item.textContent = line;
+        details.appendChild(item);
+    });
     const img = document.createElement("img");
     img.className = "lineup-board-card__image";
     img.src = route;
     img.alt = "Current proposed lineup board";
     img.loading = "lazy";
-    wrap.append(badge, img);
+    wrap.append(badge, intro, details, img);
     return wrap;
 }
 
@@ -1302,26 +1338,33 @@ function renderContext(chunks, mainSource) {
     return wrap;
 }
 
-function appendMessageEphemeral(msg) {
+function ensureMessagesInner() {
+    state.showWorkspaceLanding = false;
+    els.messages.classList.remove("messages--landing");
+    els.messages.classList.add("messages--has-chat");
+    if (els.backToWorkspaceBtn) {
+        els.backToWorkspaceBtn.hidden = false;
+    }
+    if (els.homeHero && els.homeHero.parentElement === els.messages) {
+        els.homeHero.remove();
+    }
     let inner = els.messages.querySelector(".messages__inner");
     if (!inner) {
-        els.messages.innerHTML = "";
         inner = document.createElement("div");
         inner.className = "messages__inner";
         els.messages.appendChild(inner);
     }
+    return inner;
+}
+
+function appendMessageEphemeral(msg) {
+    const inner = ensureMessagesInner();
     inner.appendChild(renderMessage(msg));
     els.messages.scrollTop = els.messages.scrollHeight;
 }
 
 function appendTypingIndicator() {
-    let inner = els.messages.querySelector(".messages__inner");
-    if (!inner) {
-        els.messages.innerHTML = "";
-        inner = document.createElement("div");
-        inner.className = "messages__inner";
-        els.messages.appendChild(inner);
-    }
+    const inner = ensureMessagesInner();
     const wrap = document.createElement("div");
     wrap.className = "message message--assistant";
     wrap.id = "typingIndicator";
@@ -1356,6 +1399,8 @@ async function sendMessage(content) {
 
     const text = content.trim();
     if (!text) return;
+
+    state.showWorkspaceLanding = false;
 
     if (!state.activeSessionId) {
         await newSession({ select: true });
@@ -1462,6 +1507,7 @@ els.input.addEventListener("input", () => autoresize(els.input));
 
 els.newChatBtn.addEventListener("click", () => newSession());
 els.newChatBtnLarge.addEventListener("click", () => newSession());
+els.backToWorkspaceBtn?.addEventListener("click", backToWorkspace);
 els.renameBtn.addEventListener("click", renameActiveSession);
 els.deleteBtn.addEventListener("click", deleteActiveSession);
 
