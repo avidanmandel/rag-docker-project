@@ -167,7 +167,7 @@ _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
     re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
 )
-_V2_WRITE_RETRY_ATTEMPTS = 6
+_V2_WRITE_RETRY_ATTEMPTS = 3
 _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"open\s+a\s+transfer-out\s+review\s+case\s+for\s+daniel\s+cohen", re.I),
@@ -201,7 +201,7 @@ def _maybe_steered_v2_prompt(question: str) -> str:
     if _V2_RENDER_ONLY_PATTERN.search(text):
         return (
             f"{text} Use GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT only. "
-            "Do not save or reserve budget."
+            "Do not use SAVE_AND_RENDER. Do not save or reserve budget."
         )
     augmented = text
     for pattern, suffix in _V2_EXPLICIT_WRITE_AUGMENTS:
@@ -229,6 +229,27 @@ def _no_lineup_answer(answer: str) -> bool:
     )
 
 
+def _deny_answer_for_function(fn: str) -> str:
+    if fn == "OpenTransferOutReviewCase":
+        return (
+            "The transfer-out review was cancelled. No review case was created. "
+            "No budget value was changed."
+        )
+    if fn == "SubmitCriticalDecisionAndSendEmail":
+        return (
+            "The recommendation was cancelled. No budget was reserved and no review record was saved."
+        )
+    if fn == "CreateAndReviewScoutingMission":
+        return (
+            "The scouting mission was cancelled. No mission record was created and no calendar invite was generated."
+        )
+    if fn == "GenerateVisualSquadAndLineupBoard":
+        return (
+            "The lineup save was cancelled. No lineup record was saved and no board image was written."
+        )
+    return "The action was cancelled. No records were saved."
+
+
 def _resolve_v2_agent_response(
     client,
     *,
@@ -242,7 +263,17 @@ def _resolve_v2_agent_response(
         return answer, metadata, agent_session
 
     if _is_v2_render_only_intent(normalized):
+        pending = metadata.get("pending_return_control") or {}
+        if pending.get("invocation_id") and pending.get("function") == "GenerateVisualSquadAndLineupBoard":
+            answer, _, metadata = _invoke_agent_return_control(
+                client,
+                agent_session=agent_session,
+                pending=pending,
+                confirmation_state="CONFIRM",
+            )
         if _no_lineup_answer(answer) or metadata.get("lineup_image_route"):
+            metadata.pop("confirmation_card", None)
+            metadata.pop("pending_return_control", None)
             return answer, metadata, agent_session
         steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
         for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
@@ -254,6 +285,8 @@ def _resolve_v2_agent_response(
             )
             agent_session = retry_session
             if _no_lineup_answer(answer) or metadata.get("lineup_image_route"):
+                metadata.pop("confirmation_card", None)
+                metadata.pop("pending_return_control", None)
                 break
             if not metadata.get("pending_return_control"):
                 continue
@@ -409,6 +442,8 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
         if status == "NOT_FOUND" and payload.get("message"):
             return str(payload["message"])
         if status in {"FAILURE", "REJECTED"} and payload.get("message"):
+            return str(payload["message"])
+        if status == "CANCELLED" and payload.get("message"):
             return str(payload["message"])
     return answer
 
@@ -828,6 +863,12 @@ def invoke_agent(
                 pending=pending_return_control,
                 confirmation_state=confirmation_state,
             )
+            if confirmation_state == "DENY" and not answer.strip():
+                answer = _deny_answer_for_function(
+                    str(pending_return_control.get("function") or "")
+                )
+            metadata.pop("confirmation_card", None)
+            metadata.pop("pending_return_control", None)
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             clear_pending = True
         else:

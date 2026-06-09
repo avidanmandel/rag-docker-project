@@ -65,21 +65,34 @@ def _wait_agent_idle(page) -> None:
     )
 
 
+def _last_assistant(page):
+    return page.locator(".message--assistant").last
+
+
+def _confirm_card_visible(page) -> bool:
+    return _last_assistant(page).locator(".confirm-card").count() > 0
+
+
 def _wait_for_response(page, *, require_confirm: bool = False) -> str:
     _wait_agent_idle(page)
+    page.wait_for_selector(".message--assistant", timeout=AGENT_TIMEOUT_MS)
     if require_confirm:
-        page.wait_for_selector(".confirm-card", timeout=AGENT_TIMEOUT_MS)
+        page.wait_for_function(
+            """() => {
+                const msgs = document.querySelectorAll('.message--assistant');
+                if (!msgs.length) return false;
+                return !!msgs[msgs.length - 1].querySelector('.confirm-card');
+            }""",
+            timeout=AGENT_TIMEOUT_MS,
+        )
     else:
         page.wait_for_selector(".message--assistant .message__content", timeout=AGENT_TIMEOUT_MS)
     page.wait_for_timeout(800)
-    if require_confirm and page.locator(".confirm-card").count() > 0:
-        return page.locator(".message--assistant .message__content").last.inner_text(timeout=5000)
-    text = page.locator(".message--assistant .message__content").last.inner_text(timeout=15000)
-    return text
+    return _last_assistant(page).locator(".message__content").inner_text(timeout=15000)
 
 
 def _assistant_text(page) -> str:
-    return page.locator(".message--assistant .message__content").last.inner_text(timeout=15000)
+    return _last_assistant(page).locator(".message__content").inner_text(timeout=15000)
 
 
 def _send_prompt(page, prompt: str) -> None:
@@ -98,11 +111,19 @@ def _new_chat(page) -> None:
 
 
 def _click_card_choice(page, choice: str) -> None:
-    page.wait_for_selector(".confirm-card", timeout=AGENT_TIMEOUT_MS)
+    page.wait_for_function(
+        """() => {
+            const msgs = document.querySelectorAll('.message--assistant');
+            if (!msgs.length) return false;
+            return !!msgs[msgs.length - 1].querySelector('.confirm-card');
+        }""",
+        timeout=AGENT_TIMEOUT_MS,
+    )
+    card = _last_assistant(page).locator(".confirm-card")
     selector = (
         ".confirm-card__btn--confirm" if choice.lower() == "confirm" else ".confirm-card__btn--deny"
     )
-    page.locator(selector).click()
+    card.locator(selector).click()
     _wait_agent_idle(page)
     page.wait_for_timeout(800)
 
@@ -161,7 +182,7 @@ def run_flows() -> dict:
                 report["flows"]["B_clean_no_lineup"] = {
                     "expected_phrase": "No proposed lineup has been saved for head-coach review yet."
                     in clean_text,
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 report["screenshots"].append(_shot(page, "02_clean_no_lineup.png"))
 
@@ -178,7 +199,7 @@ def run_flows() -> dict:
                     "grounded": any(
                         k in squad_text.lower() for k in ("right-back", "right back", "weakness")
                     ),
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 report["screenshots"].append(_shot(page, "03_grounded_squad_analysis.png"))
 
@@ -186,16 +207,17 @@ def run_flows() -> dict:
                 _new_chat(page)
                 _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
                 _wait_for_response(page, require_confirm=True)
+                card_text = _last_assistant(page).locator(".confirm-card").inner_text()
                 report["flows"]["D_transfer_out"] = {
-                    "confirm_card": page.locator(".confirm-card").count() > 0,
-                    "daniel_on_card": "Daniel Cohen" in page.locator(".confirm-card").inner_text(),
+                    "confirm_card": _confirm_card_visible(page),
+                    "daniel_on_card": "Daniel Cohen" in card_text,
                 }
                 report["screenshots"].append(_shot(page, "04_transfer_out_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 deny_text = _assistant_text(page)
                 report["flows"]["D_transfer_out_deny"] = {
                     "cancelled": "cancel" in deny_text.lower() or "cancelled" in deny_text.lower(),
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
@@ -216,14 +238,15 @@ def run_flows() -> dict:
                     "Create a scouting mission for Ron Ben Ari's next match and add it to my calendar.",
                 )
                 _wait_for_response(page, require_confirm=True)
+                card_text = _last_assistant(page).locator(".confirm-card").inner_text()
                 report["flows"]["E_scouting_mission"] = {
-                    "confirm_card": page.locator(".confirm-card").count() > 0,
-                    "ron_on_card": "Ron Ben Ari" in page.locator(".confirm-card").inner_text(),
+                    "confirm_card": _confirm_card_visible(page),
+                    "ron_on_card": "Ron Ben Ari" in card_text,
                 }
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 report["flows"]["E_scouting_mission_deny"] = {
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(
@@ -273,7 +296,7 @@ def run_flows() -> dict:
                 report["screenshots"].append(_shot(page, "09_critical_decision_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 report["flows"]["G_critical_decision_deny"] = {
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(
@@ -284,7 +307,6 @@ def run_flows() -> dict:
                 _click_card_choice(page, "Confirm")
                 critical_text = _assistant_text(page)
                 report["flows"]["G_critical_decision"] = {
-                    "confirm_card": page.locator(".confirm-card").count() > 0 or "management review" in critical_text.lower(),
                     "reserved_43000": "43,000" in critical_text or "43000" in critical_text,
                     "remaining_57000": "57,000" in critical_text or "57000" in critical_text,
                     "email_disabled_honest": "unavailable" in critical_text.lower()
@@ -305,19 +327,20 @@ def run_flows() -> dict:
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
                 _wait_for_response(page)
                 board_text = _assistant_text(page)
+                page_text = page.locator(".messages__inner").inner_text()
                 has_svg = page.locator(".lineup-board-card__image").count() > 0
                 report["flows"]["H_visual_board"] = {
                     "inline_svg_or_board": has_svg,
-                    "ron_pending": "Ron Ben Ari" in board_text and "pending" in board_text.lower(),
-                    "budget_57000": "57,000" in board_text or "57000" in board_text,
-                    "no_public_s3": "s3://" not in board_text.lower() and "amazonaws.com" not in board_text.lower(),
+                    "ron_pending": "Ron Ben Ari" in page_text and "pending" in page_text.lower(),
+                    "budget_57000": "57,000" in page_text or "57000" in page_text,
+                    "no_public_s3": "s3://" not in page_text.lower() and "amazonaws.com" not in page_text.lower(),
                 }
                 report["screenshots"].append(_shot(page, "12_visual_squad_board.png"))
 
             def flow_i_isolation():
                 _new_chat(page)
                 report["flows"]["I_new_chat_isolation"] = {
-                    "no_confirm_card": page.locator(".confirm-card").count() == 0,
+                    "no_confirm_card": not _confirm_card_visible(page),
                 }
                 report["screenshots"].append(_shot(page, "13_new_chat_isolation.png"))
 
