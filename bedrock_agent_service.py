@@ -155,15 +155,6 @@ _V2_WRITE_STEER_SUFFIX = (
     " Invoke the matching write tool immediately with defaults from approved club data. "
     "Do not ask clarifying questions."
 )
-_V2_MISSION_CRITICAL_STEER_SUFFIX = (
-    " The user already confirmed this write action. "
-    "Invoke the matching write tool immediately with defaults from approved club data. "
-    "Do not ask clarifying questions or request chat confirmation."
-)
-_V2_MISSION_CRITICAL_INTENT = re.compile(
-    r"scouting\s+mission|recommendation\s+for\s+management\s+review|right-back\s+candidate",
-    re.I,
-)
 _V2_RENDER_ONLY_PATTERN = re.compile(
     r"show me the updated proposed lineup and squad-risk board",
     re.I,
@@ -176,29 +167,37 @@ _V2_WRITE_INTENT_PATTERNS = (
     re.compile(r"save\s+and\s+show\s+the\s+proposed", re.I),
     re.compile(r"proposed\s+4-3-3\s+lineup", re.I),
 )
-_V2_WRITE_RETRY_ATTEMPTS = 5
+_V2_WRITE_RETRY_ATTEMPTS = 3
 _V2_EXPLICIT_WRITE_AUGMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"open\s+a\s+transfer-out\s+review\s+case\s+for\s+daniel\s+cohen", re.I),
         " Daniel Cohen is an approved current-squad rotation midfielder in ScoutMatch operational data.",
     ),
     (
-        re.compile(r"submit\s+the\s+recommendation\s+for\s+management\s+review", re.I),
-        " Ron Ben Ari is the approved right-back candidate at 43,000 EUR in ScoutMatch operational data. The user already confirmed this write action.",
-    ),
-    (
-        re.compile(r"create\s+a\s+scouting\s+mission\s+for\s+ron\s+ben\s+ari", re.I),
-        " Use Ron Ben Ari as candidate_name with mission_mode CREATE_MISSION. The user already confirmed this write action.",
-    ),
-    (
-        re.compile(r"create\s+a\s+scouting\s+mission", re.I),
-        " Use mission_mode CREATE_MISSION. The user already confirmed this write action.",
-    ),
-    (
         re.compile(r"save\s+and\s+show\s+the\s+proposed\s+4-3-3\s+lineup", re.I),
         " Use board_mode SAVE_AND_RENDER, formation 4-3-3, and demo_lineup true.",
     ),
 )
+
+
+def _rewrite_v2_direct_invoke_prompt(question: str) -> str | None:
+    text = (question or "").strip()
+    if re.search(r"create\s+a\s+scouting\s+mission", text, re.I):
+        return (
+            "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
+            "and mission_mode CREATE_MISSION."
+        )
+    if re.search(r"submit\s+(?:the\s+)?recommendation\s+for\s+management\s+review", text, re.I):
+        return (
+            "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
+            "salary_eur 43000, and target_role Right-back."
+        )
+    if re.search(r"choose\s+.+\s+right-back\s+candidate", text, re.I):
+        return (
+            "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
+            "salary_eur 43000, and target_role Right-back."
+        )
+    return None
 
 
 def _agent_asked_chat_confirmation(answer: str) -> bool:
@@ -213,40 +212,16 @@ def _agent_asked_chat_confirmation(answer: str) -> bool:
 
 def _escalating_v2_write_prompt(question: str, attempt: int) -> str:
     text = (question or "").strip()
-    lower = text.lower()
-    if attempt >= 4 and _V2_MISSION_CRITICAL_INTENT.search(lower):
-        if "scouting mission" in lower:
-            return _guardrail_safe_prompt(
-                "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
-                f"and mission_mode CREATE_MISSION.{_V2_MISSION_CRITICAL_STEER_SUFFIX}"
-            )
-        return _guardrail_safe_prompt(
-            "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
-            f"salary_eur 43000, and target_role Right-back.{_V2_MISSION_CRITICAL_STEER_SUFFIX}"
-        )
+    direct = _rewrite_v2_direct_invoke_prompt(text)
+    if direct:
+        return _guardrail_safe_prompt(direct)
     base = _maybe_steered_v2_prompt(text)
-    extras: list[str] = []
     if attempt >= 1:
-        extras.append(
-            " Invoke the matching write tool immediately. Do not ask clarifying questions "
-            "or request chat confirmation."
+        return _guardrail_safe_prompt(
+            f"{base} Invoke the matching write tool immediately. "
+            "Do not ask clarifying questions or request chat confirmation."
         )
-    if attempt >= 2:
-        if "scouting mission" in lower:
-            extras.append(
-                " Call CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
-                "and mission_mode CREATE_MISSION."
-            )
-        elif "recommendation" in lower or "right-back" in lower or "right back" in lower:
-            extras.append(
-                " Call SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
-                "salary_eur 43000, and target_role Right-back."
-            )
-    if attempt >= 3:
-        extras.append(
-            " The UI Confirm/Deny card requires returnControl from the write tool."
-        )
-    return _guardrail_safe_prompt(f"{base}{''.join(extras)}")
+    return _guardrail_safe_prompt(base)
 
 
 def _maybe_steered_v2_prompt(question: str) -> str:
@@ -260,18 +235,16 @@ def _maybe_steered_v2_prompt(question: str) -> str:
             f"{text} Use GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT only. "
             "Do not use SAVE_AND_RENDER. Do not save or reserve budget."
         )
+    direct = _rewrite_v2_direct_invoke_prompt(text)
+    if direct:
+        return direct
     augmented = text
     for pattern, suffix in _V2_EXPLICIT_WRITE_AUGMENTS:
         if pattern.search(text):
             augmented = f"{augmented}{suffix}"
             break
     if any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS):
-        steer_suffix = (
-            _V2_MISSION_CRITICAL_STEER_SUFFIX
-            if _V2_MISSION_CRITICAL_INTENT.search(text)
-            else _V2_WRITE_STEER_SUFFIX
-        )
-        return f"{augmented}{steer_suffix}"
+        return f"{augmented}{_V2_WRITE_STEER_SUFFIX}"
     return augmented
 
 
