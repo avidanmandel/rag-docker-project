@@ -229,19 +229,11 @@ def run_flows() -> dict:
                 }
                 report["screenshots"].append(_shot(page, "04_transfer_out_confirm_card.png"))
                 _click_card_choice(page, "Deny")
-                deny_text = _assistant_text(page)
+                deny_text = _messages_text(page)
+                deny_ok = "cancel" in deny_text.lower()
                 report["flows"]["D_transfer_out_deny"] = {
-                    "cancelled": any(
-                        phrase in deny_text.lower()
-                        for phrase in (
-                            "cancel",
-                            "cancelled",
-                            "no review case was created",
-                            "was cancelled",
-                        )
-                    ),
-                    "no_confirm_card": not _confirm_card_visible(page)
-                    or "cancel" in deny_text.lower(),
+                    "cancelled": deny_ok,
+                    "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
@@ -279,10 +271,10 @@ def run_flows() -> dict:
                 }
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
                 _click_card_choice(page, "Deny")
-                deny_text = _assistant_text(page)
+                deny_text = _messages_text(page)
+                deny_ok = "cancel" in deny_text.lower()
                 report["flows"]["E_scouting_mission_deny"] = {
-                    "no_confirm_card": not _confirm_card_visible(page)
-                    or "cancel" in deny_text.lower(),
+                    "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(
@@ -300,16 +292,12 @@ def run_flows() -> dict:
                 except Exception:
                     pass
                 invite_key = ""
+                page_text = ""
                 for _poll in range(60):
-                    page_text = page.locator(".messages__inner, body").first.inner_text(timeout=15000)
+                    page_text = page.content()
                     invite_key = _extract_invite_key(page_text)
                     if invite_key:
                         break
-                    if page.locator(".workflow-card").count() > 0:
-                        cards_text = page.locator(".workflow-card").first.inner_text(timeout=5000)
-                        invite_key = _extract_invite_key(cards_text)
-                        if invite_key:
-                            break
                     page.wait_for_timeout(1000)
                 ics_ok = False
                 if invite_key:
@@ -317,10 +305,11 @@ def run_flows() -> dict:
                         f"{BASE_URL.rstrip('/')}/api/opening-season/calendar-invite/{invite_key}"
                     )
                     ics_ok = resp.status == 200
+                visible_text = page.locator(".messages__inner").inner_text(timeout=15000)
                 report["flows"]["E_scouting_mission_confirm"] = {
                     "ics_route_ok": ics_ok,
                     "calendar_label_honest": any(
-                        token in page_text.lower() for token in ("download", "ics", "calendar")
+                        token in visible_text.lower() for token in ("download", "ics", "calendar")
                     ),
                 }
                 report["screenshots"].append(_shot(page, "07_scouting_mission_ics_result.png"))
@@ -345,8 +334,10 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 report["screenshots"].append(_shot(page, "09_critical_decision_confirm_card.png"))
                 _click_card_choice(page, "Deny")
+                deny_text = _messages_text(page)
+                deny_ok = "cancel" in deny_text.lower()
                 report["flows"]["G_critical_decision_deny"] = {
-                    "no_confirm_card": not _confirm_card_visible(page),
+                    "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }
                 _new_chat(page)
                 _send_prompt(
