@@ -309,29 +309,25 @@ def run_flows() -> dict:
                 report["flows"]["E_scouting_mission_deny"] = {
                     "no_confirm_card": deny_ok or not _confirm_card_visible(page),
                 }
-                _new_chat(page)
                 _send_prompt(
                     page,
                     "Create a scouting mission for Ron Ben Ari's next match and add it to my calendar.",
                 )
                 _wait_for_response(page, require_confirm=True)
                 invite_start = len(captured_invite_keys)
-                _click_card_choice(page, "Confirm")
+                _send_prompt(page, "Confirm")
                 _wait_for_response(page)
                 invite_key = ""
                 for key in reversed(captured_invite_keys[invite_start:]):
                     if key.startswith("mission-"):
                         invite_key = key
                         break
-                page_text = ""
-                for _poll in range(30):
-                    if invite_key:
-                        break
-                    page_text = page.content()
-                    invite_key = _extract_invite_key(page_text)
-                    if invite_key:
-                        break
-                    page.wait_for_timeout(1000)
+                if not invite_key:
+                    for _poll in range(15):
+                        invite_key = _extract_invite_key(page.content())
+                        if invite_key:
+                            break
+                        page.wait_for_timeout(1000)
                 ics_ok = False
                 if invite_key:
                     resp = page.request.get(
