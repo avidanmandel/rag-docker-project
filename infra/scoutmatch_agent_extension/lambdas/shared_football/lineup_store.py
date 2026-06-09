@@ -83,11 +83,23 @@ def finalize_lineup(params: dict) -> tuple[dict | None, str]:
     for starter in starters:
         squad = resolve_squad_player(starter["name"]) or {}
         status = "AVAILABLE"
-        selection = get_item(f"player_selection#{normalize_name(starter['name'])}")
-        if selection and selection.get("approval_status") == "PENDING_MANAGEMENT_APPROVAL":
-            sel_ctx = str(selection.get("planning_context_id") or "").strip()
-            same_scope = selection.get("demo_season_id") == active_demo_season_id()
-            if same_scope and (not active_ctx or (sel_ctx and sel_ctx == active_ctx)):
+        name_key = normalize_name(starter["name"])
+        selection = get_item(f"player_selection#{name_key}")
+        critical = get_item(f"critical_decision#{name_key}")
+        pending_record = None
+        if selection and (
+            selection.get("approval_status") == "PENDING_MANAGEMENT_APPROVAL"
+            or selection.get("status") == "PENDING_MANAGEMENT_APPROVAL"
+        ):
+            pending_record = selection
+        elif critical and critical.get("status") == "PENDING_MANAGEMENT_APPROVAL":
+            pending_record = critical
+        if pending_record:
+            same_scope = (
+                pending_record.get("demo_season_id") == active_demo_season_id()
+                or pending_record.get("demo_scope") == active_demo_season_id()
+            )
+            if same_scope:
                 status = "PENDING_MANAGEMENT_APPROVAL"
         enriched.append(
             {
