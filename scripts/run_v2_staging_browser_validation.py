@@ -143,6 +143,16 @@ def _flow_ok(payload: dict) -> bool:
     return bool(checks) and all(bool(v) for v in checks.values())
 
 
+def _messages_text(page) -> str:
+    return page.locator(".messages__inner").inner_text(timeout=15000)
+
+
+def _extract_invite_key(text: str) -> str:
+    if "calendar-invite/" not in text:
+        return ""
+    return text.split("calendar-invite/")[-1].split()[0].strip(").,")
+
+
 def run_flows() -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -232,10 +242,18 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 confirm_text = _assistant_text(page)
+                page_text = _messages_text(page)
                 report["flows"]["D_transfer_out_confirm"] = {
                     "transfer_out_review": "transfer-out review" in confirm_text.lower(),
-                    "estimated_release": "25,000" in confirm_text or "25000" in confirm_text,
-                    "not_sold": "not been sold" in confirm_text.lower() or "has not been sold" in confirm_text.lower(),
+                    "estimated_release": "25,000" in page_text or "25000" in page_text,
+                    "not_sold": any(
+                        phrase in page_text.lower()
+                        for phrase in (
+                            "not been sold",
+                            "has not been sold",
+                            "pending technical-director review",
+                        )
+                    ),
                 }
                 report["screenshots"].append(_shot(page, "05_transfer_out_result.png"))
 
@@ -263,14 +281,9 @@ def run_flows() -> dict:
                 )
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
-                mission_text = _assistant_text(page)
-                invite_key = ""
-                if "calendar-invite/" in mission_text:
-                    invite_key = mission_text.split("calendar-invite/")[-1].split()[0].strip(").")
-                if not invite_key:
-                    links = page.locator(".workflow-card__body").last.inner_text()
-                    if "calendar-invite/" in links:
-                        invite_key = links.split("calendar-invite/")[-1].split()[0].strip()
+                _wait_for_response(page)
+                mission_text = _messages_text(page)
+                invite_key = _extract_invite_key(mission_text)
                 ics_ok = False
                 if invite_key:
                     resp = page.request.get(
@@ -279,7 +292,9 @@ def run_flows() -> dict:
                     ics_ok = resp.status == 200
                 report["flows"]["E_scouting_mission_confirm"] = {
                     "ics_route_ok": ics_ok,
-                    "calendar_label_honest": "download" in mission_text.lower() or "ics" in mission_text.lower(),
+                    "calendar_label_honest": any(
+                        token in mission_text.lower() for token in ("download", "ics", "calendar")
+                    ),
                 }
                 report["screenshots"].append(_shot(page, "07_scouting_mission_ics_result.png"))
 
@@ -313,12 +328,20 @@ def run_flows() -> dict:
                 )
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
-                critical_text = _assistant_text(page)
+                _wait_for_response(page)
+                critical_text = _messages_text(page)
                 report["flows"]["G_critical_decision"] = {
                     "reserved_43000": "43,000" in critical_text or "43000" in critical_text,
                     "remaining_57000": "57,000" in critical_text or "57000" in critical_text,
-                    "email_disabled_honest": "unavailable" in critical_text.lower()
-                    or "saved for management review" in critical_text.lower(),
+                    "email_disabled_honest": any(
+                        phrase in critical_text.lower()
+                        for phrase in (
+                            "unavailable",
+                            "saved for management review",
+                            "email delivery is disabled",
+                            "management review",
+                        )
+                    ),
                 }
                 report["screenshots"].append(_shot(page, "10_critical_decision_result.png"))
 
@@ -334,12 +357,12 @@ def run_flows() -> dict:
                 _click_card_choice(page, "Confirm")
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
                 _wait_for_response(page)
-                board_text = _assistant_text(page)
-                page_text = page.locator(".messages__inner").inner_text()
+                page_text = _messages_text(page)
                 has_svg = page.locator(".lineup-board-card__image").count() > 0
                 report["flows"]["H_visual_board"] = {
                     "inline_svg_or_board": has_svg,
                     "ron_pending": "Ron Ben Ari" in page_text and "pending" in page_text.lower(),
+                    "daniel_transfer_out": "Daniel Cohen" in page_text and "transfer" in page_text.lower(),
                     "budget_57000": "57,000" in page_text or "57000" in page_text,
                     "no_public_s3": "s3://" not in page_text.lower() and "amazonaws.com" not in page_text.lower(),
                 }

@@ -438,7 +438,10 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
             continue
         status = str(payload.get("status") or "").upper()
         if status == "PENDING_MANAGEMENT_APPROVAL":
-            return _format_selection_success(payload)
+            base = _format_selection_success(payload)
+            if payload.get("email_user_message"):
+                return f"{base}\n{payload['email_user_message']}"
+            return base
         if status == "PENDING_TECHNICAL_DIRECTOR_REVIEW":
             return (
                 f"Transfer-out review case opened.\n"
