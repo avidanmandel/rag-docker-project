@@ -152,9 +152,17 @@ _CONFIRM_FIELD_PATTERN = re.compile(
     re.I,
 )
 _V2_WRITE_STEER_SUFFIX = (
+    " Invoke the matching write tool immediately with defaults from approved club data. "
+    "Do not ask clarifying questions."
+)
+_V2_MISSION_CRITICAL_STEER_SUFFIX = (
     " The user already confirmed this write action. "
     "Invoke the matching write tool immediately with defaults from approved club data. "
     "Do not ask clarifying questions or request chat confirmation."
+)
+_V2_MISSION_CRITICAL_INTENT = re.compile(
+    r"scouting\s+mission|recommendation\s+for\s+management\s+review|right-back\s+candidate",
+    re.I,
 )
 _V2_RENDER_ONLY_PATTERN = re.compile(
     r"show me the updated proposed lineup and squad-risk board",
@@ -206,17 +214,16 @@ def _agent_asked_chat_confirmation(answer: str) -> bool:
 def _escalating_v2_write_prompt(question: str, attempt: int) -> str:
     text = (question or "").strip()
     lower = text.lower()
-    if attempt >= 4:
+    if attempt >= 4 and _V2_MISSION_CRITICAL_INTENT.search(lower):
         if "scouting mission" in lower:
             return _guardrail_safe_prompt(
                 "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
-                f"and mission_mode CREATE_MISSION. The user already confirmed this write action.{_V2_WRITE_STEER_SUFFIX}"
+                f"and mission_mode CREATE_MISSION.{_V2_MISSION_CRITICAL_STEER_SUFFIX}"
             )
-        if "recommendation" in lower or "right-back" in lower or "right back" in lower:
-            return _guardrail_safe_prompt(
-                "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
-                f"salary_eur 43000, and target_role Right-back. The user already confirmed this write action.{_V2_WRITE_STEER_SUFFIX}"
-            )
+        return _guardrail_safe_prompt(
+            "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
+            f"salary_eur 43000, and target_role Right-back.{_V2_MISSION_CRITICAL_STEER_SUFFIX}"
+        )
     base = _maybe_steered_v2_prompt(text)
     extras: list[str] = []
     if attempt >= 1:
@@ -259,7 +266,12 @@ def _maybe_steered_v2_prompt(question: str) -> str:
             augmented = f"{augmented}{suffix}"
             break
     if any(pattern.search(text) for pattern in _V2_WRITE_INTENT_PATTERNS):
-        return f"{augmented}{_V2_WRITE_STEER_SUFFIX}"
+        steer_suffix = (
+            _V2_MISSION_CRITICAL_STEER_SUFFIX
+            if _V2_MISSION_CRITICAL_INTENT.search(text)
+            else _V2_WRITE_STEER_SUFFIX
+        )
+        return f"{augmented}{steer_suffix}"
     return augmented
 
 
