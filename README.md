@@ -374,6 +374,26 @@ Final submission screenshots are in **`submission_evidence/final_v14/`** (11 PNG
 
 See `submission_evidence/README.md` for the full proof table.
 
+## Final Presentation
+
+Course submission deck and presenter materials:
+
+| File | Purpose |
+|------|---------|
+| [presentation_pack/ScoutMatch_AI_Final_Submission_Presentation.pptx](presentation_pack/ScoutMatch_AI_Final_Submission_Presentation.pptx) | Main 6-slide deck plus appendix (PPTX) |
+| [presentation_pack/ScoutMatch_AI_Final_Submission_Presentation.pdf](presentation_pack/ScoutMatch_AI_Final_Submission_Presentation.pdf) | PDF export for submission |
+| [presentation_pack/Speaker_Notes.md](presentation_pack/Speaker_Notes.md) | Slide-by-slide speaker notes (5-7 minutes) |
+| [presentation_pack/Live_Demo_Script.md](presentation_pack/Live_Demo_Script.md) | Live demo prompts and fallbacks |
+| [presentation_pack/Presentation_Outline.md](presentation_pack/Presentation_Outline.md) | Deck outline |
+
+**Live Demo:** http://3.239.47.249/
+
+Regenerate locally:
+
+`ash
+python presentation_pack/build_submission_presentation.py
+`
+
 ---
 
 ## Cleanup (after ZIP review — pending user approval)
