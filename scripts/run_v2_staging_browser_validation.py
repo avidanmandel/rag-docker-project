@@ -252,6 +252,7 @@ def run_flows() -> dict:
                             "not been sold",
                             "has not been sold",
                             "pending technical-director review",
+                            "technical-director review",
                         )
                     ),
                 }
@@ -282,6 +283,10 @@ def run_flows() -> dict:
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
                 _wait_for_response(page)
+                page.wait_for_function(
+                    "() => document.body.innerText.includes('calendar-invite/')",
+                    timeout=60000,
+                )
                 mission_text = _messages_text(page)
                 invite_key = _extract_invite_key(mission_text)
                 ics_ok = False
@@ -355,16 +360,29 @@ def run_flows() -> dict:
                 _send_prompt(page, "Save and show the proposed 4-3-3 lineup for head-coach review.")
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
+                _wait_for_response(page)
                 _send_prompt(page, "Show me the updated proposed lineup and squad-risk board.")
                 _wait_for_response(page)
+                page.wait_for_selector(".lineup-board-card__image", timeout=120000)
                 page_text = _messages_text(page)
                 has_svg = page.locator(".lineup-board-card__image").count() > 0
+                svg_text = ""
+                if has_svg:
+                    src = page.locator(".lineup-board-card__image").first.get_attribute("src") or ""
+                    if src.startswith("/"):
+                        resp = page.request.get(f"{BASE_URL.rstrip('/')}{src}")
+                        if resp.ok:
+                            svg_text = resp.text()
+                combined = f"{page_text}\n{svg_text}"
+                player_circles = svg_text.count('<circle cx="') if svg_text else 0
                 report["flows"]["H_visual_board"] = {
                     "inline_svg_or_board": has_svg,
-                    "ron_pending": "Ron Ben Ari" in page_text and "pending" in page_text.lower(),
-                    "daniel_transfer_out": "Daniel Cohen" in page_text and "transfer" in page_text.lower(),
-                    "budget_57000": "57,000" in page_text or "57000" in page_text,
-                    "no_public_s3": "s3://" not in page_text.lower() and "amazonaws.com" not in page_text.lower(),
+                    "eleven_markers": player_circles >= 11,
+                    "ron_pending": "Ron Ben Ari" in combined and "pending" in combined.lower(),
+                    "daniel_transfer_out": "Daniel Cohen" in combined and "transfer" in combined.lower(),
+                    "budget_57000": "57,000" in combined or "57000" in combined,
+                    "no_public_s3": "s3://" not in combined.lower()
+                    and "amazonaws.com" not in combined.lower(),
                 }
                 report["screenshots"].append(_shot(page, "12_visual_squad_board.png"))
 

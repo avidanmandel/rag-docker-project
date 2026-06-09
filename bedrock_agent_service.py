@@ -197,6 +197,11 @@ def _rewrite_v2_direct_invoke_prompt(question: str) -> str | None:
             "Invoke SubmitCriticalDecisionAndSendEmail with candidate_name Ron Ben Ari, "
             "salary_eur 43000, and target_role Right-back."
         )
+    if re.search(r"completed scouting report", text, re.I):
+        return (
+            "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
+            "and mission_mode REVIEW_COMPLETED_MISSION."
+        )
     return None
 
 
