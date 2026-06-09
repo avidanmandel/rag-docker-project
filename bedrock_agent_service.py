@@ -202,6 +202,11 @@ def _rewrite_v2_direct_invoke_prompt(question: str) -> str | None:
             "Invoke CreateAndReviewScoutingMission with candidate_name Ron Ben Ari "
             "and mission_mode REVIEW_COMPLETED_MISSION."
         )
+    if _V2_RENDER_ONLY_PATTERN.search(text):
+        return (
+            "Invoke GenerateVisualSquadAndLineupBoard with board_mode RENDER_CURRENT, "
+            "formation 4-3-3, and demo_lineup true."
+        )
     return None
 
 
@@ -665,6 +670,69 @@ def _has_completed_report(metadata: dict[str, Any], answer: str) -> bool:
         if card.get("type") == "completed_demo_report":
             return True
     return False
+
+
+def _has_visual_board(metadata: dict[str, Any], answer: str) -> bool:
+    if metadata.get("lineup_image_route"):
+        return True
+    for card in metadata.get("workflow_cards") or []:
+        if card.get("type") == "visual_squad_board" and card.get("image_route"):
+            return True
+    text = (answer or "").lower()
+    return "opening fixture" in text and "barcelona" in text
+
+
+def _invoke_render_board_response(
+    client,
+    *,
+    normalized: str,
+    agent_session: str,
+) -> tuple[str, list[dict], dict[str, Any], str]:
+    steered = _guardrail_safe_prompt(
+        _rewrite_v2_direct_invoke_prompt(normalized) or _maybe_steered_v2_prompt(normalized)
+    )
+    confirm_attrs = {"write_confirmed": "true", "workflow_internal": "true"}
+    answer = ""
+    collected_events: list[dict] = []
+    metadata: dict[str, Any] = {}
+    for attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+        retry_session = agent_session if attempt == 0 else f"advisor-{uuid.uuid4().hex[:10]}"
+        answer, collected_events, metadata = _invoke_agent_once(
+            client,
+            agent_session=retry_session,
+            question=steered,
+            session_attributes=confirm_attrs,
+        )
+        pending_rc = metadata.get("pending_return_control") or {}
+        if (
+            pending_rc.get("invocation_id")
+            and pending_rc.get("function") == "GenerateVisualSquadAndLineupBoard"
+        ):
+            answer, collected_events, metadata = _invoke_agent_return_control(
+                client,
+                agent_session=retry_session,
+                pending=pending_rc,
+                confirmation_state="CONFIRM",
+            )
+        answer, metadata = _finalize_agent_response(
+            answer, collected_events, metadata, answer=answer
+        )
+        agent_session = retry_session
+        if _has_visual_board(metadata, answer) or _no_lineup_answer(answer):
+            metadata.pop("confirmation_card", None)
+            metadata.pop("pending_return_control", None)
+            break
+    if not _has_visual_board(metadata, answer) and not _no_lineup_answer(answer):
+        answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+            client,
+            fn="GenerateVisualSquadAndLineupBoard",
+            pending={
+                "function": "GenerateVisualSquadAndLineupBoard",
+                "parameters": {"board_mode": "RENDER_CURRENT", "formation": "4-3-3"},
+            },
+            agent_session=agent_session,
+        )
+    return answer, collected_events, metadata, agent_session
 
 
 def _post_confirm_steer(fn: str, params: dict[str, str] | None = None) -> str | None:
@@ -1319,6 +1387,17 @@ def invoke_agent(
                     metadata.pop("confirmation_card", None)
                     metadata.pop("pending_return_control", None)
                     break
+            refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
+            clear_pending = False
+        elif (
+            _business_workflow_v2_enabled()
+            and _is_v2_render_only_intent(normalized)
+        ):
+            answer, collected_events, metadata, agent_session = _invoke_render_board_response(
+                client,
+                normalized=normalized,
+                agent_session=agent_session,
+            )
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             clear_pending = False
         else:
