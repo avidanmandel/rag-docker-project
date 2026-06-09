@@ -305,12 +305,13 @@ def _resolve_v2_agent_response(
     if _is_v2_render_only_intent(normalized):
         pending = metadata.get("pending_return_control") or {}
         if pending.get("invocation_id") and pending.get("function") == "GenerateVisualSquadAndLineupBoard":
-            answer, _, metadata = _invoke_agent_return_control(
+            answer, events, metadata = _invoke_agent_return_control(
                 client,
                 agent_session=agent_session,
                 pending=pending,
                 confirmation_state="CONFIRM",
             )
+            answer, metadata = _finalize_agent_response(answer, events, metadata, answer=answer)
         if _no_lineup_answer(answer) or metadata.get("lineup_image_route"):
             metadata.pop("confirmation_card", None)
             metadata.pop("pending_return_control", None)
@@ -318,7 +319,7 @@ def _resolve_v2_agent_response(
         steered = _guardrail_safe_prompt(_maybe_steered_v2_prompt(normalized))
         for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
             retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
-            answer, _, metadata = _invoke_agent_once(
+            answer, events, metadata = _invoke_agent_once(
                 client,
                 agent_session=retry_session,
                 question=steered,
@@ -328,9 +329,43 @@ def _resolve_v2_agent_response(
                 metadata.pop("confirmation_card", None)
                 metadata.pop("pending_return_control", None)
                 break
+            pending = metadata.get("pending_return_control") or {}
+            if pending.get("invocation_id") and pending.get("function") == "GenerateVisualSquadAndLineupBoard":
+                answer, events, metadata = _invoke_agent_return_control(
+                    client,
+                    agent_session=agent_session,
+                    pending=pending,
+                    confirmation_state="CONFIRM",
+                )
+                answer, metadata = _finalize_agent_response(answer, events, metadata, answer=answer)
+                if metadata.get("lineup_image_route"):
+                    metadata.pop("confirmation_card", None)
+                    metadata.pop("pending_return_control", None)
+                    break
             if not metadata.get("pending_return_control"):
                 continue
         return answer, metadata, agent_session
+
+    if re.search(r"completed scouting report", normalized, re.I) and not _has_completed_report(
+        metadata, answer
+    ):
+        steered = _guardrail_safe_prompt(
+            _rewrite_v2_direct_invoke_prompt(normalized)
+            or _maybe_steered_v2_prompt(normalized)
+        )
+        for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
+            retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
+            answer, events, metadata = _invoke_agent_once(
+                client,
+                agent_session=retry_session,
+                question=steered,
+            )
+            answer, metadata = _finalize_agent_response(answer, events, metadata, answer=answer)
+            agent_session = retry_session
+            if _has_completed_report(metadata, answer):
+                metadata.pop("confirmation_card", None)
+                metadata.pop("pending_return_control", None)
+                break
 
     if not _is_v2_write_intent(normalized):
         return answer, metadata, agent_session
@@ -429,6 +464,199 @@ def _format_lineup_success(body: dict) -> str:
     )
 
 
+def _collect_tool_payloads(events: list[dict]) -> list[dict]:
+    payloads: list[dict] = []
+    for event in events:
+        orchestration = _trace_orchestration(event)
+        observation = orchestration.get("observation") or {}
+        action_out = observation.get("actionGroupInvocationOutput") or {}
+        body_text = str(action_out.get("text") or "")
+        if not body_text.strip().startswith("{"):
+            continue
+        try:
+            payloads.append(json.loads(body_text))
+        except json.JSONDecodeError:
+            continue
+    return payloads
+
+
+def _payload_priority(payload: dict) -> int:
+    status = str(payload.get("status") or "").upper()
+    priorities = {
+        "LINEUP_BOARD_GENERATED": 100,
+        "PENDING_SCOUT_OBSERVATION": 95,
+        "READY_FOR_RECRUITMENT_REVIEW": 95,
+        "PENDING_MANAGEMENT_APPROVAL": 90,
+        "PENDING_HEAD_COACH_REVIEW": 85,
+        "PENDING_TECHNICAL_DIRECTOR_REVIEW": 85,
+        "PENDING_CONFIRMATION": 10,
+    }
+    if payload.get("image_route"):
+        return max(priorities.get(status, 50), 100)
+    if payload.get("report_label"):
+        return max(priorities.get(status, 50), 95)
+    return priorities.get(status, 0)
+
+
+def _format_board_answer(payload: dict) -> str:
+    lines = [
+        f"Current proposed lineup board ({payload.get('formation', '4-3-3')}).",
+        "Status: Pending head-coach review",
+    ]
+    if payload.get("opening_fixture"):
+        lines.append(f"Opening fixture: {payload['opening_fixture']}")
+    budget = payload.get("remaining_budget_eur")
+    if budget is None:
+        budget = payload.get("remaining_confirmed_budget_eur")
+    if budget is not None:
+        lines.append(f"Remaining budget: {int(budget):,} EUR")
+    for name in payload.get("pending_management_candidates") or []:
+        if name:
+            lines.append(f"Pending management approval: {name}")
+    for name in payload.get("pending_transfer_out_players") or []:
+        if name:
+            lines.append(f"Transfer-out review pending: {name}")
+    return "\n".join(lines)
+
+
+def _format_completed_report_answer(payload: dict) -> str:
+    lines = [
+        str(payload.get("report_label") or "Demo replay: completed scouting observation"),
+        f"Candidate: {payload.get('candidate_name', '')}",
+    ]
+    if payload.get("main_risk"):
+        lines.append(f"Main risk: {payload['main_risk']}")
+    if payload.get("ai_summary"):
+        lines.append(f"AI summary: {payload['ai_summary']}")
+    if payload.get("recommendation"):
+        lines.append(f"Recommendation: {payload['recommendation']}")
+    lines.append("Status: Ready for recruitment review")
+    return "\n".join(lines)
+
+
+def _merge_payload_into_metadata(metadata: dict[str, Any], payload: dict) -> None:
+    if payload.get("image_route"):
+        metadata["lineup_image_route"] = payload.get("image_route")
+    if payload.get("remaining_budget_eur") is not None:
+        metadata["remaining_budget_eur"] = payload.get("remaining_budget_eur")
+    elif payload.get("remaining_confirmed_budget_eur") is not None:
+        metadata["remaining_budget_eur"] = payload.get("remaining_confirmed_budget_eur")
+    if (
+        str(payload.get("status") or "").upper() in {"LINEUP_BOARD_GENERATED", "RENDERED"}
+        and payload.get("remaining_budget_eur") is not None
+    ):
+        metadata["remaining_budget_eur"] = payload.get("remaining_budget_eur")
+    workflow_cards = list(metadata.get("workflow_cards") or [])
+    card_types = {str(card.get("type")) for card in workflow_cards}
+    if payload.get("mission_card_type") == "scouting_mission" and "scouting_mission" not in card_types:
+        workflow_cards.append({"type": "scouting_mission", **payload})
+    if payload.get("status") == "PENDING_TECHNICAL_DIRECTOR_REVIEW" and "transfer_out_review" not in card_types:
+        workflow_cards.append({"type": "transfer_out_review", **payload})
+    if payload.get("report_label") and "completed_demo_report" not in card_types:
+        workflow_cards.append({"type": "completed_demo_report", **payload})
+    if payload.get("squad_board_type") == "visual_squad_board" and "visual_squad_board" not in card_types:
+        workflow_cards.append({"type": "visual_squad_board", **payload})
+    if payload.get("email_user_message") and "review_email_result" not in card_types:
+        workflow_cards.append(
+            {
+                "type": "review_email_result",
+                "message": payload.get("email_user_message"),
+            }
+        )
+    metadata["workflow_cards"] = workflow_cards[:4]
+
+
+def _append_workflow_downloads(answer: str, metadata: dict[str, Any]) -> str:
+    text = answer or ""
+    for card in metadata.get("workflow_cards") or []:
+        invite = str(card.get("calendar_invite_key") or "").strip()
+        if not invite:
+            continue
+        line = f"Download: /api/opening-season/calendar-invite/{invite}"
+        if "calendar-invite/" not in text:
+            text = f"{text}\n{line}".strip()
+    return text
+
+
+def _format_answer_from_payload(payload: dict) -> str | None:
+    status = str(payload.get("status") or "").upper()
+    if status == "PENDING_MANAGEMENT_APPROVAL":
+        base = _format_selection_success(payload)
+        if payload.get("email_user_message"):
+            return f"{base}\n{payload['email_user_message']}"
+        return base
+    if status == "PENDING_TECHNICAL_DIRECTOR_REVIEW":
+        return (
+            f"Transfer-out review case opened.\n"
+            f"Player: {payload.get('player_name', '')}\n"
+            f"Reason: {payload.get('reason', '')}\n"
+            f"Estimated budget released: {payload.get('estimated_budget_release_eur', 0):,} EUR\n"
+            f"Status: Pending technical-director review\n"
+            f"The player has not been sold."
+        )
+    if status == "PENDING_SCOUT_OBSERVATION":
+        invite = str(payload.get("calendar_invite_key") or "").strip()
+        invite_line = (
+            f"\nDownload: /api/opening-season/calendar-invite/{invite}" if invite else ""
+        )
+        return (
+            f"Scouting mission created.\n"
+            f"Candidate: {payload.get('candidate_name', '')}\n"
+            f"Match: {payload.get('fixture_name', '')}\n"
+            f"Date: {payload.get('display_date', '')}\n"
+            f"Calendar: {payload.get('calendar_label', 'Calendar invite ready to download')}\n"
+            f"Reminder: {payload.get('reminder_label', '')}\n"
+            f"Status: Pending scout observation"
+            f"{invite_line}"
+        )
+    if status == "READY_FOR_RECRUITMENT_REVIEW":
+        return _format_completed_report_answer(payload)
+    if payload.get("email_user_message"):
+        base = _format_selection_success(payload)
+        return f"{base}\n{payload['email_user_message']}"
+    if status in {"PENDING_HEAD_COACH_REVIEW", "LINEUP_FINALIZED"}:
+        return _format_lineup_success(payload)
+    if status == "LINEUP_BOARD_GENERATED" and payload.get("image_route"):
+        return _format_board_answer(payload)
+    if status == "NOT_FOUND" and payload.get("message"):
+        return str(payload["message"])
+    if status in {"FAILURE", "REJECTED"} and payload.get("message"):
+        return str(payload["message"])
+    if status == "CANCELLED" and payload.get("message"):
+        return str(payload["message"])
+    return None
+
+
+def _finalize_agent_response(
+    raw_answer: str,
+    events: list[dict],
+    metadata: dict[str, Any],
+    *,
+    answer: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    payloads = _collect_tool_payloads(events)
+    for payload in payloads:
+        _merge_payload_into_metadata(metadata, payload)
+    best = max(payloads, key=_payload_priority) if payloads else None
+    resolved = answer if answer is not None else _answer_from_tool_payload(raw_answer, events)
+    if best and _payload_priority(best) >= 85:
+        formatted = _format_answer_from_payload(best)
+        if formatted:
+            resolved = formatted
+    resolved = _append_workflow_downloads(resolved, metadata)
+    return resolved, metadata
+
+
+def _has_completed_report(metadata: dict[str, Any], answer: str) -> bool:
+    text = (answer or "").lower()
+    if "demo replay" in text and "ready for recruitment review" in text:
+        return True
+    for card in metadata.get("workflow_cards") or []:
+        if card.get("type") == "completed_demo_report":
+            return True
+    return False
+
+
 def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
     for event in reversed(events):
         orchestration = _trace_orchestration(event)
@@ -472,23 +700,14 @@ def _answer_from_tool_payload(answer: str, events: list[dict]) -> str:
                 f"{invite_line}"
             )
         if status == "READY_FOR_RECRUITMENT_REVIEW":
-            return (
-                f"{payload.get('report_label', 'Demo replay')}\n"
-                f"Candidate: {payload.get('candidate_name', '')}\n"
-                f"Recommendation: {payload.get('recommendation', '')}\n"
-                f"Status: Ready for recruitment review"
-            )
+            return _format_completed_report_answer(payload)
         if payload.get("email_user_message"):
             base = _format_selection_success(payload)
             return f"{base}\n{payload['email_user_message']}"
         if status in {"PENDING_HEAD_COACH_REVIEW", "LINEUP_FINALIZED"}:
             return _format_lineup_success(payload)
         if status == "LINEUP_BOARD_GENERATED" and payload.get("image_route"):
-            return (
-                f"Current proposed lineup board ({payload.get('formation', '4-3-3')}).\n"
-                f"Status: Pending head-coach review\n"
-                f"View: {payload['image_route']}"
-            )
+            return _format_board_answer(payload)
         if status == "NOT_FOUND" and payload.get("message"):
             return str(payload["message"])
         if status in {"FAILURE", "REJECTED"} and payload.get("message"):
@@ -838,6 +1057,12 @@ def _invoke_agent_once(
         pending_return_control=pending_return_control,
     )
     answer = _answer_from_tool_payload(raw_answer, collected_events)
+    answer, metadata = _finalize_agent_response(
+        raw_answer,
+        collected_events,
+        metadata,
+        answer=answer,
+    )
     if not answer.strip() and pending_return_control:
         answer = _confirmation_prompt_from_return_control(pending_return_control)
     answer = _sanitize_text(answer) or GENERIC_ERROR_MESSAGE
@@ -912,6 +1137,12 @@ def invoke_agent(
                 agent_session=agent_session,
                 pending=pending_return_control,
                 confirmation_state=confirmation_state,
+            )
+            answer, metadata = _finalize_agent_response(
+                answer,
+                collected_events,
+                metadata,
+                answer=answer,
             )
             if confirmation_state == "DENY":
                 fn = str(pending_return_control.get("function") or "")

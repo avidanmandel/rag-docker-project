@@ -108,10 +108,29 @@ def _remaining_budget_for_lineup(lineup: dict) -> int:
     for starter in lineup.get("starting_xi") or []:
         if starter.get("status") != "PENDING_MANAGEMENT_APPROVAL":
             continue
-        selection = get_item(f"player_selection#{normalize_name(starter.get('name', ''))}")
-        if not selection or not _selection_matches_lineup_context(selection, ctx_id):
+        name_key = normalize_name(starter.get("name", ""))
+        selection = get_item(f"player_selection#{name_key}")
+        critical = get_item(f"critical_decision#{name_key}")
+        pending_record = None
+        if selection and _selection_matches_lineup_context(selection, ctx_id):
+            pending_record = selection
+        elif critical and critical.get("status") == "PENDING_MANAGEMENT_APPROVAL":
+            same_scope = (
+                critical.get("demo_season_id") == active_demo_season_id()
+                or critical.get("demo_scope") == active_demo_season_id()
+            )
+            if same_scope:
+                pending_record = critical
+        if not pending_record:
             continue
-        scoped = _selection_remaining_budget(selection, base_remaining=base_remaining)
+        if pending_record is critical:
+            if pending_record.get("remaining_budget_eur") is not None:
+                return int(pending_record["remaining_budget_eur"])
+            reserved = pending_record.get("reserved_amount_eur") or pending_record.get("salary_eur")
+            if reserved is not None:
+                return max(base_remaining - int(reserved), 0)
+            continue
+        scoped = _selection_remaining_budget(pending_record, base_remaining=base_remaining)
         if scoped is not None:
             return scoped
     for selection in list_by_prefix("player_selection#"):
@@ -120,6 +139,16 @@ def _remaining_budget_for_lineup(lineup: dict) -> int:
         scoped = _selection_remaining_budget(selection, base_remaining=base_remaining)
         if scoped is not None:
             return scoped
+    for critical in list_by_prefix("critical_decision#"):
+        if critical.get("status") != "PENDING_MANAGEMENT_APPROVAL":
+            continue
+        if critical.get("demo_season_id") and critical.get("demo_season_id") != active_demo_season_id():
+            continue
+        if critical.get("remaining_budget_eur") is not None:
+            return int(critical["remaining_budget_eur"])
+        reserved = critical.get("reserved_amount_eur") or critical.get("salary_eur")
+        if reserved is not None:
+            return max(base_remaining - int(reserved), 0)
     return base_remaining
 
 

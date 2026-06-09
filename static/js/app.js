@@ -1101,9 +1101,27 @@ function renderWorkflowCards(cards) {
         const lines = [];
         if (card.candidate_name) lines.push(`Candidate: ${card.candidate_name}`);
         if (card.player_name) lines.push(`Player: ${card.player_name}`);
+        if (card.report_label) lines.push(card.report_label);
+        if (card.main_risk) lines.push(`Main risk: ${card.main_risk}`);
+        if (card.ai_summary) lines.push(`AI summary: ${card.ai_summary}`);
+        if (card.recommendation) lines.push(`Recommendation: ${card.recommendation}`);
         if (card.calendar_label) lines.push(`Calendar: ${card.calendar_label}`);
         if (card.calendar_invite_key) {
             lines.push(`Download: /api/opening-season/calendar-invite/${card.calendar_invite_key}`);
+        }
+        if (card.opening_fixture) lines.push(`Opening fixture: ${card.opening_fixture}`);
+        if (card.remaining_confirmed_budget_eur != null) {
+            lines.push(`Remaining budget: ${Number(card.remaining_confirmed_budget_eur).toLocaleString()} EUR`);
+        }
+        if (Array.isArray(card.pending_management_candidates) && card.pending_management_candidates.length) {
+            card.pending_management_candidates.forEach(name => {
+                if (name) lines.push(`Pending management approval: ${name}`);
+            });
+        }
+        if (Array.isArray(card.pending_transfer_out_players) && card.pending_transfer_out_players.length) {
+            card.pending_transfer_out_players.forEach(name => {
+                if (name) lines.push(`Transfer-out review pending: ${name}`);
+            });
         }
         if (card.report_route) lines.push(`Report: ${card.report_route}`);
         if (card.message) lines.push(card.message);

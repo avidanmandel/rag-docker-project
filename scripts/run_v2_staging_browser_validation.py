@@ -348,11 +348,33 @@ def run_flows() -> dict:
 
             def flow_h_lineup():
                 _new_chat(page)
+                _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
+                _wait_for_response(page, require_confirm=True)
+                _click_card_choice(page, "Confirm")
+                _wait_for_response(page)
+                _send_prompt(
+                    page,
+                    "I choose Ron Ben Ari as our right-back candidate. Submit the recommendation for management review.",
+                )
+                _wait_for_response(page, require_confirm=True)
+                _click_card_choice(page, "Confirm")
+                _wait_for_response(page)
                 _send_prompt(page, "Save and show the proposed 4-3-3 lineup for head-coach review.")
                 _wait_for_response(page, require_confirm=True)
                 report["screenshots"].append(_shot(page, "11_lineup_confirm_card.png"))
                 _click_card_choice(page, "Deny")
                 _new_chat(page)
+                _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
+                _wait_for_response(page, require_confirm=True)
+                _click_card_choice(page, "Confirm")
+                _wait_for_response(page)
+                _send_prompt(
+                    page,
+                    "I choose Ron Ben Ari as our right-back candidate. Submit the recommendation for management review.",
+                )
+                _wait_for_response(page, require_confirm=True)
+                _click_card_choice(page, "Confirm")
+                _wait_for_response(page)
                 _send_prompt(page, "Save and show the proposed 4-3-3 lineup for head-coach review.")
                 _wait_for_response(page, require_confirm=True)
                 _click_card_choice(page, "Confirm")
