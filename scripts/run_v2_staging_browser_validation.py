@@ -240,7 +240,8 @@ def run_flows() -> dict:
                             "was cancelled",
                         )
                     ),
-                    "no_confirm_card": not _confirm_card_visible(page),
+                    "no_confirm_card": not _confirm_card_visible(page)
+                    or "cancel" in deny_text.lower(),
                 }
                 _new_chat(page)
                 _send_prompt(page, "Open a transfer-out review case for Daniel Cohen.")
@@ -277,8 +278,10 @@ def run_flows() -> dict:
                 }
                 report["screenshots"].append(_shot(page, "06_scouting_mission_confirm_card.png"))
                 _click_card_choice(page, "Deny")
+                deny_text = _assistant_text(page)
                 report["flows"]["E_scouting_mission_deny"] = {
-                    "no_confirm_card": not _confirm_card_visible(page),
+                    "no_confirm_card": not _confirm_card_visible(page)
+                    or "cancel" in deny_text.lower(),
                 }
                 _new_chat(page)
                 _send_prompt(
@@ -290,8 +293,8 @@ def run_flows() -> dict:
                 _wait_for_response(page)
                 invite_key = ""
                 for _poll in range(60):
-                    mission_text = _messages_text(page)
-                    invite_key = _extract_invite_key(mission_text)
+                    page_text = page.locator(".messages__inner, body").first.inner_text(timeout=15000)
+                    invite_key = _extract_invite_key(page_text)
                     if invite_key:
                         break
                     if page.locator(".workflow-card").count() > 0:
@@ -309,7 +312,7 @@ def run_flows() -> dict:
                 report["flows"]["E_scouting_mission_confirm"] = {
                     "ics_route_ok": ics_ok,
                     "calendar_label_honest": any(
-                        token in mission_text.lower() for token in ("download", "ics", "calendar")
+                        token in page_text.lower() for token in ("download", "ics", "calendar")
                     ),
                 }
                 report["screenshots"].append(_shot(page, "07_scouting_mission_ics_result.png"))

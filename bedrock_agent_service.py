@@ -696,6 +696,7 @@ def _invoke_render_board_response(
     *,
     normalized: str,
     agent_session: str,
+    lineup_save_seen: bool = False,
 ) -> tuple[str, list[dict], dict[str, Any], str]:
     steered = _guardrail_safe_prompt(
         _rewrite_v2_direct_invoke_prompt(normalized) or _maybe_steered_v2_prompt(normalized)
@@ -731,7 +732,11 @@ def _invoke_render_board_response(
             metadata.pop("confirmation_card", None)
             metadata.pop("pending_return_control", None)
             return answer, collected_events, metadata, agent_session
-    if not _has_visual_board(metadata, answer):
+    if (
+        lineup_save_seen
+        and _no_lineup_answer(answer)
+        and not _has_visual_board(metadata, answer)
+    ):
         answer, collected_events, metadata, agent_session = _recover_failed_confirm(
             client,
             fn="GenerateVisualSquadAndLineupBoard",
@@ -747,31 +752,26 @@ def _invoke_render_board_response(
         )
         if _has_visual_board(metadata, answer):
             return answer, collected_events, metadata, agent_session
-        for _attempt in range(_V2_WRITE_RETRY_ATTEMPTS):
-            retry_session = f"advisor-{uuid.uuid4().hex[:10]}"
-            answer, collected_events, metadata = _invoke_agent_once(
+        answer, collected_events, metadata = _invoke_agent_once(
+            client,
+            agent_session=agent_session,
+            question=steered,
+            session_attributes=confirm_attrs,
+        )
+        pending_rc = metadata.get("pending_return_control") or {}
+        if (
+            pending_rc.get("invocation_id")
+            and pending_rc.get("function") == "GenerateVisualSquadAndLineupBoard"
+        ):
+            answer, collected_events, metadata = _invoke_agent_return_control(
                 client,
-                agent_session=retry_session,
-                question=steered,
-                session_attributes=confirm_attrs,
+                agent_session=agent_session,
+                pending=pending_rc,
+                confirmation_state="CONFIRM",
             )
-            pending_rc = metadata.get("pending_return_control") or {}
-            if (
-                pending_rc.get("invocation_id")
-                and pending_rc.get("function") == "GenerateVisualSquadAndLineupBoard"
-            ):
-                answer, collected_events, metadata = _invoke_agent_return_control(
-                    client,
-                    agent_session=retry_session,
-                    pending=pending_rc,
-                    confirmation_state="CONFIRM",
-                )
-            answer, metadata = _finalize_agent_response(
-                answer, collected_events, metadata, answer=answer
-            )
-            agent_session = retry_session
-            if _has_visual_board(metadata, answer):
-                break
+        answer, metadata = _finalize_agent_response(
+            answer, collected_events, metadata, answer=answer
+        )
     if not _has_visual_board(metadata, answer) and not _no_lineup_answer(answer):
         answer, collected_events, metadata, agent_session = _recover_failed_confirm(
             client,
@@ -1356,6 +1356,7 @@ def invoke_agent(
     session_id: str | None = None,
     *,
     pending_return_control: dict[str, Any] | None = None,
+    chat_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not is_enabled():
         return disabled_response()
@@ -1388,6 +1389,17 @@ def invoke_agent(
                 confirmation_state == "CONFIRM"
                 and _business_workflow_v2_enabled()
                 and fn
+                and not _confirm_succeeded(fn, answer, metadata, collected_events)
+            ):
+                answer, collected_events, metadata, agent_session = _recover_failed_confirm(
+                    client,
+                    fn=fn,
+                    pending=pending_return_control,
+                    agent_session=agent_session,
+                )
+            if (
+                confirmation_state == "CONFIRM"
+                and fn == "GenerateVisualSquadAndLineupBoard"
                 and not _confirm_succeeded(fn, answer, metadata, collected_events)
             ):
                 answer, collected_events, metadata, agent_session = _recover_failed_confirm(
@@ -1460,6 +1472,7 @@ def invoke_agent(
                 client,
                 normalized=normalized,
                 agent_session=agent_session,
+                lineup_save_seen=bool((chat_context or {}).get("lineup_save_seen")),
             )
             refused = GUARDRAIL_BLOCK_MESSAGE.lower() in answer.lower()
             clear_pending = False

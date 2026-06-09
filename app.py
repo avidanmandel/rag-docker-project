@@ -1435,6 +1435,18 @@ def api_delete_session(session_id):
 
 # ---------- chat ----------
 
+def _session_lineup_save_seen(session_id: str) -> bool:
+    for msg in reversed(database.get_messages(session_id)[-24:]):
+        if msg.get("role") != "assistant":
+            continue
+        text = (msg.get("content") or "").lower()
+        if "pending head-coach review" in text or "pending head coach review" in text:
+            return True
+        if "lineup" in text and "head-coach" in text:
+            return True
+    return False
+
+
 def _send_message_via_bedrock_agent(
     session_id: str,
     session: dict,
@@ -1449,6 +1461,7 @@ def _send_message_via_bedrock_agent(
         question,
         session_id=agent_session_id,
         pending_return_control=pending,
+        chat_context={"lineup_save_seen": _session_lineup_save_seen(session_id)},
     )
     if not agent_result.get("enabled"):
         return {
